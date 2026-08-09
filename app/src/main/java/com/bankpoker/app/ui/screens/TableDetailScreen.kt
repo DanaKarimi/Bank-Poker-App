@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -253,7 +254,11 @@ fun TableSummaryBar(
                     Text(
                         text = formatAmount(remainingBalance, chipValue),
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (remainingBalance >= 0) Red80 else Green80
+                        color = when {
+                            remainingBalance < 0 -> Red80
+                            remainingBalance == 0L -> Green80
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }
@@ -304,7 +309,8 @@ fun HorizontalPagerTabs(
             1 -> HistoryTab(
                 buyIns = buyIns,
                 exitRecords = exitRecords,
-                players = players
+                players = players,
+                viewModel = viewModel
             )
             2 -> ResultsTab(
                 players = players,
@@ -590,15 +596,21 @@ fun ActionsTab(
 fun HistoryTab(
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
-    players: List<Player>
+    players: List<Player>,
+    viewModel: TableDetailViewModel
 ) {
+    var selectedTransactionForEdit by remember { mutableStateOf<TransactionItem?>(null) }
+    var selectedTransactionForDelete by remember { mutableStateOf<TransactionItem?>(null) }
+    
     val playerMap = players.associateBy { it.id }
     
     // Combine and sort all transactions
     val allTransactions = remember(buyIns, exitRecords) {
         val buyInTransactions = buyIns.map { b ->
             TransactionItem(
+                id = b.id,
                 type = "Buy-in",
+                playerId = b.playerId,
                 playerName = playerMap[b.playerId]?.name ?: "Unknown",
                 amount = b.amount,
                 note = b.note,
@@ -607,7 +619,9 @@ fun HistoryTab(
         }
         val exitTransactions = exitRecords.map { e ->
             TransactionItem(
+                id = e.id,
                 type = "Exit",
+                playerId = e.playerId,
                 playerName = playerMap[e.playerId]?.name ?: "Unknown",
                 amount = e.amount,
                 note = e.note,
@@ -629,20 +643,48 @@ fun HistoryTab(
             )
         }
     } else {
+        Text(
+            text = "Long-press a transaction to edit or delete",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(allTransactions) { transaction ->
-                TransactionCard(transaction = transaction)
+                TransactionCard(
+                    transaction = transaction,
+                    onEdit = { selectedTransactionForEdit = transaction },
+                    onDelete = { selectedTransactionForDelete = transaction }
+                )
             }
         }
+    }
+    
+    if (selectedTransactionForEdit != null) {
+        EditTransactionDialog(
+            transaction = selectedTransactionForEdit!!,
+            viewModel = viewModel,
+            onDismiss = { selectedTransactionForEdit = null }
+        )
+    }
+
+    if (selectedTransactionForDelete != null) {
+        DeleteTransactionDialog(
+            transaction = selectedTransactionForDelete!!,
+            viewModel = viewModel,
+            onDismiss = { selectedTransactionForDelete = null }
+        )
     }
 }
 
 data class TransactionItem(
+    val id: String,
     val type: String,
+    val playerId: String,
     val playerName: String,
     val amount: Long,
     val note: String?,
@@ -651,10 +693,19 @@ data class TransactionItem(
 
 @Composable
 fun TransactionCard(
-    transaction: TransactionItem
+    transaction: TransactionItem,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showActionDialog by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { },
+                onLongClick = { showActionDialog = true }
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -707,6 +758,45 @@ fun TransactionCard(
                 color = if (transaction.type == "Buy-in") Green80 else Amber80
             )
         }
+    }
+
+    if (showActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showActionDialog = false },
+            title = { Text("Transaction Actions") },
+            text = { Text("What would you like to do?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showActionDialog = false
+                        onEdit()
+                    }
+                ) {
+                    Text("Edit")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = { showActionDialog = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = {
+                            showActionDialog = false
+                            onDelete()
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -1385,4 +1475,156 @@ fun shareText(context: android.content.Context, text: String) {
     }
     val shareIntent = android.content.Intent.createChooser(sendIntent, "Share results")
     context.startActivity(shareIntent)
+}
+
+@Composable
+fun EditTransactionDialog(
+    transaction: TransactionItem,
+    viewModel: TableDetailViewModel,
+    onDismiss: () -> Unit
+) {
+    var amount by remember { mutableStateOf(transaction.amount.toString()) }
+    var note by remember { mutableStateOf(transaction.note ?: "") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit ${transaction.type}") },
+        text = {
+            Column {
+                Text(
+                    text = "Player: ${transaction.playerName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
+                    label = { Text("Chip Amount") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    ),
+                    isError = error != null
+                )
+                if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note (optional)") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val amountLong = amount.toLongOrNull()
+                    if (amountLong == null || amountLong <= 0) {
+                        error = "Amount must be greater than zero"
+                        return@TextButton
+                    }
+                    
+                    if (transaction.type == "Buy-in") {
+                        viewModel.updateBuyIn(
+                            BuyIn(
+                                id = transaction.id,
+                                tableId = "", // Will be ignored by update
+                                playerId = transaction.playerId,
+                                amount = amountLong,
+                                note = note.ifBlank { null },
+                                createdAt = transaction.timestamp
+                            )
+                        )
+                    } else {
+                        viewModel.updateExitRecord(
+                            ExitRecord(
+                                id = transaction.id,
+                                tableId = "", // Will be ignored by update
+                                playerId = transaction.playerId,
+                                amount = amountLong,
+                                note = note.ifBlank { null },
+                                createdAt = transaction.timestamp
+                            )
+                        )
+                    }
+                    onDismiss()
+                },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = Green80
+                )
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteTransactionDialog(
+    transaction: TransactionItem,
+    viewModel: TableDetailViewModel,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete ${transaction.type}?") },
+        text = { 
+            Text("Are you sure you want to delete this ${transaction.type.lowercase()} for ${transaction.playerName}?")
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (transaction.type == "Buy-in") {
+                        viewModel.deleteBuyIn(
+                            BuyIn(
+                                id = transaction.id,
+                                tableId = "",
+                                playerId = transaction.playerId,
+                                amount = transaction.amount,
+                                note = transaction.note,
+                                createdAt = transaction.timestamp
+                            )
+                        )
+                    } else {
+                        viewModel.deleteExitRecord(
+                            ExitRecord(
+                                id = transaction.id,
+                                tableId = "",
+                                playerId = transaction.playerId,
+                                amount = transaction.amount,
+                                note = transaction.note,
+                                createdAt = transaction.timestamp
+                            ),
+                            transaction.playerId
+                        )
+                    }
+                    onDismiss()
+                },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
