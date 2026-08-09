@@ -20,6 +20,7 @@ import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.viewmodel.TableDetailViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -711,6 +712,7 @@ fun ResultsTab(
     exitRecords: List<ExitRecord>,
     viewModel: TableDetailViewModel
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
     // Calculate results for each player
@@ -736,6 +738,34 @@ fun ResultsTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Share button
+        item {
+            val uiState by viewModel.uiState.collectAsState()
+            
+            Button(
+                onClick = {
+                    val shareText = buildShareText(
+                        tableName = uiState.table?.name ?: "Unknown Table",
+                        playerResults = playerResults,
+                        settlements = calculateSettlement(playerResults),
+                        chipValue = uiState.table?.chipValue,
+                        totalBuyIns = uiState.totalBuyIns,
+                        totalExits = uiState.totalExits,
+                        remainingBalance = uiState.remainingBalance
+                    )
+                    shareText(context, shareText)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Green80
+                )
+            ) {
+                Text("Share Results")
+            }
+        }
+
         // Settlement status
         item {
             Card(
@@ -1252,4 +1282,69 @@ fun calculateSettlement(playerResults: List<PlayerResult>): List<Settlement> {
     }
     
     return settlements
+}
+
+fun buildShareText(
+    tableName: String,
+    playerResults: List<PlayerResult>,
+    settlements: List<Settlement>,
+    chipValue: Long?,
+    totalBuyIns: Long,
+    totalExits: Long,
+    remainingBalance: Long
+): String {
+    val sb = StringBuilder()
+    
+    // Header
+    sb.appendLine("🃏 $tableName - Results")
+    sb.appendLine(java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date()))
+    sb.appendLine("─────────────")
+    
+    // Player results
+    playerResults.forEach { result ->
+        val netText = when {
+            result.netResult > 0 -> "+${result.netResult}"
+            result.netResult < 0 -> "${result.netResult}"
+            else -> "0"
+        }
+        val status = when {
+            result.netResult > 0 -> "Creditor"
+            result.netResult < 0 -> "Debtor"
+            else -> "Break-even"
+        }
+        sb.appendLine("${result.player.name}: $netText ($status)")
+    }
+    
+    sb.appendLine("─────────────")
+    
+    // Settlement plan
+    if (settlements.isNotEmpty()) {
+        sb.appendLine("Settlement Plan:")
+        settlements.forEach { s ->
+            val amountText = if (chipValue != null) {
+                "${s.amount} chips ($${s.amount * chipValue})"
+            } else {
+                "${s.amount} chips"
+            }
+            sb.appendLine("${s.fromPlayer} pays ${s.toPlayer}: $amountText")
+        }
+        sb.appendLine("─────────────")
+    }
+    
+    // Totals
+    sb.appendLine("Total Buy-ins: $totalBuyIns")
+    sb.appendLine("Total Exits: $totalExits")
+    sb.appendLine("Remaining: $remainingBalance")
+    
+    return sb.toString()
+}
+
+fun shareText(context: android.content.Context, text: String) {
+    val sendIntent = android.content.Intent().apply {
+        action = android.content.Intent.ACTION_SEND
+        putExtra(android.content.Intent.EXTRA_TEXT, text)
+        type = "text/plain"
+    }
+    val shareIntent = android.content.Intent.createChooser(sendIntent, "Share results")
+    context.startActivity(shareIntent)
 }
