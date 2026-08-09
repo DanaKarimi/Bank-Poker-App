@@ -24,10 +24,10 @@ class TableDetailViewModel(
     val players: Flow<List<Player>> = repository.getPlayersByTableId(tableId)
     val buyIns: Flow<List<BuyIn>> = repository.getBuyInsByTableId(tableId)
     val exitRecords: Flow<List<ExitRecord>> = repository.getExitRecordsByTableId(tableId)
-    val savedPlayerNames: Flow<List<String>> = MutableStateFlow(emptyList()).also { flow ->
+    val savedPlayerNames: Flow<List<String>> = MutableStateFlow<List<String>>(emptyList()).also { flow ->
         viewModelScope.launch {
             val names = repository.getAllSavedPlayerNames()
-            (flow as MutableStateFlow).value = names
+            flow.value = names
         }
     }
 
