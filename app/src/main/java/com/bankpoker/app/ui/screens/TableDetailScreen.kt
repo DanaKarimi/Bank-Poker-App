@@ -137,7 +137,9 @@ fun TableDetailScreen(
                 }
                 showBuyInDialog = false
                 selectedPlayerForBuyIn = null
-            }
+            },
+            viewModel = viewModel,
+            playerId = currentPlayer.id
         )
     }
 
@@ -1103,12 +1105,23 @@ fun AddPlayerDialog(
 fun BuyInDialog(
     playerName: String,
     onDismiss: () -> Unit,
-    onConfirm: (Long, String?) -> Unit
+    onConfirm: (Long, String?) -> Unit,
+    viewModel: TableDetailViewModel,
+    playerId: String
 ) {
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    
+    var playerBuyIns by remember { mutableStateOf(0L) }
+    var playerExits by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(playerId) {
+        playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
+        playerExits = viewModel.getPlayerTotalExits(playerId)
+    }
+
+    val currentBal = playerBuyIns - playerExits
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Buy-in") },
@@ -1118,6 +1131,12 @@ fun BuyInDialog(
                     text = "Player: $playerName",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Current Balance: $currentBal chips",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
@@ -1136,6 +1155,20 @@ fun BuyInDialog(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(20L, 50L, 100L, 200L).forEach { value ->
+                        SuggestionChip(
+                            onClick = { amount = value.toString() },
+                            label = { Text("+$value") }
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -1232,6 +1265,20 @@ fun ExitDialog(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(20L, 50L, 100L, 200L).forEach { value ->
+                        SuggestionChip(
+                            onClick = { amount = value.toString() },
+                            label = { Text("+$value") }
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -1517,6 +1564,20 @@ fun EditTransactionDialog(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(20L, 50L, 100L, 200L).forEach { value ->
+                        SuggestionChip(
+                            onClick = { amount = value.toString() },
+                            label = { Text("+$value") }
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
