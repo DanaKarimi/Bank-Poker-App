@@ -51,7 +51,7 @@ class TableDetailViewModel(
 
     fun addPlayer(name: String) {
         viewModelScope.launch {
-            repository.addPlayer(tableId, name)
+            repository.addPlayer(tableId, name.trim().uppercase())
         }
     }
 
