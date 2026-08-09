@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -767,6 +768,19 @@ fun ResultsTab(
         items(playerResults) { result ->
             PlayerResultCard(result = result)
         }
+        
+        // Smart settlement plan
+        item {
+            val uiState by viewModel.uiState.collectAsState()
+            
+            val settlements = calculateSettlement(playerResults)
+            
+            SettlementCard(
+                settlements = settlements,
+                chipValue = uiState.table?.chipValue,
+                allExited = allExited
+            )
+        }
     }
 }
 
@@ -1103,4 +1117,139 @@ fun formatAmount(chips: Long, chipValue: Long?): String {
 fun formatTimestamp(timestamp: Long): String {
     val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
     return sdf.format(java.util.Date(timestamp))
+}
+
+data class Settlement(
+    val fromPlayer: String,
+    val toPlayer: String,
+    val amount: Long
+)
+
+@Composable
+fun SettlementCard(
+    settlements: List<Settlement>,
+    chipValue: Long?,
+    allExited: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Settlement Plan",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            if (!allExited) {
+                Text(
+                    text = "Preview - becomes final when all players exit",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Amber80
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            
+            if (settlements.isEmpty()) {
+                Text(
+                    text = "No debts. Everyone is settled!",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Green80
+                )
+            } else {
+                settlements.forEach { settlement ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = settlement.fromPlayer,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Red80,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = " pays ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = settlement.toPlayer,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Green80,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Text(
+                            text = if (chipValue != null) {
+                                "${settlement.amount} chips ($${settlement.amount * chipValue})"
+                            } else {
+                                "${settlement.amount} chips"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun calculateSettlement(playerResults: List<PlayerResult>): List<Settlement> {
+    val debtors = mutableListOf<Pair<String, Long>>()
+    val creditors = mutableListOf<Pair<String, Long>>()
+    
+    playerResults.forEach { result ->
+        when {
+            result.netResult < 0 -> debtors.add(Pair(result.player.name, -result.netResult))
+            result.netResult > 0 -> creditors.add(Pair(result.player.name, result.netResult))
+        }
+    }
+    
+    val settlements = mutableListOf<Settlement>()
+    
+    var i = 0
+    var j = 0
+    
+    while (i < debtors.size && j < creditors.size) {
+        val debtor = debtors[i]
+        val creditor = creditors[j]
+        
+        val amount = minOf(debtor.second, creditor.second)
+        
+        settlements.add(
+            Settlement(
+                fromPlayer = debtor.first,
+                toPlayer = creditor.first,
+                amount = amount
+            )
+        )
+        
+        debtors[i] = Pair(debtor.first, debtor.second - amount)
+        creditors[j] = Pair(creditor.first, creditor.second - amount)
+        
+        if (debtors[i].second == 0L) i++
+        if (creditors[j].second == 0L) j++
+    }
+    
+    return settlements
 }
