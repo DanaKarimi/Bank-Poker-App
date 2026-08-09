@@ -254,7 +254,11 @@ fun TableSummaryBar(
                     Text(
                         text = formatAmount(remainingBalance, chipValue),
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (remainingBalance >= 0) Red80 else Green80
+                        color = when {
+                            remainingBalance < 0 -> Red80
+                            remainingBalance == 0L -> Green80
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }
