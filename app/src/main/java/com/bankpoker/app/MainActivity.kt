@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
 import com.bankpoker.app.data.local.BankPokerDatabase
 import com.bankpoker.app.ui.navigation.AppNavigation
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var database: BankPokerDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
