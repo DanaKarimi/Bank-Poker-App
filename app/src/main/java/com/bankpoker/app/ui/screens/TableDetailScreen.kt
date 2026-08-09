@@ -116,7 +116,8 @@ fun TableDetailScreen(
                 viewModel.addPlayer(name)
                 showAddPlayerDialog = false
             },
-            savedNames = savedNames
+            savedNames = savedNames,
+            existingNames = players.map { it.name }
         )
     }
 
@@ -923,7 +924,8 @@ fun PlayerResultCard(
 fun AddPlayerDialog(
     onDismiss: () -> Unit,
     onAddPlayer: (String) -> Unit,
-    savedNames: List<String> = emptyList()
+    savedNames: List<String> = emptyList(),
+    existingNames: List<String> = emptyList()
 ) {
     var playerName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -978,11 +980,16 @@ fun AddPlayerDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (playerName.isBlank()) {
+                    val trimmed = playerName.trim()
+                    if (trimmed.isBlank()) {
                         error = "Player name is required"
                         return@TextButton
                     }
-                    onAddPlayer(playerName.trim())
+                    if (existingNames.any { it.equals(trimmed, ignoreCase = true) }) {
+                        error = "This player is already in the table"
+                        return@TextButton
+                    }
+                    onAddPlayer(trimmed.uppercase())
                 },
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = Green80
