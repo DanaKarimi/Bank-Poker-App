@@ -609,6 +609,7 @@ fun HistoryTab(
         val buyInTransactions = buyIns.map { b ->
             TransactionItem(
                 id = b.id,
+                tableId = b.tableId,
                 type = "Buy-in",
                 playerId = b.playerId,
                 playerName = playerMap[b.playerId]?.name ?: "Unknown",
@@ -620,6 +621,7 @@ fun HistoryTab(
         val exitTransactions = exitRecords.map { e ->
             TransactionItem(
                 id = e.id,
+                tableId = e.tableId,
                 type = "Exit",
                 playerId = e.playerId,
                 playerName = playerMap[e.playerId]?.name ?: "Unknown",
@@ -683,6 +685,7 @@ fun HistoryTab(
 
 data class TransactionItem(
     val id: String,
+    val tableId: String,
     val type: String,
     val playerId: String,
     val playerName: String,
@@ -1537,7 +1540,7 @@ fun EditTransactionDialog(
                         viewModel.updateBuyIn(
                             BuyIn(
                                 id = transaction.id,
-                                tableId = "", // Will be ignored by update
+                                tableId = transaction.tableId,
                                 playerId = transaction.playerId,
                                 amount = amountLong,
                                 note = note.ifBlank { null },
@@ -1548,7 +1551,7 @@ fun EditTransactionDialog(
                         viewModel.updateExitRecord(
                             ExitRecord(
                                 id = transaction.id,
-                                tableId = "", // Will be ignored by update
+                                tableId = transaction.tableId,
                                 playerId = transaction.playerId,
                                 amount = amountLong,
                                 note = note.ifBlank { null },
@@ -1592,7 +1595,7 @@ fun DeleteTransactionDialog(
                         viewModel.deleteBuyIn(
                             BuyIn(
                                 id = transaction.id,
-                                tableId = "",
+                                tableId = transaction.tableId,
                                 playerId = transaction.playerId,
                                 amount = transaction.amount,
                                 note = transaction.note,
@@ -1603,7 +1606,7 @@ fun DeleteTransactionDialog(
                         viewModel.deleteExitRecord(
                             ExitRecord(
                                 id = transaction.id,
-                                tableId = "",
+                                tableId = transaction.tableId,
                                 playerId = transaction.playerId,
                                 amount = transaction.amount,
                                 note = transaction.note,
