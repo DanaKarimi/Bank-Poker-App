@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Dark charcoal background -->
+    <item android:drawable="@color/splash_background"/>
+    
+    <!-- Centered chip icon -->
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/ic_chip_foreground"
+            android:gravity="center"/>
+    </item>
+</layer-list>
