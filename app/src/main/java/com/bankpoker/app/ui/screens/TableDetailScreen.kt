@@ -3,6 +3,8 @@ package com.bankpoker.app.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -107,12 +109,14 @@ fun TableDetailScreen(
     }
     
     if (showAddPlayerDialog) {
+        val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
         AddPlayerDialog(
             onDismiss = { showAddPlayerDialog = false },
             onAddPlayer = { name ->
                 viewModel.addPlayer(name)
                 showAddPlayerDialog = false
-            }
+            },
+            savedNames = savedNames
         )
     }
 
@@ -918,11 +922,16 @@ fun PlayerResultCard(
 @Composable
 fun AddPlayerDialog(
     onDismiss: () -> Unit,
-    onAddPlayer: (String) -> Unit
+    onAddPlayer: (String) -> Unit,
+    savedNames: List<String> = emptyList()
 ) {
     var playerName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    
+
+    val suggestions = savedNames
+        .filter { it.contains(playerName, ignoreCase = true) && it.trim() != playerName.trim() }
+        .take(8)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Player") },
@@ -941,6 +950,28 @@ fun AddPlayerDialog(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+                if (suggestions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Previous players:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        suggestions.forEach { name ->
+                            SuggestionChip(
+                                onClick = { playerName = name },
+                                label = { Text(name) }
+                            )
+                        }
+                    }
                 }
             }
         },
