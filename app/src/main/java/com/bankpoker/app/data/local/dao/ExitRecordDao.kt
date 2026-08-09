@@ -20,4 +20,13 @@ interface ExitRecordDao {
 
     @Insert
     suspend fun insertExitRecord(exitRecord: ExitRecord)
+
+    @Update
+    suspend fun updateExitRecord(exitRecord: ExitRecord)
+
+    @Delete
+    suspend fun deleteExitRecord(exitRecord: ExitRecord)
+
+    @Query("SELECT COUNT(*) FROM exit_records WHERE playerId = :playerId")
+    suspend fun getExitCountByPlayer(playerId: String): Int
 }

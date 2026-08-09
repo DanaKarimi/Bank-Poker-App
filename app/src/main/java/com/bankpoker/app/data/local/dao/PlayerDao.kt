@@ -23,4 +23,7 @@ interface PlayerDao {
 
     @Query("SELECT COUNT(*) FROM players WHERE tableId = :tableId AND status = 'PLAYING'")
     suspend fun getPlayingPlayersCount(tableId: String): Int
+
+    @Query("SELECT name FROM players GROUP BY name ORDER BY COUNT(*) DESC, MAX(createdAt) DESC")
+    suspend fun getAllPlayerNames(): List<String>
 }

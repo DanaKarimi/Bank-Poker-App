@@ -20,4 +20,10 @@ interface BuyInDao {
 
     @Insert
     suspend fun insertBuyIn(buyIn: BuyIn)
+
+    @Update
+    suspend fun updateBuyIn(buyIn: BuyIn)
+
+    @Delete
+    suspend fun deleteBuyIn(buyIn: BuyIn)
 }
