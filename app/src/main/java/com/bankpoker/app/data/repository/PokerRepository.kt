@@ -66,6 +66,8 @@ class PokerRepository(
 
     suspend fun getPlayingPlayersCount(tableId: String): Int = playerDao.getPlayingPlayersCount(tableId)
 
+    suspend fun getAllSavedPlayerNames(): List<String> = playerDao.getAllPlayerNames()
+
     // Buy-in operations
     fun getBuyInsByTableId(tableId: String): Flow<List<BuyIn>> = buyInDao.getBuyInsByTableId(tableId)
 
@@ -85,6 +87,14 @@ class PokerRepository(
             createdAt = System.currentTimeMillis()
         )
         buyInDao.insertBuyIn(buyIn)
+    }
+
+    suspend fun updateBuyIn(buyIn: BuyIn) {
+        buyInDao.updateBuyIn(buyIn)
+    }
+
+    suspend fun deleteBuyIn(buyIn: BuyIn) {
+        buyInDao.deleteBuyIn(buyIn)
     }
 
     // Exit operations
@@ -109,4 +119,14 @@ class PokerRepository(
         // Update player status to EXITED
         playerDao.updatePlayerStatus(playerId, "EXITED")
     }
+
+    suspend fun updateExitRecord(exitRecord: ExitRecord) {
+        exitRecordDao.updateExitRecord(exitRecord)
+    }
+
+    suspend fun deleteExitRecord(exitRecord: ExitRecord) {
+        exitRecordDao.deleteExitRecord(exitRecord)
+    }
+
+    suspend fun getExitCountByPlayer(playerId: String): Int = exitRecordDao.getExitCountByPlayer(playerId)
 }

@@ -24,6 +24,12 @@ class TableDetailViewModel(
     val players: Flow<List<Player>> = repository.getPlayersByTableId(tableId)
     val buyIns: Flow<List<BuyIn>> = repository.getBuyInsByTableId(tableId)
     val exitRecords: Flow<List<ExitRecord>> = repository.getExitRecordsByTableId(tableId)
+    val savedPlayerNames: Flow<List<String>> = MutableStateFlow(emptyList()).also { flow ->
+        viewModelScope.launch {
+            val names = repository.getAllSavedPlayerNames()
+            (flow as MutableStateFlow).value = names
+        }
+    }
 
     init {
         loadTableData()
@@ -80,6 +86,40 @@ class TableDetailViewModel(
 
     suspend fun getPlayingPlayersCount(): Int {
         return repository.getPlayingPlayersCount(tableId)
+    }
+
+    fun updateBuyIn(buyIn: BuyIn) {
+        viewModelScope.launch {
+            repository.updateBuyIn(buyIn)
+            loadTableData()
+        }
+    }
+
+    fun deleteBuyIn(buyIn: BuyIn) {
+        viewModelScope.launch {
+            repository.deleteBuyIn(buyIn)
+            loadTableData()
+        }
+    }
+
+    fun updateExitRecord(exitRecord: ExitRecord) {
+        viewModelScope.launch {
+            repository.updateExitRecord(exitRecord)
+            loadTableData()
+        }
+    }
+
+    fun deleteExitRecord(exitRecord: ExitRecord, playerId: String) {
+        viewModelScope.launch {
+            repository.deleteExitRecord(exitRecord)
+            // Check if player has any remaining exit records
+            val exitCount = repository.getExitCountByPlayer(playerId)
+            if (exitCount == 0) {
+                // Set player status back to PLAYING
+                repository.updatePlayerStatus(playerId, "PLAYING")
+            }
+            loadTableData()
+        }
     }
 }
 
