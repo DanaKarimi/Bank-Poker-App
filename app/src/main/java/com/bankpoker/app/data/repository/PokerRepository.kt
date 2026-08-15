@@ -129,4 +129,9 @@ class PokerRepository(
     }
 
     suspend fun getExitCountByPlayer(playerId: String): Int = exitRecordDao.getExitCountByPlayer(playerId)
+
+    suspend fun getAllTablesOnce(): List<PokerTable> = pokerTableDao.getAllTablesOnce()
+    suspend fun getAllPlayersOnce(): List<Player> = playerDao.getAllPlayersOnce()
+    suspend fun getAllBuyInsOnce(): List<BuyIn> = buyInDao.getAllBuyInsOnce()
+    suspend fun getAllExitRecordsOnce(): List<ExitRecord> = exitRecordDao.getAllExitRecordsOnce()
 }

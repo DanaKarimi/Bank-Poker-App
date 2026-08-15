@@ -5,4 +5,5 @@ sealed class Screen(val route: String) {
     object TableDetail : Screen("table_detail/{tableId}") {
         fun createRoute(tableId: String) = "table_detail/$tableId"
     }
+    object Stats : Screen("stats")
 }

@@ -15,6 +15,9 @@ import com.bankpoker.app.viewmodel.TableDetailViewModel
 import com.bankpoker.app.viewmodel.TablesViewModel
 import com.bankpoker.app.viewmodel.TablesViewModelFactory
 import com.bankpoker.app.viewmodel.TableDetailViewModelFactory
+import com.bankpoker.app.viewmodel.StatsViewModel
+import com.bankpoker.app.viewmodel.StatsViewModelFactory
+import com.bankpoker.app.ui.screens.StatsScreen
 
 @Composable
 fun AppNavigation(
@@ -40,6 +43,9 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onTableClick = { tableId ->
                     navController.navigate(Screen.TableDetail.createRoute(tableId))
+                },
+                onNavigateToStats = {
+                    navController.navigate(Screen.Stats.route)
                 }
             )
         }
@@ -55,6 +61,18 @@ fun AppNavigation(
                 factory = TableDetailViewModelFactory(repository, tableId)
             )
             TableDetailScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.Stats.route) {
+            val viewModel: StatsViewModel = viewModel(
+                factory = StatsViewModelFactory(repository)
+            )
+            StatsScreen(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()

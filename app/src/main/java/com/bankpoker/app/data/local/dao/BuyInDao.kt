@@ -26,4 +26,7 @@ interface BuyInDao {
 
     @Delete
     suspend fun deleteBuyIn(buyIn: BuyIn)
+
+    @Query("SELECT * FROM buy_ins")
+    suspend fun getAllBuyInsOnce(): List<BuyIn>
 }

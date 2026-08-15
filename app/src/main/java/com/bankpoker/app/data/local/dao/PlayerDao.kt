@@ -26,4 +26,7 @@ interface PlayerDao {
 
     @Query("SELECT name FROM players GROUP BY name ORDER BY COUNT(*) DESC, MAX(createdAt) DESC")
     suspend fun getAllPlayerNames(): List<String>
+
+    @Query("SELECT * FROM players")
+    suspend fun getAllPlayersOnce(): List<Player>
 }

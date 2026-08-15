@@ -20,4 +20,7 @@ interface PokerTableDao {
 
     @Query("UPDATE poker_tables SET status = :status, closedAt = :closedAt WHERE id = :tableId")
     suspend fun closeTable(tableId: String, status: String, closedAt: Long)
+
+    @Query("SELECT * FROM poker_tables ORDER BY createdAt DESC")
+    suspend fun getAllTablesOnce(): List<PokerTable>
 }

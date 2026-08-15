@@ -22,7 +22,8 @@ import androidx.compose.ui.text.font.FontStyle
 @Composable
 fun TablesScreen(
     viewModel: TablesViewModel,
-    onTableClick: (String) -> Unit
+    onTableClick: (String) -> Unit,
+    onNavigateToStats: () -> Unit
 ) {
     var showCreateTableDialog by remember { mutableStateOf(false) }
     val tables by viewModel.tables.collectAsState(initial = emptyList())
@@ -34,7 +35,16 @@ fun TablesScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
+                ),
+                actions = {
+                    TextButton(onClick = onNavigateToStats) {
+                        Text(
+                            text = "Stats",
+                            color = Green80,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             )
         },
         floatingActionButton = {
