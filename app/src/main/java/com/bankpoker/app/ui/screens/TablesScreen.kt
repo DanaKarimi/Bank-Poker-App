@@ -1,27 +1,28 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.TableBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.PokerTable
-import com.bankpoker.app.ui.theme.Gold
-import com.bankpoker.app.ui.theme.FeltBackground
+import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.TablesViewModel
 import kotlinx.coroutines.flow.collectLatest
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.font.FontStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,67 +37,99 @@ fun TablesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("♠ Bank Poker", color = Gold, fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = FeltBackground,
-                    titleContentColor = Gold
-                ),
+                title = { 
+                    Text(
+                        text = "♠ Bank Poker", 
+                        color = Gold, 
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    ) 
+                },
                 actions = {
-                    TextButton(onClick = onNavigateToStats) {
+                    TextButton(
+                        onClick = onNavigateToStats,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Gold
+                        )
+                    ) {
                         Text(
-                            text = "Stats",
-                            color = Gold,
-                            style = MaterialTheme.typography.bodyMedium
+                            text = "STATS",
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = FeltBackground
+                )
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showCreateTableDialog = true },
+                modifier = Modifier.shadow(12.dp, CircleShape),
                 containerColor = Gold,
                 contentColor = Color.Black
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Table")
+                Icon(
+                    Icons.Default.Add, 
+                    contentDescription = "Create Table",
+                    modifier = Modifier.size(28.dp)
+                )
             }
-        }
+        },
+        containerColor = FeltBackground
     ) { paddingValues ->
-        if (tables.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF186349), FeltBackground),
+                        radius = 1500f
+                    )
+                )
+                .padding(paddingValues)
+        ) {
+            if (tables.isEmpty()) {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     Text(
-                        text = "No tables yet",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onBackground
+                        text = "♠",
+                        fontSize = 96.sp,
+                        color = Gold.copy(alpha = 0.3f)
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "NO TABLES YET",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Cream,
+                        letterSpacing = 3.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Tap + to create a new table",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Cream.copy(alpha = 0.6f)
                     )
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(tables) { table ->
-                    TableCard(
-                        table = table,
-                        onClick = { onTableClick(table.id) }
-                    )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(tables) { table ->
+                        TableCard(
+                            table = table,
+                            onClick = { onTableClick(table.id) }
+                        )
+                    }
                 }
             }
         }
@@ -124,12 +157,14 @@ fun TableCard(
             .border(
                 width = 1.dp,
                 color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp)
             ),
+        shape = RoundedCornerShape(16.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -141,26 +176,71 @@ fun TableCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = table.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Gold.copy(alpha = 0.2f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.TableBar,
+                                contentDescription = null,
+                                tint = Gold,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = table.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Cream,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 StatusBadge(status = table.status)
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Players: ${table.status}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Chip value
             if (table.chipValue != null) {
-                Text(
-                    text = "Chip Value: $${table.chipValue}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Chip Value",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = "$${table.chipValue}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
+            
+            // Status hint
+            val statusHint = when (table.status) {
+                "ACTIVE" -> "● Tap to manage"
+                "CLOSED" -> "● Table closed"
+                else -> ""
+            }
+            val statusColor = when (table.status) {
+                "ACTIVE" -> WinGreen
+                "CLOSED" -> LoseRed.copy(alpha = 0.7f)
+                else -> Cream
+            }
+            Text(
+                text = statusHint,
+                style = MaterialTheme.typography.labelSmall,
+                color = statusColor,
+                letterSpacing = 1.sp
+            )
         }
     }
 }
@@ -171,21 +251,37 @@ fun StatusBadge(
     modifier: Modifier = Modifier
 ) {
     val backgroundColor = when (status) {
-        "ACTIVE" -> Green80
-        "CLOSED" -> MaterialTheme.colorScheme.error
+        "ACTIVE" -> WinGreen.copy(alpha = 0.15f)
+        "CLOSED" -> LoseRed.copy(alpha = 0.15f)
+        else -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+    }
+    val textColor = when (status) {
+        "ACTIVE" -> WinGreen
+        "CLOSED" -> LoseRed
+        else -> MaterialTheme.colorScheme.onSecondary
+    }
+    val borderColor = when (status) {
+        "ACTIVE" -> WinGreen
+        "CLOSED" -> LoseRed
         else -> MaterialTheme.colorScheme.secondary
     }
-    
+
     Surface(
-        modifier = modifier,
+        modifier = modifier.border(
+            width = 1.dp,
+            color = borderColor,
+            shape = RoundedCornerShape(6.dp)
+        ),
         color = backgroundColor,
-        shape = MaterialTheme.shapes.small
+        shape = RoundedCornerShape(6.dp)
     ) {
         Text(
             text = status,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimary
+            color = textColor,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -201,7 +297,7 @@ fun CreateTableDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create New Table", color = Gold) },
+        title = { Text("Create New Table", color = Gold, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(
@@ -212,7 +308,9 @@ fun CreateTableDialog(
                     isError = error != null,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedLabelColor = Gold,
+                        cursorColor = Gold
                     )
                 )
                 if (error != null) {
@@ -233,7 +331,9 @@ fun CreateTableDialog(
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedLabelColor = Gold,
+                        cursorColor = Gold
                     )
                 )
             }
@@ -248,16 +348,14 @@ fun CreateTableDialog(
                     val chipValueLong = chipValue.toLongOrNull()
                     onCreateTable(tableName.trim(), chipValueLong)
                 },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
+                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
             ) {
-                Text("Create")
+                Text("Create", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
+                Text("Cancel", color = Cream.copy(alpha = 0.7f))
             }
         }
     )
