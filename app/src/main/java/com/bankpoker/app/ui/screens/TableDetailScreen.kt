@@ -176,8 +176,8 @@ fun TableDetailScreen(
     if (showCloseTableDialog) {
         AlertDialog(
             onDismissRequest = { showCloseTableDialog = false },
-            title = { Text("Close Table") },
-            text = { Text("Are you sure you want to close this table? No new transactions will be allowed.") },
+            title = { Text("Close Table", color = Gold) },
+            text = { Text("Are you sure you want to close this table? No new transactions will be allowed.", color = Cream) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -193,7 +193,7 @@ fun TableDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCloseTableDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = Gold)
                 }
             }
         )
@@ -402,7 +402,8 @@ fun PlayersTab(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = Green80
+                containerColor = Gold,
+                contentColor = Color.Black
             ) {
                 Text("+", style = MaterialTheme.typography.titleLarge)
             }
@@ -644,7 +645,8 @@ fun ActionsTab(
                         Button(
                             onClick = { onBuyInClick(player) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Green80
+                                containerColor = Gold,
+                                contentColor = Color.Black
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
@@ -653,8 +655,10 @@ fun ActionsTab(
                         Button(
                             onClick = { onExitClick(player) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Amber80
+                                containerColor = Color.Transparent,
+                                contentColor = Gold
                             ),
+                            modifier = Modifier.border(1.dp, Gold, RoundedCornerShape(8.dp)),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text("Exit")
@@ -779,6 +783,11 @@ fun TransactionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            )
             .combinedClickable(
                 onClick = { },
                 onLongClick = { showActionDialog = true }
@@ -840,14 +849,15 @@ fun TransactionCard(
     if (showActionDialog) {
         AlertDialog(
             onDismissRequest = { showActionDialog = false },
-            title = { Text("Transaction Actions") },
-            text = { Text("What would you like to do?") },
+            title = { Text("Transaction Actions", color = Gold) },
+            text = { Text("What would you like to do?", color = Cream) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showActionDialog = false
                         onEdit()
-                    }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Gold)
                 ) {
                     Text("Edit")
                 }
@@ -855,7 +865,8 @@ fun TransactionCard(
             dismissButton = {
                 Row {
                     TextButton(
-                        onClick = { showActionDialog = false }
+                        onClick = { showActionDialog = false },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Gold)
                     ) {
                         Text("Cancel")
                     }
@@ -931,7 +942,8 @@ fun ResultsTab(
                     .fillMaxWidth()
                     .padding(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Green80
+                    containerColor = Gold,
+                    contentColor = Color.Black
                 )
             ) {
                 Text("Share Results")
@@ -1004,13 +1016,19 @@ fun PlayerResultCard(
     }
     
     val resultColor = when {
-        result.netResult > 0 -> Green80
-        result.netResult < 0 -> Red80
+        result.netResult > 0 -> WinGreen
+        result.netResult < 0 -> LoseRed
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -1103,7 +1121,7 @@ fun AddPlayerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Player") },
+        title = { Text("Add Player", color = Gold) },
         text = {
             Column {
                 OutlinedTextField(
@@ -1111,7 +1129,11 @@ fun AddPlayerDialog(
                     onValueChange = { playerName = it },
                     label = { Text("Player Name") },
                     singleLine = true,
-                    isError = error != null
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
+                    )
                 )
                 if (error != null) {
                     Text(
@@ -1159,7 +1181,7 @@ fun AddPlayerDialog(
                     onAddPlayer(trimmed.uppercase())
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Add")
@@ -1167,7 +1189,7 @@ fun AddPlayerDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1262,7 +1284,7 @@ fun BuyInDialog(
                     onConfirm(amountLong, note.ifBlank { null })
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save")
@@ -1270,7 +1292,7 @@ fun BuyInDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1372,7 +1394,7 @@ fun ExitDialog(
                     onConfirm(amountLong, note.ifBlank { null })
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Amber80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save Exit")
@@ -1380,7 +1402,7 @@ fun ExitDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1412,7 +1434,13 @@ fun SettlementCard(
     allExited: Boolean
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -1695,7 +1723,7 @@ fun EditTransactionDialog(
                     onDismiss()
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save")
@@ -1703,7 +1731,7 @@ fun EditTransactionDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )

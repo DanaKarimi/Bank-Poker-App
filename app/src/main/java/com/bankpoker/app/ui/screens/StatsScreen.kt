@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -33,11 +35,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bankpoker.app.ui.theme.Amber80
+import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.FeltBackground
+import com.bankpoker.app.ui.theme.Gold
 import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.Red80
+import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.ui.theme.LoseRed
 import com.bankpoker.app.viewmodel.PlayerStats
 import com.bankpoker.app.viewmodel.StatsUiState
 import com.bankpoker.app.viewmodel.StatsViewModel
@@ -54,16 +62,16 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stats & History") },
+                title = { Text("Stats & History", color = Gold, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = FeltBackground,
+                    titleContentColor = Gold,
+                    navigationIconContentColor = Gold
                 )
             )
         }
@@ -83,7 +91,7 @@ fun StatsScreen(
                         title = "Biggest Winner",
                         name = uiState.biggestWinner!!.name,
                         value = "+${uiState.biggestWinner!!.netResult}",
-                        color = Green80
+                        color = WinGreen
                     )
                 }
             }
@@ -94,7 +102,7 @@ fun StatsScreen(
                         title = "Most Active Player",
                         name = uiState.mostActive!!.name,
                         value = "${uiState.mostActive!!.gamesPlayed} games",
-                        color = Amber80
+                        color = Gold
                     )
                 }
             }
@@ -141,7 +149,13 @@ fun StatsScreen(
 @Composable
 fun OverviewCard(uiState: StatsUiState) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -196,7 +210,13 @@ fun HighlightCard(
     color: androidx.compose.ui.graphics.Color
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -234,7 +254,13 @@ fun HighlightCard(
 @Composable
 fun PlayerStatCard(stat: PlayerStats) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -245,15 +271,18 @@ fun PlayerStatCard(stat: PlayerStats) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val avatarColor = AvatarColors[stat.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
             Surface(
-                color = Green80.copy(alpha = 0.2f),
+                color = avatarColor,
                 shape = CircleShape,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .size(40.dp)
+                    .border(1.5.dp, Gold, CircleShape)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = stat.name.take(1),
-                        color = Green80,
+                        color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -276,8 +305,8 @@ fun PlayerStatCard(stat: PlayerStats) {
                 text = "${if (stat.netResult > 0) "+" else ""}${stat.netResult}",
                 style = MaterialTheme.typography.titleMedium,
                 color = when {
-                    stat.netResult > 0 -> Green80
-                    stat.netResult < 0 -> Red80
+                    stat.netResult > 0 -> WinGreen
+                    stat.netResult < 0 -> LoseRed
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 fontWeight = FontWeight.Bold
@@ -289,7 +318,13 @@ fun PlayerStatCard(stat: PlayerStats) {
 @Composable
 fun ClosedTableCard(stat: TableStats) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -328,7 +363,7 @@ fun ClosedTableCard(stat: TableStats) {
                 Text(
                     text = "Buy-ins: ${stat.totalBuyIns}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Green80
+                    color = WinGreen
                 )
             }
             if (stat.topWinnerName != null && stat.topWinnerNet > 0) {
@@ -336,7 +371,7 @@ fun ClosedTableCard(stat: TableStats) {
                 Text(
                     text = "Winner: ${stat.topWinnerName} (+${stat.topWinnerNet})",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Green80
+                    color = WinGreen
                 )
             }
         }

@@ -3,21 +3,47 @@
 *.class
 *.o
 *.obj
+*.so
+*.dll
+*.exe
 *.out
 build/
+dist/
+
 # Dependencies
+.gradle/
+node_modules/
+venv/
+.venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
 target/
-.gradle/
-# Logs and temp files
-*.log
-*.tmp
+
 # Editors
 .vscode/
 .idea/
-# System files
+*.swp
+*.swo
+*.tmp
+
+# System
 .DS_Store
 Thumbs.db
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Android specific
+*.apk
+*.aar
+local.properties
 ```
