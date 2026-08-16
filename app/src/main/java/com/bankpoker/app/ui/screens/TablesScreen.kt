@@ -1,17 +1,22 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bankpoker.app.data.local.entity.PokerTable
-import com.bankpoker.app.ui.theme.Green80
+import com.bankpoker.app.ui.theme.Gold
+import com.bankpoker.app.ui.theme.FeltBackground
 import com.bankpoker.app.viewmodel.TablesViewModel
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,16 +36,16 @@ fun TablesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Bank Poker") },
+                title = { Text("♠ Bank Poker", color = Gold, fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = FeltBackground,
+                    titleContentColor = Gold
                 ),
                 actions = {
                     TextButton(onClick = onNavigateToStats) {
                         Text(
                             text = "Stats",
-                            color = Green80,
+                            color = Gold,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -50,7 +55,8 @@ fun TablesScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showCreateTableDialog = true },
-                containerColor = Green80
+                containerColor = Gold,
+                contentColor = Color.Black
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Create Table")
             }
@@ -113,7 +119,13 @@ fun TableCard(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -189,7 +201,7 @@ fun CreateTableDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create New Table") },
+        title = { Text("Create New Table", color = Gold) },
         text = {
             Column {
                 OutlinedTextField(
@@ -197,7 +209,11 @@ fun CreateTableDialog(
                     onValueChange = { tableName = it },
                     label = { Text("Table Name") },
                     singleLine = true,
-                    isError = error != null
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
+                    )
                 )
                 if (error != null) {
                     Text(
@@ -214,6 +230,10 @@ fun CreateTableDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
                     )
                 )
             }
@@ -229,7 +249,7 @@ fun CreateTableDialog(
                     onCreateTable(tableName.trim(), chipValueLong)
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Create")
@@ -237,7 +257,7 @@ fun CreateTableDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )

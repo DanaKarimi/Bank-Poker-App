@@ -1,11 +1,13 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -20,6 +22,11 @@ import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.ui.theme.Amber80
 import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.Red80
+import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.Gold
+import com.bankpoker.app.ui.theme.FeltBackground
+import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.ui.theme.LoseRed
 import com.bankpoker.app.viewmodel.TableDetailViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,7 +35,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.shape.CircleShape
-import com.bankpoker.app.ui.theme.AvatarColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +59,7 @@ fun TableDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.table?.name ?: "Table Detail") },
+                title = { Text(uiState.table?.name ?: "Table Detail", color = Gold, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -71,9 +77,9 @@ fun TableDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = FeltBackground,
+                    titleContentColor = Gold,
+                    navigationIconContentColor = Gold
                 )
             )
         }
@@ -205,7 +211,12 @@ fun TableSummaryBar(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(16.dp)
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -218,7 +229,7 @@ fun TableSummaryBar(
             Text(
                 text = "Table Summary",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Gold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(
@@ -234,7 +245,7 @@ fun TableSummaryBar(
                     Text(
                         text = formatAmount(totalBuyIns, chipValue),
                         style = MaterialTheme.typography.titleMedium,
-                        color = Green80
+                        color = WinGreen
                     )
                 }
                 Column {
@@ -259,9 +270,9 @@ fun TableSummaryBar(
                         text = formatAmount(remainingBalance, chipValue),
                         style = MaterialTheme.typography.titleMedium,
                         color = when {
-                            remainingBalance < 0 -> Red80
-                            remainingBalance == 0L -> Green80
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            remainingBalance < 0 -> LoseRed
+                            remainingBalance == 0L -> Cream
+                            else -> WinGreen
                         }
                     )
                 }
@@ -411,7 +422,13 @@ fun PlayerCard(
     val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
     
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
@@ -431,11 +448,13 @@ fun PlayerCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Avatar
+                    // Avatar with gold border
                     Surface(
                         color = avatarColor,
                         shape = CircleShape,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier
+                            .size(48.dp)
+                            .border(1.5.dp, Gold, CircleShape)
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -468,7 +487,7 @@ fun PlayerCard(
                     Text(
                         text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
                         style = MaterialTheme.typography.titleLarge,
-                        color = if (currentBalance >= 0) Green80 else Red80,
+                        color = if (currentBalance >= 0) WinGreen else LoseRed,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -483,8 +502,8 @@ fun PlayerCard(
                     else -> "Break-even"
                 }
                 val resultColor = when {
-                    finalResult > 0 -> Green80
-                    finalResult < 0 -> Red80
+                    finalResult > 0 -> WinGreen
+                    finalResult < 0 -> LoseRed
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Text(
@@ -506,8 +525,8 @@ fun PlayerCard(
                         onClick = onBuyInClick,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Green80.copy(alpha = 0.2f),
-                            contentColor = Green80
+                            containerColor = Gold,
+                            contentColor = Color.Black
                         ),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
@@ -517,9 +536,12 @@ fun PlayerCard(
                         onClick = onExitClick,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Amber80.copy(alpha = 0.2f),
-                            contentColor = Amber80
+                            containerColor = Color.Transparent,
+                            contentColor = Gold
                         ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(1.dp, Gold, RoundedCornerShape(8.dp)),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
                         Text("Exit", fontWeight = FontWeight.Bold)
