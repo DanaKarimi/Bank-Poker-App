@@ -4,37 +4,46 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.ui.theme.Amber80
-import com.bankpoker.app.ui.theme.Green80
-import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.ui.theme.AvatarColors
-import com.bankpoker.app.ui.theme.Gold
+import com.bankpoker.app.ui.theme.Cream
 import com.bankpoker.app.ui.theme.FeltBackground
-import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.ui.theme.FeltCard
+import com.bankpoker.app.ui.theme.Gold
+import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.LoseRed
+import com.bankpoker.app.ui.theme.Red80
+import com.bankpoker.app.ui.theme.WinGreen
 import com.bankpoker.app.viewmodel.TableDetailViewModel
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.shape.CircleShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +96,11 @@ fun TableDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF186349), FeltBackground)
+                    )
+                )
                 .padding(paddingValues)
         ) {
             // Summary bar
@@ -213,71 +227,80 @@ fun TableSummaryBar(
             .fillMaxWidth()
             .padding(16.dp)
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(16.dp)
             ),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = FeltCard
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(20.dp)
         ) {
-            Text(
-                text = "Table Summary",
-                style = MaterialTheme.typography.titleSmall,
-                color = Gold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "♠", color = Gold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "TABLE SUMMARY",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Gold,
+                    letterSpacing = 3.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
-                    Text(
-                        text = "Total Buy-ins",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(totalBuyIns, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = WinGreen
-                    )
-                }
-                Column {
-                    Text(
-                        text = "Total Exits",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(totalExits, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Amber80
-                    )
-                }
-                Column {
-                    Text(
-                        text = "Remaining",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(remainingBalance, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = when {
-                            remainingBalance < 0 -> LoseRed
-                            remainingBalance == 0L -> Cream
-                            else -> WinGreen
-                        }
-                    )
-                }
+                HeroStat(
+                    label = "BUY-INS",
+                    value = formatAmount(totalBuyIns, chipValue),
+                    color = WinGreen
+                )
+                HeroStat(
+                    label = "EXITS",
+                    value = formatAmount(totalExits, chipValue),
+                    color = Amber80
+                )
+                HeroStat(
+                    label = "REMAINING",
+                    value = formatAmount(remainingBalance, chipValue),
+                    color = when {
+                        remainingBalance < 0 -> LoseRed
+                        remainingBalance == 0L -> Cream
+                        else -> WinGreen
+                    }
+                )
             }
         }
+    }
+}
+
+@Composable
+fun HeroStat(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Cream.copy(alpha = 0.6f),
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            color = color,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -299,15 +322,37 @@ fun HorizontalPagerTabs(
     Column {
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
-            divider = {}
+            containerColor = Color.Transparent,
+            contentColor = Cream,
+            divider = {},
+            indicator = { tabPositions ->
+                Box(
+                    Modifier
+                        .tabIndicatorOffset(tabPositions[selectedTab])
+                        .height(3.dp)
+                        .background(Gold)
+                )
+            }
         ) {
+            val icons = listOf(Icons.Default.Person, Icons.Default.List, Icons.Default.Star)
             tabTitles.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
                     onClick = { selectedTab = index },
-                    text = { Text(title) }
+                    icon = {
+                        Icon(
+                            imageVector = icons[index],
+                            contentDescription = null,
+                            tint = if (selectedTab == index) Gold else Cream.copy(alpha = 0.5f)
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = title,
+                            color = if (selectedTab == index) Gold else Cream.copy(alpha = 0.6f),
+                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 )
             }
         }
@@ -364,13 +409,19 @@ fun PlayersTab(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
+                        text = "♠",
+                        fontSize = 64.sp,
+                        color = Gold.copy(alpha = 0.4f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
                         text = "No players yet",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = Cream
                     )
                     if (isTableActive) {
                         TextButton(onClick = onAddPlayer) {
-                            Text("Add Player")
+                            Text("Add Player", color = Gold)
                         }
                     }
                 }
@@ -381,7 +432,7 @@ fun PlayersTab(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(sortedPlayers) { player ->
+                itemsIndexed(sortedPlayers) { index, player ->
                     val balance = balanceOf(player.id)
 
                     PlayerCard(
@@ -390,7 +441,8 @@ fun PlayersTab(
                         finalResult = -balance,
                         onBuyInClick = { onBuyInClick(player) },
                         onExitClick = { onExitClick(player) },
-                        isTableActive = isTableActive
+                        isTableActive = isTableActive,
+                        rank = index + 1
                     )
                 }
             }
@@ -401,11 +453,16 @@ fun PlayersTab(
                 onClick = onAddPlayer,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .shadow(8.dp, CircleShape),
                 containerColor = Gold,
                 contentColor = Color.Black
             ) {
-                Text("+", style = MaterialTheme.typography.titleLarge)
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Player",
+                    modifier = Modifier.size(28.dp)
+                )
             }
         }
     }
@@ -418,7 +475,8 @@ fun PlayerCard(
     finalResult: Long,
     onBuyInClick: () -> Unit,
     onExitClick: () -> Unit,
-    isTableActive: Boolean
+    isTableActive: Boolean,
+    rank: Int = 0
 ) {
     val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
     
@@ -428,12 +486,13 @@ fun PlayerCard(
             .border(
                 width = 1.dp,
                 color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp)
             ),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -442,61 +501,80 @@ fun PlayerCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                Surface(
+                    color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.padding(end = 10.dp)
                 ) {
-                    // Avatar with gold border
-                    Surface(
-                        color = avatarColor,
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .border(1.5.dp, Gold, CircleShape)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Text(
-                                text = player.name.take(1).uppercase(),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.width(12.dp))
-                    
-                    Column {
-                        Text(
-                            text = player.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold
-                        )
-                        StatusBadge(status = player.status)
-                    }
-                }
-                
-                // Current balance for playing players
-                if (player.status == "PLAYING") {
                     Text(
-                        text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (currentBalance >= 0) WinGreen else LoseRed,
+                        text = "#$rank",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = if (rank == 1) Color.Black else Gold,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                Surface(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .border(2.dp, Gold, CircleShape),
+                    shape = CircleShape,
+                    color = Color.Transparent
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = player.name.take(1).uppercase(),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = player.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Cream,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    StatusBadge(status = player.status)
+                }
+
+                if (player.status == "PLAYING") {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = if (currentBalance >= 0) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "chips",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.5f)
+                        )
+                    }
+                }
             }
-            
-            // Final result for exited players
+
             if (player.status == "EXITED") {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 val resultText = when {
                     finalResult > 0 -> "Creditor: +$finalResult"
                     finalResult < 0 -> "Debtor: $finalResult"
@@ -505,17 +583,24 @@ fun PlayerCard(
                 val resultColor = when {
                     finalResult > 0 -> WinGreen
                     finalResult < 0 -> LoseRed
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> Cream
                 }
-                Text(
-                    text = resultText,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = resultColor,
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(
+                    color = resultColor.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = resultText,
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = resultColor,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
-            
-            // Action buttons
+
             if (player.status == "PLAYING" && isTableActive) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -525,26 +610,31 @@ fun PlayerCard(
                     Button(
                         onClick = onBuyInClick,
                         modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Gold,
                             contentColor = Color.Black
                         ),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text("Buy-in", fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = onExitClick,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(1.dp, Gold, RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
                             contentColor = Gold
                         ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .border(1.dp, Gold, RoundedCornerShape(8.dp)),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text("Exit", fontWeight = FontWeight.Bold)
                     }
                 }
