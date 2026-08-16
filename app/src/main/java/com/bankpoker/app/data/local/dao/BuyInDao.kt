@@ -29,4 +29,7 @@ interface BuyInDao {
 
     @Query("SELECT * FROM buy_ins")
     suspend fun getAllBuyInsOnce(): List<BuyIn>
+
+    @Query("DELETE FROM buy_ins WHERE tableId = :tableId")
+    suspend fun deleteBuyInsForTable(tableId: String)
 }

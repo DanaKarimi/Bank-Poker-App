@@ -134,4 +134,11 @@ class PokerRepository(
     suspend fun getAllPlayersOnce(): List<Player> = playerDao.getAllPlayersOnce()
     suspend fun getAllBuyInsOnce(): List<BuyIn> = buyInDao.getAllBuyInsOnce()
     suspend fun getAllExitRecordsOnce(): List<ExitRecord> = exitRecordDao.getAllExitRecordsOnce()
+
+    suspend fun deleteTableAndRelatedData(tableId: String) {
+        buyInDao.deleteBuyInsForTable(tableId)
+        exitRecordDao.deleteExitRecordsForTable(tableId)
+        playerDao.deletePlayersForTable(tableId)
+        pokerTableDao.deleteTable(tableId)
+    }
 }

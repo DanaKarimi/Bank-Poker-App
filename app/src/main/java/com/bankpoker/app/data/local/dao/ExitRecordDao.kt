@@ -30,6 +30,9 @@ interface ExitRecordDao {
     @Query("SELECT COUNT(*) FROM exit_records WHERE playerId = :playerId")
     suspend fun getExitCountByPlayer(playerId: String): Int
 
+    @Query("DELETE FROM exit_records WHERE tableId = :tableId")
+    suspend fun deleteExitRecordsForTable(tableId: String)
+
     @Query("SELECT * FROM exit_records")
     suspend fun getAllExitRecordsOnce(): List<ExitRecord>
 }

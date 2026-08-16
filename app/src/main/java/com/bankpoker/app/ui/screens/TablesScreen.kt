@@ -2,6 +2,7 @@ package com.bankpoker.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.PokerTable
@@ -32,7 +34,10 @@ fun TablesScreen(
     onNavigateToStats: () -> Unit
 ) {
     var showCreateTableDialog by remember { mutableStateOf(false) }
+    var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
     val tables by viewModel.tables.collectAsState(initial = emptyList())
+    val playerCounts by viewModel.playerCounts.collectAsState(initial = emptyMap())
+    val lastChipValue by viewModel.lastChipValue.collectAsState(initial = null)
 
     Scaffold(
         topBar = {
@@ -127,7 +132,9 @@ fun TablesScreen(
                     items(tables) { table ->
                         TableCard(
                             table = table,
-                            onClick = { onTableClick(table.id) }
+                            onClick = { onTableClick(table.id) },
+                            onLongClick = { selectedTableForDelete = table },
+                            playerCount = playerCounts[table.id] ?: 0
                         )
                     }
                 }
@@ -137,10 +144,42 @@ fun TablesScreen(
 
     if (showCreateTableDialog) {
         CreateTableDialog(
+            initialChipValue = lastChipValue,
             onDismiss = { showCreateTableDialog = false },
             onCreateTable = { name, chipValue ->
                 viewModel.createTable(name, chipValue)
                 showCreateTableDialog = false
+            }
+        )
+    }
+
+    if (selectedTableForDelete != null) {
+        AlertDialog(
+            onDismissRequest = { selectedTableForDelete = null },
+            title = { Text("Delete Table?", color = Gold) },
+            text = { 
+                Text(
+                    "This will permanently delete '${selectedTableForDelete!!.name}' and ALL its players, buy-ins and exits. This cannot be undone.", 
+                    color = Cream 
+                ) 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteTable(selectedTableForDelete!!.id)
+                        selectedTableForDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedTableForDelete = null }) {
+                    Text("Cancel", color = Gold)
+                }
             }
         )
     }
@@ -149,18 +188,23 @@ fun TablesScreen(
 @Composable
 fun TableCard(
     table: PokerTable,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    playerCount: Int
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .border(
                 width = 1.dp,
                 color = Gold.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(16.dp)
             ),
         shape = RoundedCornerShape(16.dp),
-        onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
@@ -223,6 +267,26 @@ fun TableCard(
                     )
                 }
             }
+
+            // Active players count
+            if (playerCount > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Active Players",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = "$playerCount",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WinGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             
             // Status hint
             val statusHint = when (table.status) {
@@ -241,6 +305,17 @@ fun TableCard(
                 color = statusColor,
                 letterSpacing = 1.sp
             )
+
+            // Long-press hint for active tables
+            if (table.status == "ACTIVE") {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Long-press to delete",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Cream.copy(alpha = 0.4f),
+                    fontStyle = FontStyle.Italic
+                )
+            }
         }
     }
 }
@@ -288,11 +363,14 @@ fun StatusBadge(
 
 @Composable
 fun CreateTableDialog(
+    initialChipValue: Long?,
     onDismiss: () -> Unit,
     onCreateTable: (String, Long?) -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
-    var chipValue by remember { mutableStateOf("") }
+    var chipValue by remember(initialChipValue) { 
+        mutableStateOf(initialChipValue?.toString() ?: "") 
+    }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(

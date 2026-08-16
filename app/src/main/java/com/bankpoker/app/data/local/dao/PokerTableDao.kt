@@ -23,4 +23,7 @@ interface PokerTableDao {
 
     @Query("SELECT * FROM poker_tables ORDER BY createdAt DESC")
     suspend fun getAllTablesOnce(): List<PokerTable>
+
+    @Query("DELETE FROM poker_tables WHERE id = :tableId")
+    suspend fun deleteTable(tableId: String)
 }
