@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.foundation.shape.CircleShape
+import com.bankpoker.app.ui.theme.AvatarColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -335,6 +338,20 @@ fun PlayersTab(
 ) {
     val coroutineScope = rememberCoroutineScope()
     
+    // Collect all balances
+    val playerBalances = remember { mutableStateMapOf<String, Long>() }
+    
+    LaunchedEffect(players) {
+        players.forEach { player ->
+            val buyIns = viewModel.getPlayerTotalBuyIns(player.id)
+            val exits = viewModel.getPlayerTotalExits(player.id)
+            playerBalances[player.id] = buyIns - exits
+        }
+    }
+    
+    // Sort players by balance (descending - winners on top)
+    val sortedPlayers = players.sortedByDescending { playerBalances[it.id] ?: 0L }
+    
     Box(modifier = Modifier.fillMaxSize()) {
         if (players.isEmpty()) {
             Box(
@@ -360,19 +377,13 @@ fun PlayersTab(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(players) { player ->
-                    var playerBuyIns by remember { mutableStateOf(0L) }
-                    var playerExits by remember { mutableStateOf(0L) }
-                    
-                    LaunchedEffect(player.id) {
-                        playerBuyIns = viewModel.getPlayerTotalBuyIns(player.id)
-                        playerExits = viewModel.getPlayerTotalExits(player.id)
-                    }
+                items(sortedPlayers) { player ->
+                    val balance = playerBalances[player.id] ?: 0L
                     
                     PlayerCard(
                         player = player,
-                        currentBalance = playerBuyIns - playerExits,
-                        finalResult = playerExits - playerBuyIns,
+                        currentBalance = balance,
+                        finalResult = -balance, // netResult = exits - buyIns = -(buyIns - exits)
                         onBuyInClick = { onBuyInClick(player) },
                         onExitClick = { onExitClick(player) },
                         isTableActive = isTableActive
@@ -404,11 +415,14 @@ fun PlayerCard(
     onExitClick: () -> Unit,
     isTableActive: Boolean
 ) {
+    val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -420,46 +434,56 @@ fun PlayerCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = player.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                StatusBadge(status = player.status)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (player.status == "PLAYING") {
-                Text(
-                    text = "Current Balance: $currentBalance chips",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (currentBalance >= 0) Green80 else Red80
-                )
-                if (isTableActive) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Avatar
+                    Surface(
+                        color = avatarColor,
+                        shape = CircleShape,
+                        modifier = Modifier.size(48.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = onBuyInClick,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Green80
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            Text("Buy-in")
-                        }
-                        OutlinedButton(
-                            onClick = onExitClick,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Amber80
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            Text("Exit")
+                            Text(
+                                text = player.name.take(1).uppercase(),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.width(12.dp))
+                    
+                    Column {
+                        Text(
+                            text = player.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                        StatusBadge(status = player.status)
+                    }
                 }
-            } else {
+                
+                // Current balance for playing players
+                if (player.status == "PLAYING") {
+                    Text(
+                        text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (currentBalance >= 0) Green80 else Red80,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            
+            // Final result for exited players
+            if (player.status == "EXITED") {
+                Spacer(modifier = Modifier.height(8.dp))
                 val resultText = when {
                     finalResult > 0 -> "Creditor: +$finalResult"
                     finalResult < 0 -> "Debtor: $finalResult"
@@ -472,9 +496,42 @@ fun PlayerCard(
                 }
                 Text(
                     text = resultText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = resultColor
+                    style = MaterialTheme.typography.titleMedium,
+                    color = resultColor,
+                    fontWeight = FontWeight.Bold
                 )
+            }
+            
+            // Action buttons
+            if (player.status == "PLAYING" && isTableActive) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onBuyInClick,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Green80.copy(alpha = 0.2f),
+                            contentColor = Green80
+                        ),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Text("Buy-in", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onExitClick,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Amber80.copy(alpha = 0.2f),
+                            contentColor = Amber80
+                        ),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Text("Exit", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
