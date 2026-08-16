@@ -27,7 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.foundation.shape.CircleShape
 import com.bankpoker.app.ui.theme.AvatarColors
 
@@ -305,11 +304,12 @@ fun HorizontalPagerTabs(
         when (selectedTab) {
             0 -> PlayersTab(
                 players = players,
+                buyIns = buyIns,
+                exitRecords = exitRecords,
                 onAddPlayer = onAddPlayer,
                 onBuyInClick = onBuyInClick,
                 onExitClick = onExitClick,
-                isTableActive = isTableActive,
-                viewModel = viewModel
+                isTableActive = isTableActive
             )
             1 -> HistoryTab(
                 buyIns = buyIns,
@@ -330,28 +330,21 @@ fun HorizontalPagerTabs(
 @Composable
 fun PlayersTab(
     players: List<Player>,
+    buyIns: List<BuyIn>,
+    exitRecords: List<ExitRecord>,
     onAddPlayer: () -> Unit,
     onBuyInClick: (Player) -> Unit,
     onExitClick: (Player) -> Unit,
-    isTableActive: Boolean,
-    viewModel: TableDetailViewModel
+    isTableActive: Boolean
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    
-    // Collect all balances
-    val playerBalances = remember { mutableStateMapOf<String, Long>() }
-    
-    LaunchedEffect(players) {
-        players.forEach { player ->
-            val buyIns = viewModel.getPlayerTotalBuyIns(player.id)
-            val exits = viewModel.getPlayerTotalExits(player.id)
-            playerBalances[player.id] = buyIns - exits
-        }
+    fun balanceOf(playerId: String): Long {
+        val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
+        val exit = exitRecords.filter { it.playerId == playerId }.sumOf { it.amount }
+        return buy - exit
     }
-    
-    // Sort players by balance (descending - winners on top)
-    val sortedPlayers = players.sortedByDescending { playerBalances[it.id] ?: 0L }
-    
+
+    val sortedPlayers = players.sortedByDescending { balanceOf(it.id) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (players.isEmpty()) {
             Box(
@@ -378,12 +371,12 @@ fun PlayersTab(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(sortedPlayers) { player ->
-                    val balance = playerBalances[player.id] ?: 0L
-                    
+                    val balance = balanceOf(player.id)
+
                     PlayerCard(
                         player = player,
                         currentBalance = balance,
-                        finalResult = -balance, // netResult = exits - buyIns = -(buyIns - exits)
+                        finalResult = -balance,
                         onBuyInClick = { onBuyInClick(player) },
                         onExitClick = { onExitClick(player) },
                         isTableActive = isTableActive
@@ -391,7 +384,7 @@ fun PlayersTab(
                 }
             }
         }
-        
+
         if (isTableActive) {
             FloatingActionButton(
                 onClick = onAddPlayer,
