@@ -9,6 +9,7 @@
 *.out
 build/
 dist/
+app/build/
 
 # Dependencies
 .gradle/
@@ -46,4 +47,6 @@ htmlcov/
 *.apk
 *.aar
 local.properties
+*.bin
+*.lock
 ```
