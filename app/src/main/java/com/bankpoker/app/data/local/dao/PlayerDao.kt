@@ -32,4 +32,7 @@ interface PlayerDao {
 
     @Query("DELETE FROM players WHERE tableId = :tableId")
     suspend fun deletePlayersForTable(tableId: String)
+
+    @Query("SELECT * FROM players WHERE tableId = :tableId")
+    suspend fun getPlayersForTableOnce(tableId: String): List<Player>
 }

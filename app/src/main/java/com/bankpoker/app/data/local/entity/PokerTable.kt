@@ -11,5 +11,6 @@ data class PokerTable(
     val chipValue: Long?,
     val status: String,
     val createdAt: Long,
-    val closedAt: Long?
+    val closedAt: Long?,
+    val groupId: String? = null
 )

@@ -26,4 +26,7 @@ interface PokerTableDao {
 
     @Query("DELETE FROM poker_tables WHERE id = :tableId")
     suspend fun deleteTable(tableId: String)
+
+    @Query("SELECT * FROM poker_tables WHERE groupId = :groupId ORDER BY createdAt DESC")
+    fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>>
 }

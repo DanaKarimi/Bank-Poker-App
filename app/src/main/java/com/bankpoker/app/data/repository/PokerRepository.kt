@@ -2,11 +2,17 @@ package com.bankpoker.app.repository
 
 import com.bankpoker.app.data.local.dao.BuyInDao
 import com.bankpoker.app.data.local.dao.ExitRecordDao
+import com.bankpoker.app.data.local.dao.GroupBalanceDao
+import com.bankpoker.app.data.local.dao.PaymentDao
 import com.bankpoker.app.data.local.dao.PlayerDao
 import com.bankpoker.app.data.local.dao.PokerTableDao
+import com.bankpoker.app.data.local.dao.PlayerGroupDao
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
+import com.bankpoker.app.data.local.entity.GroupBalance
+import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.Player
+import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
@@ -15,21 +21,25 @@ class PokerRepository(
     private val pokerTableDao: PokerTableDao,
     private val playerDao: PlayerDao,
     private val buyInDao: BuyInDao,
-    private val exitRecordDao: ExitRecordDao
+    private val exitRecordDao: ExitRecordDao,
+    private val playerGroupDao: PlayerGroupDao,
+    private val groupBalanceDao: GroupBalanceDao,
+    private val paymentDao: PaymentDao
 ) {
     // Table operations
     fun getAllTables(): Flow<List<PokerTable>> = pokerTableDao.getAllTables()
 
     suspend fun getTableById(tableId: String): PokerTable? = pokerTableDao.getTableById(tableId)
 
-    suspend fun createTable(name: String, chipValue: Long?): PokerTable {
+    suspend fun createTable(name: String, chipValue: Long?, groupId: String? = null): PokerTable {
         val table = PokerTable(
             id = UUID.randomUUID().toString(),
             name = name,
             chipValue = chipValue,
             status = "ACTIVE",
             createdAt = System.currentTimeMillis(),
-            closedAt = null
+            closedAt = null,
+            groupId = groupId
         )
         pokerTableDao.insertTable(table)
         return table
@@ -140,5 +150,60 @@ class PokerRepository(
         exitRecordDao.deleteExitRecordsForTable(tableId)
         playerDao.deletePlayersForTable(tableId)
         pokerTableDao.deleteTable(tableId)
+    }
+
+    // Group operations
+    fun getAllGroups(): Flow<List<PlayerGroup>> = playerGroupDao.getAllGroups()
+
+    suspend fun getGroupById(groupId: String): PlayerGroup? = playerGroupDao.getGroupById(groupId)
+
+    suspend fun createGroup(name: String): PlayerGroup {
+        val group = PlayerGroup(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            createdAt = System.currentTimeMillis()
+        )
+        playerGroupDao.insertGroup(group)
+        return group
+    }
+
+    fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>> = pokerTableDao.getTablesByGroupId(groupId)
+
+    fun getBalancesByGroupId(groupId: String): Flow<List<GroupBalance>> = groupBalanceDao.getBalancesByGroupId(groupId)
+
+    fun getPaymentsByGroupId(groupId: String): Flow<List<Payment>> = paymentDao.getPaymentsByGroupId(groupId)
+
+    suspend fun closeTableAndApplyToGroup(tableId: String) {
+        val table = pokerTableDao.getTableById(tableId) ?: return
+        closeTable(tableId)
+        val groupId = table.groupId ?: return
+        val players = playerDao.getPlayersForTableOnce(tableId)
+        players.forEach { p ->
+            val buy = buyInDao.getTotalBuyInsForPlayer(p.id)
+            val exit = exitRecordDao.getTotalExitsForPlayer(p.id)
+            val net = (exit ?: 0L) - (buy ?: 0L)
+            if (net != 0L) applyToGroupBalance(groupId, p.name, net)
+        }
+    }
+
+    private suspend fun applyToGroupBalance(groupId: String, name: String, delta: Long) {
+        val existing = groupBalanceDao.getBalance(groupId, name)
+        if (existing != null) {
+            groupBalanceDao.updateBalance(existing.copy(balance = existing.balance + delta))
+        } else {
+            groupBalanceDao.insertBalance(
+                GroupBalance(UUID.randomUUID().toString(), groupId, name, delta)
+            )
+        }
+    }
+
+    suspend fun recordPayment(groupId: String, fromPlayer: String, toPlayer: String, amount: Long) {
+        paymentDao.insertPayment(
+            Payment(UUID.randomUUID().toString(), groupId, fromPlayer, toPlayer, amount, System.currentTimeMillis())
+        )
+        val from = groupBalanceDao.getBalance(groupId, fromPlayer)
+        if (from != null) groupBalanceDao.updateBalance(from.copy(balance = from.balance + amount))
+        val to = groupBalanceDao.getBalance(groupId, toPlayer)
+        if (to != null) groupBalanceDao.updateBalance(to.copy(balance = to.balance - amount))
     }
 }
