@@ -117,7 +117,7 @@ fun TableDetailScreen(
                 remainingBalance = uiState.remainingBalance,
                 chipValue = uiState.table?.chipValue
             )
-            
+
             HorizontalPagerTabs(
                 onAddPlayer = { showAddPlayerDialog = true },
                 onBuyInClick = { player ->
@@ -133,7 +133,8 @@ fun TableDetailScreen(
                 exitRecords = exitRecords,
                 tableId = uiState.table?.id ?: "",
                 viewModel = viewModel,
-                isTableActive = uiState.table?.status == "ACTIVE"
+                isTableActive = uiState.table?.status == "ACTIVE",
+                tableHasEntryFee = uiState.table?.hasEntryFee == true
             )
         }
     }
@@ -321,7 +322,8 @@ fun HorizontalPagerTabs(
     exitRecords: List<ExitRecord>,
     tableId: String,
     viewModel: TableDetailViewModel,
-    isTableActive: Boolean
+    isTableActive: Boolean,
+    tableHasEntryFee: Boolean = false
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -361,7 +363,7 @@ fun HorizontalPagerTabs(
                 onBuyInClick = onBuyInClick,
                 onExitClick = onExitClick,
                 isTableActive = isTableActive,
-                tableHasEntryFee = uiState.table?.hasEntryFee == true,
+                tableHasEntryFee = tableHasEntryFee,
                 viewModel = viewModel
             )
             1 -> HistoryTab(
@@ -379,7 +381,6 @@ fun HorizontalPagerTabs(
         }
     }
 }
-
 @Composable
 fun PlayersTab(
     players: List<Player>,
