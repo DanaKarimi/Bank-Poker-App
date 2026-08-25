@@ -1,4 +1,0 @@
-com.bankpoker.app.test.app-androidTest-0 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\generated\res\resValues\androidTest\debug
-com.bankpoker.app.test.app-mergeDebugAndroidTestResources-1 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
-com.bankpoker.app.test.app-mergeDebugAndroidTestResources-2 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
-com.bankpoker.app.test.app-debugAndroidTest-3 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources

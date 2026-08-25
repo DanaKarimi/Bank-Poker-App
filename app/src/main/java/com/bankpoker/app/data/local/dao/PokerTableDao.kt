@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PokerTableDao {
+    @Query("SELECT * FROM poker_tables WHERE groupId IS NULL ORDER BY createdAt DESC")
+    fun getQuickTables(): Flow<List<PokerTable>>
+
     @Query("SELECT * FROM poker_tables ORDER BY createdAt DESC")
     fun getAllTables(): Flow<List<PokerTable>>
 
@@ -20,4 +23,13 @@ interface PokerTableDao {
 
     @Query("UPDATE poker_tables SET status = :status, closedAt = :closedAt WHERE id = :tableId")
     suspend fun closeTable(tableId: String, status: String, closedAt: Long)
+
+    @Query("SELECT * FROM poker_tables ORDER BY createdAt DESC")
+    suspend fun getAllTablesOnce(): List<PokerTable>
+
+    @Query("DELETE FROM poker_tables WHERE id = :tableId")
+    suspend fun deleteTable(tableId: String)
+
+    @Query("SELECT * FROM poker_tables WHERE groupId = :groupId ORDER BY createdAt DESC")
+    fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>>
 }

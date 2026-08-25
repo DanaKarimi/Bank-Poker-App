@@ -15,7 +15,8 @@ import kotlinx.coroutines.launch
 
 class TableDetailViewModel(
     private val repository: PokerRepository,
-    private val tableId: String
+    private val tableId: String,
+    private val onRefreshCounts: (() -> Unit)? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TableDetailUiState())
@@ -52,12 +53,14 @@ class TableDetailViewModel(
     fun addPlayer(name: String) {
         viewModelScope.launch {
             repository.addPlayer(tableId, name.trim().uppercase())
+            onRefreshCounts?.invoke()
         }
     }
 
     fun addBuyIn(playerId: String, amount: Long, note: String?) {
         viewModelScope.launch {
             repository.addBuyIn(tableId, playerId, amount, note)
+            onRefreshCounts?.invoke()
             loadTableData()
         }
     }
@@ -65,13 +68,15 @@ class TableDetailViewModel(
     fun addExitRecord(playerId: String, amount: Long, note: String?) {
         viewModelScope.launch {
             repository.addExitRecord(tableId, playerId, amount, note)
+            onRefreshCounts?.invoke()
             loadTableData()
         }
     }
 
     fun closeTable() {
         viewModelScope.launch {
-            repository.closeTable(tableId)
+            repository.closeTableAndApplyToGroup(tableId)
+            onRefreshCounts?.invoke()
             loadTableData()
         }
     }
@@ -119,6 +124,12 @@ class TableDetailViewModel(
                 repository.updatePlayerStatus(playerId, "PLAYING")
             }
             loadTableData()
+        }
+    }
+
+    fun toggleEntryFee(playerId: String, paid: Boolean) {
+        viewModelScope.launch {
+            repository.toggleEntryFee(playerId, paid)
         }
     }
 }

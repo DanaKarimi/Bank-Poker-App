@@ -26,4 +26,16 @@ interface PlayerDao {
 
     @Query("SELECT name FROM players GROUP BY name ORDER BY COUNT(*) DESC, MAX(createdAt) DESC")
     suspend fun getAllPlayerNames(): List<String>
+
+    @Query("SELECT * FROM players")
+    suspend fun getAllPlayersOnce(): List<Player>
+
+    @Query("DELETE FROM players WHERE tableId = :tableId")
+    suspend fun deletePlayersForTable(tableId: String)
+
+    @Query("SELECT * FROM players WHERE tableId = :tableId")
+    suspend fun getPlayersForTableOnce(tableId: String): List<Player>
+
+    @Query("UPDATE players SET entryFeePaid = :paid WHERE id = :playerId")
+    suspend fun updateEntryFeePaid(playerId: String, paid: Boolean)
 }

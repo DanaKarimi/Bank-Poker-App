@@ -5,19 +5,33 @@
 *.obj
 *.out
 build/
+target/
+
 # Dependencies
-__pycache__/
+.gradle/
 .mypy_cache/
 .pytest_cache/
-target/
-.gradle/
-# Logs and temp files
-*.log
-*.tmp
+__pycache__/
+coverage/
+htmlcov/
+*.coverage
+
+# Environment
+.env
+.env.local
+*.env.*
+
 # Editors
 .vscode/
 .idea/
-# System files
+*.swp
+*.swo
+*.tmp
+
+# System
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
 ```

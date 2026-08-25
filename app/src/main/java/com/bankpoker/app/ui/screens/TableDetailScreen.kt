@@ -1,32 +1,56 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.ExperimentalMaterial3Api
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.ui.theme.Amber80
+import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.Cream
+import com.bankpoker.app.ui.theme.FeltBackground
+import com.bankpoker.app.ui.theme.FeltCard
+import com.bankpoker.app.ui.theme.Gold
 import com.bankpoker.app.ui.theme.Green80
+import com.bankpoker.app.ui.theme.LoseRed
 import com.bankpoker.app.ui.theme.Red80
+import com.bankpoker.app.ui.theme.WinGreen
 import com.bankpoker.app.viewmodel.TableDetailViewModel
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +75,7 @@ fun TableDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.table?.name ?: "Table Detail") },
+                title = { Text(uiState.table?.name ?: "Table Detail", color = Gold, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -69,9 +93,9 @@ fun TableDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = FeltBackground,
+                    titleContentColor = Gold,
+                    navigationIconContentColor = Gold
                 )
             )
         }
@@ -79,6 +103,11 @@ fun TableDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF186349), FeltBackground)
+                    )
+                )
                 .padding(paddingValues)
         ) {
             // Summary bar
@@ -88,7 +117,7 @@ fun TableDetailScreen(
                 remainingBalance = uiState.remainingBalance,
                 chipValue = uiState.table?.chipValue
             )
-            
+
             HorizontalPagerTabs(
                 onAddPlayer = { showAddPlayerDialog = true },
                 onBuyInClick = { player ->
@@ -104,7 +133,8 @@ fun TableDetailScreen(
                 exitRecords = exitRecords,
                 tableId = uiState.table?.id ?: "",
                 viewModel = viewModel,
-                isTableActive = uiState.table?.status == "ACTIVE"
+                isTableActive = uiState.table?.status == "ACTIVE",
+                tableHasEntryFee = uiState.table?.hasEntryFee == true
             )
         }
     }
@@ -168,8 +198,8 @@ fun TableDetailScreen(
     if (showCloseTableDialog) {
         AlertDialog(
             onDismissRequest = { showCloseTableDialog = false },
-            title = { Text("Close Table") },
-            text = { Text("Are you sure you want to close this table? No new transactions will be allowed.") },
+            title = { Text("Close Table", color = Gold) },
+            text = { Text("Are you sure you want to close this table? No new transactions will be allowed.", color = Cream) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -185,7 +215,7 @@ fun TableDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCloseTableDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = Gold)
                 }
             }
         )
@@ -203,68 +233,82 @@ fun TableSummaryBar(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(16.dp)
+            .border(
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(16.dp)
+            ),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = FeltCard
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(20.dp)
         ) {
-            Text(
-                text = "Table Summary",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "♠", color = Gold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "TABLE SUMMARY",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Gold,
+                    letterSpacing = 3.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
-                    Text(
-                        text = "Total Buy-ins",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(totalBuyIns, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Green80
-                    )
-                }
-                Column {
-                    Text(
-                        text = "Total Exits",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(totalExits, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Amber80
-                    )
-                }
-                Column {
-                    Text(
-                        text = "Remaining",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = formatAmount(remainingBalance, chipValue),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = when {
-                            remainingBalance < 0 -> Red80
-                            remainingBalance == 0L -> Green80
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
+                HeroStat(
+                    label = "BUY-INS",
+                    value = formatAmount(totalBuyIns, chipValue),
+                    color = WinGreen
+                )
+                HeroStat(
+                    label = "EXITS",
+                    value = formatAmount(totalExits, chipValue),
+                    color = Amber80
+                )
+                HeroStat(
+                    label = "REMAINING",
+                    value = formatAmount(remainingBalance, chipValue),
+                    color = when {
+                        remainingBalance < 0 -> LoseRed
+                        remainingBalance == 0L -> Cream
+                        else -> WinGreen
+                    }
+                )
             }
         }
+    }
+}
+
+@Composable
+fun HeroStat(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Cream.copy(alpha = 0.6f),
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            color = color,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -278,34 +322,48 @@ fun HorizontalPagerTabs(
     exitRecords: List<ExitRecord>,
     tableId: String,
     viewModel: TableDetailViewModel,
-    isTableActive: Boolean
+    isTableActive: Boolean,
+    tableHasEntryFee: Boolean = false
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Players", "History", "Results")
-    
+
     Column {
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
-            divider = {}
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            tabTitles.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title) }
-                )
-            }
+            TabButton(
+                text = "PLAYERS",
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                modifier = Modifier.weight(1f)
+            )
+            TabButton(
+                text = "HISTORY",
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                modifier = Modifier.weight(1f)
+            )
+            TabButton(
+                text = "RESULTS",
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                modifier = Modifier.weight(1f)
+            )
         }
 
         when (selectedTab) {
             0 -> PlayersTab(
                 players = players,
+                buyIns = buyIns,
+                exitRecords = exitRecords,
                 onAddPlayer = onAddPlayer,
                 onBuyInClick = onBuyInClick,
                 onExitClick = onExitClick,
                 isTableActive = isTableActive,
+                tableHasEntryFee = tableHasEntryFee,
                 viewModel = viewModel
             )
             1 -> HistoryTab(
@@ -323,18 +381,26 @@ fun HorizontalPagerTabs(
         }
     }
 }
-
 @Composable
 fun PlayersTab(
     players: List<Player>,
+    buyIns: List<BuyIn>,
+    exitRecords: List<ExitRecord>,
     onAddPlayer: () -> Unit,
     onBuyInClick: (Player) -> Unit,
     onExitClick: (Player) -> Unit,
     isTableActive: Boolean,
-    viewModel: TableDetailViewModel
+    tableHasEntryFee: Boolean = false,
+    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    
+    fun balanceOf(playerId: String): Long {
+        val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
+        val exit = exitRecords.filter { it.playerId == playerId }.sumOf { it.amount }
+        return buy - exit
+    }
+
+    val sortedPlayers = players.sortedByDescending { balanceOf(it.id) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (players.isEmpty()) {
             Box(
@@ -343,13 +409,19 @@ fun PlayersTab(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
+                        text = "♠",
+                        fontSize = 64.sp,
+                        color = Gold.copy(alpha = 0.4f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
                         text = "No players yet",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = Cream
                     )
                     if (isTableActive) {
                         TextButton(onClick = onAddPlayer) {
-                            Text("Add Player")
+                            Text("Add Player", color = Gold)
                         }
                     }
                 }
@@ -360,36 +432,41 @@ fun PlayersTab(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(players) { player ->
-                    var playerBuyIns by remember { mutableStateOf(0L) }
-                    var playerExits by remember { mutableStateOf(0L) }
-                    
-                    LaunchedEffect(player.id) {
-                        playerBuyIns = viewModel.getPlayerTotalBuyIns(player.id)
-                        playerExits = viewModel.getPlayerTotalExits(player.id)
-                    }
-                    
+                itemsIndexed(sortedPlayers) { index, player ->
+                    val balance = balanceOf(player.id)
+
                     PlayerCard(
                         player = player,
-                        currentBalance = playerBuyIns - playerExits,
-                        finalResult = playerExits - playerBuyIns,
+                        currentBalance = balance,
+                        finalResult = -balance,
                         onBuyInClick = { onBuyInClick(player) },
                         onExitClick = { onExitClick(player) },
-                        isTableActive = isTableActive
+                        isTableActive = isTableActive,
+                        rank = index + 1,
+                        tableHasEntryFee = tableHasEntryFee,
+                        onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
+                            { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
+                        } else null
                     )
                 }
             }
         }
-        
+
         if (isTableActive) {
             FloatingActionButton(
                 onClick = onAddPlayer,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                containerColor = Green80
+                    .padding(16.dp)
+                    .shadow(8.dp, CircleShape),
+                containerColor = Gold,
+                contentColor = Color.Black
             ) {
-                Text("+", style = MaterialTheme.typography.titleLarge)
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Player",
+                    modifier = Modifier.size(28.dp)
+                )
             }
         }
     }
@@ -402,13 +479,26 @@ fun PlayerCard(
     finalResult: Long,
     onBuyInClick: () -> Unit,
     onExitClick: () -> Unit,
-    isTableActive: Boolean
+    isTableActive: Boolean,
+    rank: Int = 0,
+    tableHasEntryFee: Boolean = false,
+    onToggleEntryFee: (() -> Unit)? = null
 ) {
+    val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
+    
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(16.dp)
+            ),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -417,64 +507,187 @@ fun PlayerCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = player.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                StatusBadge(status = player.status)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (player.status == "PLAYING") {
-                Text(
-                    text = "Current Balance: $currentBalance chips",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (currentBalance >= 0) Green80 else Red80
-                )
-                if (isTableActive) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.padding(end = 10.dp)
+                ) {
+                    Text(
+                        text = "#$rank",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = if (rank == 1) Color.Black else Gold,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Entry fee status indicator
+                if (tableHasEntryFee && player.status == "PLAYING") {
+                    IconButton(
+                        onClick = { onToggleEntryFee?.invoke() },
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = onBuyInClick,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Green80
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            Text("Buy-in")
+                        if (player.entryFeePaid) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(WinGreen, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "Paid",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Empty circle for unpaid
+                            }
                         }
-                        OutlinedButton(
-                            onClick = onExitClick,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Amber80
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .border(2.dp, Gold, CircleShape),
+                        shape = CircleShape,
+                        color = Color.Transparent
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Exit")
+                            Text(
+                                text = player.name.take(1).uppercase(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
-            } else {
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = player.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Cream,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (tableHasEntryFee && player.status == "PLAYING") {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Voroodi: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (player.entryFeePaid) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        StatusBadge(status = player.status)
+                    }
+                }
+
+                if (player.status == "PLAYING") {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = if (currentBalance >= 0) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "chips",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+
+            if (player.status == "EXITED") {
+                Spacer(modifier = Modifier.height(12.dp))
                 val resultText = when {
                     finalResult > 0 -> "Creditor: +$finalResult"
                     finalResult < 0 -> "Debtor: $finalResult"
                     else -> "Break-even"
                 }
                 val resultColor = when {
-                    finalResult > 0 -> Green80
-                    finalResult < 0 -> Red80
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    finalResult > 0 -> WinGreen
+                    finalResult < 0 -> LoseRed
+                    else -> Cream
                 }
-                Text(
-                    text = resultText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = resultColor
-                )
+                Surface(
+                    color = resultColor.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = resultText,
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = resultColor,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            if (player.status == "PLAYING" && isTableActive) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onBuyInClick,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Gold,
+                            contentColor = Color.Black
+                        ),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Buy-in", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onExitClick,
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(1.dp, Gold, RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Gold
+                        ),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Exit", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
@@ -572,7 +785,8 @@ fun ActionsTab(
                         Button(
                             onClick = { onBuyInClick(player) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Green80
+                                containerColor = Gold,
+                                contentColor = Color.Black
                             ),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
@@ -581,8 +795,10 @@ fun ActionsTab(
                         Button(
                             onClick = { onExitClick(player) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Amber80
+                                containerColor = Color.Transparent,
+                                contentColor = Gold
                             ),
+                            modifier = Modifier.border(1.dp, Gold, RoundedCornerShape(8.dp)),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text("Exit")
@@ -707,6 +923,11 @@ fun TransactionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            )
             .combinedClickable(
                 onClick = { },
                 onLongClick = { showActionDialog = true }
@@ -768,14 +989,15 @@ fun TransactionCard(
     if (showActionDialog) {
         AlertDialog(
             onDismissRequest = { showActionDialog = false },
-            title = { Text("Transaction Actions") },
-            text = { Text("What would you like to do?") },
+            title = { Text("Transaction Actions", color = Gold) },
+            text = { Text("What would you like to do?", color = Cream) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showActionDialog = false
                         onEdit()
-                    }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Gold)
                 ) {
                     Text("Edit")
                 }
@@ -783,7 +1005,8 @@ fun TransactionCard(
             dismissButton = {
                 Row {
                     TextButton(
-                        onClick = { showActionDialog = false }
+                        onClick = { showActionDialog = false },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Gold)
                     ) {
                         Text("Cancel")
                     }
@@ -859,7 +1082,8 @@ fun ResultsTab(
                     .fillMaxWidth()
                     .padding(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Green80
+                    containerColor = Gold,
+                    contentColor = Color.Black
                 )
             ) {
                 Text("Share Results")
@@ -932,13 +1156,19 @@ fun PlayerResultCard(
     }
     
     val resultColor = when {
-        result.netResult > 0 -> Green80
-        result.netResult < 0 -> Red80
+        result.netResult > 0 -> WinGreen
+        result.netResult < 0 -> LoseRed
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -1031,7 +1261,7 @@ fun AddPlayerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Player") },
+        title = { Text("Add Player", color = Gold) },
         text = {
             Column {
                 OutlinedTextField(
@@ -1039,7 +1269,11 @@ fun AddPlayerDialog(
                     onValueChange = { playerName = it },
                     label = { Text("Player Name") },
                     singleLine = true,
-                    isError = error != null
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
+                    )
                 )
                 if (error != null) {
                     Text(
@@ -1087,7 +1321,7 @@ fun AddPlayerDialog(
                     onAddPlayer(trimmed.uppercase())
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Add")
@@ -1095,7 +1329,7 @@ fun AddPlayerDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1190,7 +1424,7 @@ fun BuyInDialog(
                     onConfirm(amountLong, note.ifBlank { null })
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save")
@@ -1198,7 +1432,7 @@ fun BuyInDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1300,7 +1534,7 @@ fun ExitDialog(
                     onConfirm(amountLong, note.ifBlank { null })
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Amber80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save Exit")
@@ -1308,7 +1542,7 @@ fun ExitDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1340,7 +1574,13 @@ fun SettlementCard(
     allExited: Boolean
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -1623,7 +1863,7 @@ fun EditTransactionDialog(
                     onDismiss()
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Green80
+                    contentColor = Gold
                 )
             ) {
                 Text("Save")
@@ -1631,7 +1871,7 @@ fun EditTransactionDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancel", color = Gold)
             }
         }
     )
@@ -1691,4 +1931,37 @@ fun DeleteTransactionDialog(
             }
         }
     )
+}
+
+@Composable
+fun TabButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .border(
+                width = 1.dp,
+                color = if (selected) Gold else Gold.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .background(
+                color = if (selected) Gold.copy(alpha = 0.3f) else Color.Transparent,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Gold else Cream.copy(alpha = 0.7f),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            letterSpacing = 1.sp,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
 }

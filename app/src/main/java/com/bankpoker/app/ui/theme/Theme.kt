@@ -12,18 +12,16 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Green80,
-    secondary = Green40,
-    tertiary = Amber80,
-    background = PokerBackground,
-    surface = PokerSurface,
-    surfaceVariant = PokerSurfaceVariant,
-    onPrimary = PokerBackground,
-    onSecondary = Color.White,
-    onTertiary = PokerBackground,
-    onBackground = Color.White,
-    onSurface = Color.White,
-    onSurfaceVariant = Color.White,
+    primary = Gold,
+    onPrimary = Color.Black,
+    secondary = Gold,
+    tertiary = Gold,
+    background = FeltBackground,
+    onBackground = Cream,
+    surface = FeltBackground,
+    onSurface = Cream,
+    surfaceVariant = FeltCard,
+    onSurfaceVariant = Cream,
     error = Red80
 )
 
@@ -37,7 +35,7 @@ fun BankPokerTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = PokerBackground.toArgb()
+            window.statusBarColor = FeltBackground.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
