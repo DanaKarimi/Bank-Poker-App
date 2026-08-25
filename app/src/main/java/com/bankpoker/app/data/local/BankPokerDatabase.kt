@@ -23,7 +23,7 @@ import com.bankpoker.app.data.local.entity.PokerTable
 
 @Database(
     entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class BankPokerDatabase : RoomDatabase() {
@@ -45,6 +45,14 @@ abstract class BankPokerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `poker_tables` ADD COLUMN `hasEntryFee` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `poker_tables` ADD COLUMN `entryFee` INTEGER")
+                database.execSQL("ALTER TABLE `players` ADD COLUMN `entryFeePaid` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: BankPokerDatabase? = null
 
@@ -54,7 +62,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankPokerDatabase::class.java,
                     "bank_poker_database"
-                ).addMigrations(MIGRATION_1_2).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
                 INSTANCE = instance
                 instance
             }

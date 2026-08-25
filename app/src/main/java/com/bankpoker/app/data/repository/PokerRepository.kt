@@ -33,7 +33,7 @@ class PokerRepository(
 
     suspend fun getTableById(tableId: String): PokerTable? = pokerTableDao.getTableById(tableId)
 
-    suspend fun createTable(name: String, chipValue: Long?, groupId: String? = null): PokerTable {
+    suspend fun createTable(name: String, chipValue: Long?, groupId: String? = null, hasEntryFee: Boolean = false, entryFee: Long? = null): PokerTable {
         val table = PokerTable(
             id = UUID.randomUUID().toString(),
             name = name,
@@ -41,7 +41,9 @@ class PokerRepository(
             status = "ACTIVE",
             createdAt = System.currentTimeMillis(),
             closedAt = null,
-            groupId = groupId
+            groupId = groupId,
+            hasEntryFee = hasEntryFee,
+            entryFee = entryFee
         )
         pokerTableDao.insertTable(table)
         return table
@@ -152,6 +154,10 @@ class PokerRepository(
         exitRecordDao.deleteExitRecordsForTable(tableId)
         playerDao.deletePlayersForTable(tableId)
         pokerTableDao.deleteTable(tableId)
+    }
+
+    suspend fun toggleEntryFee(playerId: String, paid: Boolean) {
+        playerDao.updateEntryFeePaid(playerId, paid)
     }
 
     // Group operations

@@ -3,23 +3,23 @@
 *.class
 *.o
 *.obj
-*.so
-*.dll
-*.exe
 *.out
 build/
-dist/
-app/build/
+target/
 
 # Dependencies
 .gradle/
-node_modules/
-venv/
-.venv/
-__pycache__/
 .mypy_cache/
 .pytest_cache/
-target/
+__pycache__/
+coverage/
+htmlcov/
+*.coverage
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Editors
 .vscode/
@@ -31,29 +31,7 @@ target/
 # System
 .DS_Store
 Thumbs.db
-.env
-.env.local
-*.env.*
 
 # Logs
 *.log
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Android specific
-*.apk
-*.aar
-local.properties
-*.bin
-*.lock
-```.gradle/
-.idea/
-build/
-app/build/
-local.properties
-*.bin
-*.lock
-*.class
+```

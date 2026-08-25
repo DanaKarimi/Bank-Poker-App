@@ -10,5 +10,6 @@ data class Player(
     val tableId: String,
     val name: String,
     val status: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val entryFeePaid: Boolean = false
 )

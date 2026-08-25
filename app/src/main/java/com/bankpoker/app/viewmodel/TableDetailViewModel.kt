@@ -126,6 +126,12 @@ class TableDetailViewModel(
             loadTableData()
         }
     }
+
+    fun toggleEntryFee(playerId: String, paid: Boolean) {
+        viewModelScope.launch {
+            repository.toggleEntryFee(playerId, paid)
+        }
+    }
 }
 
 data class TableDetailUiState(

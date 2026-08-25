@@ -12,5 +12,7 @@ data class PokerTable(
     val status: String,
     val createdAt: Long,
     val closedAt: Long?,
-    val groupId: String? = null
+    val groupId: String? = null,
+    val hasEntryFee: Boolean = false,
+    val entryFee: Long? = null
 )

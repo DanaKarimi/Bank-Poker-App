@@ -167,8 +167,8 @@ fun GroupDetailScreen(
     if (showCreateTableDialog) {
         CreateTableDialog(
             onDismiss = { showCreateTableDialog = false },
-            onCreateTable = { name, chipValue ->
-                viewModel.createTable(name, chipValue)
+            onCreateTable = { name, chipValue, hasEntryFee, entryFee ->
+                viewModel.createTable(name, chipValue, hasEntryFee, entryFee)
                 showCreateTableDialog = false
             }
         )
@@ -279,7 +279,26 @@ fun TableCardSimple(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                StatusBadge(status = table.status)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (table.hasEntryFee) {
+                        Surface(
+                            color = Gold.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "VOROODI",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Gold,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    StatusBadge(status = table.status)
+                }
             }
             
             if (table.chipValue != null) {
@@ -710,10 +729,12 @@ fun PaymentCard(
 @Composable
 fun CreateTableDialog(
     onDismiss: () -> Unit,
-    onCreateTable: (String, Long?) -> Unit
+    onCreateTable: (String, Long?, Boolean, Long?) -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
     var chipValue by remember { mutableStateOf("") }
+    var hasEntryFee by remember { mutableStateOf(false) }
+    var entryFeeAmount by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -721,6 +742,30 @@ fun CreateTableDialog(
         title = { Text("Create Table", color = Gold, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                // Voroodi toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Voroodi (Entry Fee)?",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Cream
+                    )
+                    Switch(
+                        checked = hasEntryFee,
+                        onCheckedChange = { hasEntryFee = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Gold,
+                            checkedTrackColor = Gold.copy(alpha = 0.5f),
+                            uncheckedThumbColor = Cream.copy(alpha = 0.5f),
+                            uncheckedTrackColor = Gold.copy(alpha = 0.2f)
+                        )
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                
                 OutlinedTextField(
                     value = tableName,
                     onValueChange = { tableName = it },
@@ -754,6 +799,22 @@ fun CreateTableDialog(
                         cursorColor = Gold
                     )
                 )
+                
+                if (hasEntryFee) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = entryFeeAmount,
+                        onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
+                        label = { Text("Voroodi amount") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                            focusedLabelColor = Gold,
+                            cursorColor = Gold
+                        )
+                    )
+                }
             }
         },
         confirmButton = {
@@ -764,7 +825,10 @@ fun CreateTableDialog(
                         return@TextButton
                     }
                     val chipValueLong = chipValue.toLongOrNull()
-                    onCreateTable(tableName.trim(), chipValueLong)
+                    val entryFeeLong = if (hasEntryFee) {
+                        entryFeeAmount.toLongOrNull() ?: chipValueLong ?: 0L
+                    } else null
+                    onCreateTable(tableName.trim(), chipValueLong, hasEntryFee, entryFeeLong)
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = Gold)
             ) {

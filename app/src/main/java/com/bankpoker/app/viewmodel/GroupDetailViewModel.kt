@@ -32,9 +32,9 @@ class GroupDetailViewModel(
         }
     }
 
-    fun createTable(name: String, chipValue: Long?) {
+    fun createTable(name: String, chipValue: Long?, hasEntryFee: Boolean = false, entryFee: Long? = null) {
         viewModelScope.launch {
-            repository.createTable(name, chipValue, groupId)
+            repository.createTable(name, chipValue, groupId, hasEntryFee, entryFee)
         }
     }
 

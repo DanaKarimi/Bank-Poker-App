@@ -35,4 +35,7 @@ interface PlayerDao {
 
     @Query("SELECT * FROM players WHERE tableId = :tableId")
     suspend fun getPlayersForTableOnce(tableId: String): List<Player>
+
+    @Query("UPDATE players SET entryFeePaid = :paid WHERE id = :playerId")
+    suspend fun updateEntryFeePaid(playerId: String, paid: Boolean)
 }

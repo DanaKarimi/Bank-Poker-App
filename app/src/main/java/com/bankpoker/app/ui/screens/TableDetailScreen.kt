@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.ExperimentalMaterial3Api
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
@@ -358,7 +360,9 @@ fun HorizontalPagerTabs(
                 onAddPlayer = onAddPlayer,
                 onBuyInClick = onBuyInClick,
                 onExitClick = onExitClick,
-                isTableActive = isTableActive
+                isTableActive = isTableActive,
+                tableHasEntryFee = uiState.table?.hasEntryFee == true,
+                viewModel = viewModel
             )
             1 -> HistoryTab(
                 buyIns = buyIns,
@@ -384,7 +388,9 @@ fun PlayersTab(
     onAddPlayer: () -> Unit,
     onBuyInClick: (Player) -> Unit,
     onExitClick: (Player) -> Unit,
-    isTableActive: Boolean
+    isTableActive: Boolean,
+    tableHasEntryFee: Boolean = false,
+    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -435,7 +441,11 @@ fun PlayersTab(
                         onBuyInClick = { onBuyInClick(player) },
                         onExitClick = { onExitClick(player) },
                         isTableActive = isTableActive,
-                        rank = index + 1
+                        rank = index + 1,
+                        tableHasEntryFee = tableHasEntryFee,
+                        onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
+                            { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
+                        } else null
                     )
                 }
             }
@@ -469,7 +479,9 @@ fun PlayerCard(
     onBuyInClick: () -> Unit,
     onExitClick: () -> Unit,
     isTableActive: Boolean,
-    rank: Int = 0
+    rank: Int = 0,
+    tableHasEntryFee: Boolean = false,
+    onToggleEntryFee: (() -> Unit)? = null
 ) {
     val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
     
@@ -510,29 +522,63 @@ fun PlayerCard(
                     )
                 }
 
-                Surface(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .border(2.dp, Gold, CircleShape),
-                    shape = CircleShape,
-                    color = Color.Transparent
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
+                // Entry fee status indicator
+                if (tableHasEntryFee && player.status == "PLAYING") {
+                    IconButton(
+                        onClick = { onToggleEntryFee?.invoke() },
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Text(
-                            text = player.name.take(1).uppercase(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (player.entryFeePaid) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(WinGreen, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "Paid",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Empty circle for unpaid
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .border(2.dp, Gold, CircleShape),
+                        shape = CircleShape,
+                        color = Color.Transparent
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = player.name.take(1).uppercase(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -545,8 +591,18 @@ fun PlayerCard(
                         color = Cream,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    StatusBadge(status = player.status)
+                    if (tableHasEntryFee && player.status == "PLAYING") {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Voroodi: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (player.entryFeePaid) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        StatusBadge(status = player.status)
+                    }
                 }
 
                 if (player.status == "PLAYING") {
