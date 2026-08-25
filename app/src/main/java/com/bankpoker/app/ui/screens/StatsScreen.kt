@@ -378,8 +378,3 @@ fun ClosedTableCard(stat: TableStats) {
     }
 }
 
-@Composable
-fun formatTimestamp(timestamp: Long): String {
-    val sdf = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
-    return sdf.format(java.util.Date(timestamp))
-}

@@ -1,6 +1,8 @@
 package com.bankpoker.app.ui.screens
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +11,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
@@ -317,44 +322,32 @@ fun HorizontalPagerTabs(
     isTableActive: Boolean
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Players", "History", "Results")
-    
+
     Column {
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-            contentColor = Cream,
-            divider = {},
-            indicator = { tabPositions ->
-                Box(
-                    Modifier
-                        .tabIndicatorOffset(tabPositions[selectedTab])
-                        .height(3.dp)
-                        .background(Gold)
-                )
-            }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val icons = listOf(Icons.Default.Person, Icons.Default.List, Icons.Default.Star)
-            tabTitles.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    icon = {
-                        Icon(
-                            imageVector = icons[index],
-                            contentDescription = null,
-                            tint = if (selectedTab == index) Gold else Cream.copy(alpha = 0.5f)
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = title,
-                            color = if (selectedTab == index) Gold else Cream.copy(alpha = 0.6f),
-                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                )
-            }
+            TabButton(
+                text = "PLAYERS",
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                modifier = Modifier.weight(1f)
+            )
+            TabButton(
+                text = "HISTORY",
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                modifier = Modifier.weight(1f)
+            )
+            TabButton(
+                text = "RESULTS",
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                modifier = Modifier.weight(1f)
+            )
         }
 
         when (selectedTab) {
@@ -1881,4 +1874,37 @@ fun DeleteTransactionDialog(
             }
         }
     )
+}
+
+@Composable
+fun TabButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .border(
+                width = 1.dp,
+                color = if (selected) Gold else Gold.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .background(
+                color = if (selected) Gold.copy(alpha = 0.3f) else Color.Transparent,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Gold else Cream.copy(alpha = 0.7f),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            letterSpacing = 1.sp,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
 }

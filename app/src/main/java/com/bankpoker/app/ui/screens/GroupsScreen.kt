@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -166,11 +165,9 @@ fun GroupCard(
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Group,
-                            contentDescription = null,
-                            tint = Gold,
-                            modifier = Modifier.size(24.dp)
+                        Text(
+                            text = "👥",
+                            fontSize = 24.sp
                         )
                     }
                 }

@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.TableBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +27,10 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.ArrowBack
 import kotlinx.coroutines.flow.collectLatest
 import java.util.UUID
 
@@ -117,23 +120,26 @@ fun GroupDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TabButton(
                         text = "TABLES",
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 }
+                        onClick = { selectedTab = 0 },
+                        modifier = Modifier.weight(1f)
                     )
                     TabButton(
                         text = "BALANCES",
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 }
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier.weight(1f)
                     )
                     TabButton(
                         text = "STATS",
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 }
+                        onClick = { selectedTab = 2 },
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -169,34 +175,7 @@ fun GroupDetailScreen(
     }
 }
 
-@Composable
-fun TabButton(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .weight(1f)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) Gold.copy(alpha = 0.3f) else Color.Transparent,
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) Gold else Gold.copy(alpha = 0.3f)
-        )
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(vertical = 12.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            color = if (selected) Gold else Cream.copy(alpha = 0.7f),
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            letterSpacing = 1.sp,
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-}
+
 
 @Composable
 fun TablesTab(
@@ -284,11 +263,11 @@ fun TableCardSimple(
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.TableBar,
-                                contentDescription = null,
-                                tint = Gold,
-                                modifier = Modifier.size(20.dp)
+                            Text(
+                                text = "♠",
+                                color = Gold,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -611,23 +590,6 @@ fun GroupStatsTab(
     }
 }
 
-@Composable
-fun HeroStat(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.headlineMedium,
-            color = color,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Cream.copy(alpha = 0.6f),
-            letterSpacing = 1.sp
-        )
-    }
-}
 
 fun calculateGroupSettlement(balances: List<GroupBalance>): List<Settlement> {
     val debtors = mutableListOf<Pair<String, Long>>()
@@ -669,11 +631,7 @@ fun calculateGroupSettlement(balances: List<GroupBalance>): List<Settlement> {
     return settlements
 }
 
-data class Settlement(
-    val fromPlayer: String,
-    val toPlayer: String,
-    val amount: Long
-)
+
 
 @Composable
 fun PaymentsTab(

@@ -7,9 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.TableBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.TablesViewModel
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -227,11 +231,11 @@ fun TableCard(
                         modifier = Modifier.size(44.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.TableBar,
-                                contentDescription = null,
-                                tint = Gold,
-                                modifier = Modifier.size(24.dp)
+                            Text(
+                                text = "♠",
+                                color = Gold,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

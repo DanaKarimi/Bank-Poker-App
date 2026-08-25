@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -26,13 +25,9 @@ class TablesViewModel(
     private val _lastChipValue = MutableStateFlow<Long?>(null)
     val lastChipValue: StateFlow<Long?> = _lastChipValue.asStateFlow()
 
-    val playerCounts: StateFlow<Map<String, Int>> = 
-        combine(tables, repository.getAllTables()) { _, tablesList ->
-            tablesList.associate { table ->
-                table.id to repository.getPlayingPlayersCount(table.id)
-            }
-        }.map { counts -> counts }
-        .asStateFlow()
+    private val _refreshTrigger = MutableStateFlow(0)
+    private val _playerCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val playerCounts: StateFlow<Map<String, Int>> = _playerCounts.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -40,8 +35,28 @@ class TablesViewModel(
                 if (tablesList.isNotEmpty()) {
                     _lastChipValue.value = tablesList.firstOrNull()?.chipValue
                 }
+                recomputePlayerCounts(tablesList)
             }
         }
+
+        viewModelScope.launch {
+            _refreshTrigger.collect {
+                val tablesList = repository.getAllTablesOnce()
+                recomputePlayerCounts(tablesList)
+            }
+        }
+    }
+
+    private suspend fun recomputePlayerCounts(tablesList: List<PokerTable>) {
+        val counts = mutableMapOf<String, Int>()
+        for (table in tablesList) {
+            counts[table.id] = repository.getPlayingPlayersCount(table.id)
+        }
+        _playerCounts.value = counts
+    }
+
+    fun refreshPlayerCounts() {
+        _refreshTrigger.value += 1
     }
 
     fun createTable(name: String, chipValue: Long?) {

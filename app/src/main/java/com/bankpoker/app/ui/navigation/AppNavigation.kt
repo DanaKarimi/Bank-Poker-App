@@ -22,6 +22,9 @@ import com.bankpoker.app.viewmodel.TableDetailViewModel
 import com.bankpoker.app.viewmodel.TableDetailViewModelFactory
 import com.bankpoker.app.viewmodel.TablesViewModel
 import com.bankpoker.app.viewmodel.TablesViewModelFactory
+import com.bankpoker.app.ui.screens.GroupsScreen
+import com.bankpoker.app.ui.screens.GroupDetailScreen
+import com.bankpoker.app.ui.screens.StatsScreen
 
 @Composable
 fun AppNavigation(
