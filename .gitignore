@@ -49,4 +49,11 @@ htmlcov/
 local.properties
 *.bin
 *.lock
-```
+```.gradle/
+.idea/
+build/
+app/build/
+local.properties
+*.bin
+*.lock
+*.class
