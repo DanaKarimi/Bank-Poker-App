@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PokerTableDao {
+    @Query("SELECT * FROM poker_tables WHERE groupId IS NULL ORDER BY createdAt DESC")
+    fun getQuickTables(): Flow<List<PokerTable>>
+
     @Query("SELECT * FROM poker_tables ORDER BY createdAt DESC")
     fun getAllTables(): Flow<List<PokerTable>>
 

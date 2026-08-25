@@ -27,6 +27,8 @@ class PokerRepository(
     private val paymentDao: PaymentDao
 ) {
     // Table operations
+    fun getQuickTables(): Flow<List<PokerTable>> = pokerTableDao.getQuickTables()
+
     fun getAllTables(): Flow<List<PokerTable>> = pokerTableDao.getAllTables()
 
     suspend fun getTableById(tableId: String): PokerTable? = pokerTableDao.getTableById(tableId)

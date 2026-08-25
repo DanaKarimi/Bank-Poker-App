@@ -16,7 +16,7 @@ class TablesViewModel(
     private val repository: PokerRepository
 ) : ViewModel() {
 
-    val tables: Flow<List<PokerTable>> = repository.getAllTables().map { list ->
+    val tables: Flow<List<PokerTable>> = repository.getQuickTables().map { list ->
         list.sortedWith(
             compareByDescending<PokerTable> { it.status == "ACTIVE" }
                 .thenByDescending { it.createdAt }

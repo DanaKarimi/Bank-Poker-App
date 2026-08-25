@@ -34,7 +34,8 @@ import kotlinx.coroutines.flow.collectLatest
 @Composable
 fun GroupDetailScreen(
     viewModel: GroupDetailViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onTableClick: (String) -> Unit
 ) {
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
@@ -140,7 +141,7 @@ fun GroupDetailScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     when (page) {
-                        0 -> TablesTab(tables = tables, onTableClick = {})
+                        0 -> TablesTab(tables = tables, onTableClick = onTableClick)
                         1 -> BalancesTab(balances = balances)
                         2 -> PaymentsTab(payments = payments)
                     }

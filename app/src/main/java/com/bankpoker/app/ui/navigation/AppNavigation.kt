@@ -114,6 +114,9 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onTableClick = { tableId ->
+                    navController.navigate(Screen.TableDetail.createRoute(tableId))
                 }
             )
         }
