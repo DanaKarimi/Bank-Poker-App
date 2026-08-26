@@ -10,20 +10,26 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExitToApp
+
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -437,58 +443,123 @@ fun PlayersTab(
         return buy - exit
     }
 
-    val sortedPlayers = players.sortedByDescending { balanceOf(it.id) }
+    val sortedPlayersWithRank = remember(players, buyIns, exitRecords) {
+        players.sortedByDescending { balanceOf(it.id) }.mapIndexed { index, player ->
+            Pair(player, index + 1)
+        }
+    }
+
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredPlayers = remember(sortedPlayersWithRank, searchQuery) {
+        if (searchQuery.isBlank()) sortedPlayersWithRank
+        else sortedPlayersWithRank.filter { (player, _) ->
+            player.name.contains(searchQuery.trim(), ignoreCase = true)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (players.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "♠",
-                        fontSize = 64.sp,
-                        color = Gold.copy(alpha = 0.4f)
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (players.isNotEmpty()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Search players...", color = Cream.copy(alpha = 0.5f)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = Gold
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = Gold
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedTextColor = Cream,
+                        unfocusedTextColor = Cream,
+                        cursorColor = Gold,
+                        focusedContainerColor = FeltCard,
+                        unfocusedContainerColor = FeltCard
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                )
+            }
+
+            if (players.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "♠",
+                            fontSize = 64.sp,
+                            color = Gold.copy(alpha = 0.4f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No players yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Cream.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Tap + to add players",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+            } else if (filteredPlayers.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = "No players yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Cream.copy(alpha = 0.7f),
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Tap + to add players",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Cream.copy(alpha = 0.4f)
+                        text = "No players found",
+                        color = Cream.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodyLarge
                     )
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(sortedPlayers) { index, player ->
-                    val balance = balanceOf(player.id)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredPlayers) { (player, rank) ->
+                        val balance = balanceOf(player.id)
 
-                    PlayerCard(
-                        player = player,
-                        currentBalance = balance,
-                        finalResult = -balance,
-                        onBuyInClick = { onBuyInClick(player) },
-                        onExitClick = { onExitClick(player) },
-                        isTableActive = isTableActive,
-                        rank = index + 1,
-                        tableHasEntryFee = tableHasEntryFee,
-                        onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
-                            { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
-                        } else null,
-                        onPlayerClick = onPlayerClick
-                    )
+                        PlayerCard(
+                            player = player,
+                            currentBalance = balance,
+                            finalResult = -balance,
+                            onBuyInClick = { onBuyInClick(player) },
+                            onExitClick = { onExitClick(player) },
+                            isTableActive = isTableActive,
+                            rank = rank,
+                            tableHasEntryFee = tableHasEntryFee,
+                            onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
+                                { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
+                            } else null,
+                            onPlayerClick = onPlayerClick
+                        )
+                    }
                 }
             }
         }
@@ -512,6 +583,7 @@ fun PlayersTab(
         }
     }
 }
+
 
 @Composable
 fun PlayerCard(

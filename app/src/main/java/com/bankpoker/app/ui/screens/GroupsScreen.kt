@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +34,13 @@ fun GroupsScreen(
     onGroupClick: (String) -> Unit
 ) {
     var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val groups by viewModel.groups.collectAsState(initial = emptyList())
+
+    val filteredGroups = remember(groups, searchQuery) {
+        if (searchQuery.isBlank()) groups
+        else groups.filter { it.name.contains(searchQuery.trim(), ignoreCase = true) }
+    }
 
     Scaffold(
         topBar = {
@@ -77,48 +85,102 @@ fun GroupsScreen(
                 )
                 .padding(paddingValues)
         ) {
-            if (groups.isEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Text(
-                        text = "♠",
-                        fontSize = 96.sp,
-                        color = Gold.copy(alpha = 0.3f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "NO GROUPS YET",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Cream,
-                        letterSpacing = 3.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tap + to create a new group",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Cream.copy(alpha = 0.6f)
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (groups.isNotEmpty()) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        placeholder = { Text("Search groups...", color = Cream.copy(alpha = 0.5f)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Gold
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = Gold
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                            focusedTextColor = Cream,
+                            unfocusedTextColor = Cream,
+                            cursorColor = Gold,
+                            focusedContainerColor = FeltCard,
+                            unfocusedContainerColor = FeltCard
+                        )
                     )
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(groups) { group ->
-                        GroupCard(
-                            group = group,
-                            onClick = { onGroupClick(group.id) }
+
+                if (groups.isEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Text(
+                            text = "♠",
+                            fontSize = 96.sp,
+                            color = Gold.copy(alpha = 0.3f)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "NO GROUPS YET",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Cream,
+                            letterSpacing = 3.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Tap + to create a new group",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    }
+                } else if (filteredGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No groups found",
+                            color = Cream.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredGroups) { group ->
+                            GroupCard(
+                                group = group,
+                                onClick = { onGroupClick(group.id) }
+                            )
+                        }
                     }
                 }
             }
         }
     }
+
 
     if (showCreateGroupDialog) {
         CreateGroupDialog(

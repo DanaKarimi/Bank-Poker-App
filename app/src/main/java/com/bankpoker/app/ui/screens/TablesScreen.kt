@@ -32,7 +32,9 @@ import kotlinx.coroutines.flow.collectLatest
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,9 +53,25 @@ fun TablesScreen(
     var showConfirmRestoreDialog by remember { mutableStateOf(false) }
     var showCreateTableDialog by remember { mutableStateOf(false) }
     var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedStatusFilter by remember { mutableStateOf("ALL") } // "ALL", "ACTIVE", "CLOSED"
+
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val playerCounts by viewModel.playerCounts.collectAsState(initial = emptyMap())
     val lastChipValue by viewModel.lastChipValue.collectAsState(initial = null)
+
+    val filteredTables = remember(tables, searchQuery, selectedStatusFilter) {
+        tables.filter { table ->
+            val matchesQuery = if (searchQuery.isBlank()) true
+                else table.name.contains(searchQuery.trim(), ignoreCase = true)
+            val matchesStatus = when (selectedStatusFilter) {
+                "ACTIVE" -> table.status == "ACTIVE"
+                "CLOSED" -> table.status == "CLOSED"
+                else -> true
+            }
+            matchesQuery && matchesStatus
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -184,51 +202,131 @@ fun TablesScreen(
                 )
                 .padding(paddingValues)
         ) {
-            if (tables.isEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Text(
-                        text = "♠",
-                        fontSize = 96.sp,
-                        color = Gold.copy(alpha = 0.3f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "NO TABLES YET",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Cream,
-                        letterSpacing = 3.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tap + to create a new table",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Cream.copy(alpha = 0.6f)
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(tables) { table ->
-                        TableCard(
-                            table = table,
-                            onClick = { onTableClick(table.id) },
-                            onLongClick = { selectedTableForDelete = table },
-                            playerCount = playerCounts[table.id] ?: 0
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (tables.isNotEmpty()) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        placeholder = { Text("Search tables...", color = Cream.copy(alpha = 0.5f)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Gold
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = Gold
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                            focusedTextColor = Cream,
+                            unfocusedTextColor = Cream,
+                            cursorColor = Gold,
+                            focusedContainerColor = FeltCard,
+                            unfocusedContainerColor = FeltCard
                         )
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TabButton(
+                            text = "ALL",
+                            selected = selectedStatusFilter == "ALL",
+                            onClick = { selectedStatusFilter = "ALL" },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TabButton(
+                            text = "ACTIVE",
+                            selected = selectedStatusFilter == "ACTIVE",
+                            onClick = { selectedStatusFilter = "ACTIVE" },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TabButton(
+                            text = "CLOSED",
+                            selected = selectedStatusFilter == "CLOSED",
+                            onClick = { selectedStatusFilter = "CLOSED" },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                if (tables.isEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Text(
+                            text = "♠",
+                            fontSize = 96.sp,
+                            color = Gold.copy(alpha = 0.3f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "NO TABLES YET",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Cream,
+                            letterSpacing = 3.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Tap + to create a new table",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    }
+                } else if (filteredTables.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No tables found",
+                            color = Cream.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredTables) { table ->
+                            TableCard(
+                                table = table,
+                                onClick = { onTableClick(table.id) },
+                                onLongClick = { selectedTableForDelete = table },
+                                playerCount = playerCounts[table.id] ?: 0
+                            )
+                        }
                     }
                 }
             }
         }
     }
+
 
     if (showCreateTableDialog) {
         CreateTableDialog(

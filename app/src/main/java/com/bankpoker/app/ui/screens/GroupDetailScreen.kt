@@ -13,11 +13,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -291,49 +294,109 @@ fun TablesTab(
     tables: List<PokerTable>,
     onTableClick: (String) -> Unit
 ) {
-    if (tables.isEmpty()) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = "♠",
-                fontSize = 64.sp,
-                color = Gold.copy(alpha = 0.3f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "NO TABLES YET",
-                style = MaterialTheme.typography.titleMedium,
-                color = Cream,
-                letterSpacing = 2.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Tap + to create a table",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Cream.copy(alpha = 0.6f)
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredTables = remember(tables, searchQuery) {
+        if (searchQuery.isBlank()) tables
+        else tables.filter { it.name.contains(searchQuery.trim(), ignoreCase = true) }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (tables.isNotEmpty()) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("Search tables...", color = Cream.copy(alpha = 0.5f)) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = Gold
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = Gold
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltCard,
+                    unfocusedContainerColor = FeltCard
+                )
             )
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(tables) { table ->
-                TableCardSimple(
-                    table = table,
-                    onClick = { onTableClick(table.id) }
+
+        if (tables.isEmpty()) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = "♠",
+                    fontSize = 64.sp,
+                    color = Gold.copy(alpha = 0.3f)
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "NO TABLES YET",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Cream,
+                    letterSpacing = 2.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Tap + to create a table",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Cream.copy(alpha = 0.6f)
+                )
+            }
+        } else if (filteredTables.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No tables found",
+                    color = Cream.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(filteredTables) { table ->
+                    TableCardSimple(
+                        table = table,
+                        onClick = { onTableClick(table.id) }
+                    )
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun TableCardSimple(
