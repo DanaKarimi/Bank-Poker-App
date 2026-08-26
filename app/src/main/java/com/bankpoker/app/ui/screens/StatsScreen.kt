@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -38,9 +40,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import com.bankpoker.app.ui.theme.Amber80
 import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.Cream
 import com.bankpoker.app.ui.theme.FeltBackground
+import com.bankpoker.app.ui.theme.FeltCard
 import com.bankpoker.app.ui.theme.Gold
 import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.Red80
@@ -58,6 +64,7 @@ fun StatsScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val voroodiDebtors by viewModel.unpaidVoroodiDebtors.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -109,6 +116,34 @@ fun StatsScreen(
 
             item {
                 Text(
+                    text = "VOROODI DEBTORS",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Gold,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp
+                )
+            }
+
+            if (voroodiDebtors.isEmpty()) {
+                item {
+                    Text(
+                        text = "No unpaid voroodi",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WinGreen,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                items(voroodiDebtors) { debtor ->
+                    VoroodiDebtorCard(
+                        debtor = debtor,
+                        onMarkPaid = { viewModel.markVoroodiPaid(debtor.playerId) }
+                    )
+                }
+            }
+
+            item {
+                Text(
                     text = "Player History",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -145,6 +180,7 @@ fun StatsScreen(
         }
     }
 }
+
 
 @Composable
 fun OverviewCard(uiState: StatsUiState) {
@@ -377,4 +413,82 @@ fun ClosedTableCard(stat: TableStats) {
         }
     }
 }
+
+@Composable
+fun VoroodiDebtorCard(
+    debtor: UnpaidVoroodiInfo,
+    onMarkPaid: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = LoseRed.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(12.dp)
+            ),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = FeltCard
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = debtor.playerName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Cream,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                val subtitle = if (!debtor.groupName.isNullOrBlank()) {
+                    "${debtor.groupName} • ${debtor.tableName}"
+                } else {
+                    debtor.tableName
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Cream.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = formatTimestamp(debtor.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Cream.copy(alpha = 0.4f)
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "${debtor.amount} chips",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LoseRed,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(
+                    onClick = onMarkPaid,
+                    colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
+                ) {
+                    Text(
+                        text = "PAID ✓",
+                        fontWeight = FontWeight.Bold,
+                        color = WinGreen
+                    )
+                }
+            }
+        }
+    }
+}
+
 

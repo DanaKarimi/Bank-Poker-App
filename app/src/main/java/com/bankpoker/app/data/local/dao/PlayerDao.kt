@@ -2,6 +2,7 @@ package com.bankpoker.app.data.local.dao
 
 import androidx.room.*
 import com.bankpoker.app.data.local.entity.Player
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -38,4 +39,26 @@ interface PlayerDao {
 
     @Query("UPDATE players SET entryFeePaid = :paid WHERE id = :playerId")
     suspend fun updateEntryFeePaid(playerId: String, paid: Boolean)
+
+    @Query("UPDATE players SET status = 'EXITED' WHERE tableId = :tableId")
+    suspend fun setAllPlayersExitedForTable(tableId: String)
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.hasEntryFee = 1 
+          AND p.entryFeePaid = 0 
+          AND (p.status = 'EXITED' OR t.status = 'CLOSED')
+        ORDER BY p.createdAt DESC
+    """)
+    fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>>
 }
+

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import com.bankpoker.app.repository.PokerRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +44,14 @@ class StatsViewModel(private val repository: PokerRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
+
+    val unpaidVoroodiDebtors: Flow<List<UnpaidVoroodiInfo>> = repository.getUnpaidVoroodiDebtors()
+
+    fun markVoroodiPaid(playerId: String) {
+        viewModelScope.launch {
+            repository.toggleEntryFee(playerId, true)
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -106,6 +116,7 @@ class StatsViewModel(private val repository: PokerRepository) : ViewModel() {
         }
     }
 }
+
 
 class StatsViewModelFactory(
     private val repository: PokerRepository

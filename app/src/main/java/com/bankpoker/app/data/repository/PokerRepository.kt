@@ -14,6 +14,7 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -55,7 +56,9 @@ class PokerRepository(
             status = "CLOSED",
             closedAt = System.currentTimeMillis()
         )
+        playerDao.setAllPlayersExitedForTable(tableId)
     }
+
 
     // Player operations
     fun getPlayersByTableId(tableId: String): Flow<List<Player>> = playerDao.getPlayersByTableId(tableId)
@@ -160,7 +163,14 @@ class PokerRepository(
         playerDao.updateEntryFeePaid(playerId, paid)
     }
 
+    fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>> = playerDao.getUnpaidVoroodiDebtors()
+
+    suspend fun markVoroodiPaid(playerId: String) {
+        playerDao.updateEntryFeePaid(playerId, true)
+    }
+
     // Group operations
+
     fun getAllGroups(): Flow<List<PlayerGroup>> = playerGroupDao.getAllGroups()
 
     suspend fun getGroupById(groupId: String): PlayerGroup? = playerGroupDao.getGroupById(groupId)
