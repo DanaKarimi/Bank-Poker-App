@@ -1,47 +1,98 @@
-# Bank Poker - Android App
+# 🃏 BankPoker — Poker Bank Manager
 
-A native Android app for poker chip bankers/hosts to manage tables, players, buy-ins, exits, and settlements.
+BankPoker is a native Android app (Kotlin + Jetpack Compose + Room) designed for poker home-game hosts and bankers. It provides complete management of poker tables, players, buy-ins, exits, and settlements. The app supports both standalone "Quick Tables" and persistent "Groups" for recurring games, with automatic balance accumulation and settlement planning. All wrapped in a beautiful Casino Classic green-felt and gold theme.
 
-## Features
+## ✨ Features
 
-- Create and manage poker tables
-- Add players to tables
-- Record chip buy-ins for active players
-- Record exit amounts (can be different from current balance)
-- Track player results (Creditor/Debtor/Break-even)
-- Optional chip value for money equivalent calculations
-- Transaction history with timestamps
-- Table summary with totals
-- Settlement status tracking
+### 🏠 Home Screen
+- **Two main modes on launch:**
+  - **Quick Table** – Start a one-time standalone game
+  - **Groups** – Manage your recurring poker circles
 
-## Tech Stack
+### ⚡ Quick Table
+- Create standalone poker tables with optional chip value
+- Tables list shows **only** standalone tables (group tables are kept completely separate)
+- Active/Closed status badges
+- Full table management: players, buy-ins, exits, history, results
 
-- **Language**: Kotlin
-- **UI**: Jetpack Compose
-- **Design**: Material 3 (Dark theme with green accent)
-- **Architecture**: MVVM with ViewModel + Repository
-- **Database**: Room (SQLite)
-- **Async**: Kotlin Coroutines and Flow
-- **Navigation**: Navigation Compose
+### 👥 Groups
+- Create player groups (e.g., "Friday Poker Night")
+- Each group has its **own isolated tables** – never mixed with Quick Tables
+- **3 tabs per group:**
+  - **Tables** – View and create tables specific to this group
+  - **Balances** – Cumulative ledger across all closed tables in the group
+  - **Stats** – Overview, biggest winner/debtor, and settlement plan
 
-## Project Structure
+### 🎰 Table Detail
+- **3 tabs:** Players / History / Results
+- Add players manually to the table
+- Record Buy-ins and Exits with optional notes
+- Live balance per player (in chips)
+- **Table Summary:** total buy-ins, total exits, remaining chips in play
+- **Automatic Settlement Plan** on close (greedy algorithm: who pays whom)
+- Share results, edit/delete tables
+
+### 💰 Voroodi (Entry Fee) Tracking
+- Optional **"Voroodi?" switch** when creating a group table
+- If enabled:
+  - A **check-circle button** appears next to each player's avatar
+  - Tap to toggle: **Paid** (green ✓) or **Unpaid** (grey outline)
+  - Shows "Voroodi: Paid" (green) or "Voroodi: Unpaid" (red) under player name
+- Perfect for tracking entry fees separate from chip buy-ins
+
+### 📊 Group Balances & Stats
+- **Balances accumulate automatically** when any table in the group is closed
+- Net result (exits − buy-ins) for each player is added to their group balance
+- **Stats tab shows:**
+  - Overview: total tables, closed tables, player count
+  - Total chips settled so far
+  - 🏆 **Biggest Winner** (green highlight)
+  - 💸 **Biggest Debtor** (red highlight)
+  - **Group-wide Settlement Plan** with "PAID ✓" button to mark payments
+  - Payment history log
+
+### 🎨 Casino Classic Design
+- Green felt background with radial gradient
+- Gold accents, borders, and typography
+- Cream-colored text for readability
+- FeltCard backgrounds with gold-bordered cards
+- Avatar colors assigned per player for visual distinction
+
+## 🛠 Tech Stack
+
+| Technology | Usage |
+|------------|-------|
+| **Kotlin** | Primary language |
+| **Jetpack Compose** | Declarative UI |
+| **Material 3** | Components and theming |
+| **Room (SQLite)** | Local database with migrations |
+| **MVVM Architecture** | ViewModel + StateFlow + Flow |
+| **Coroutines** | Async operations |
+| **Navigation Compose** | Screen navigation |
+
+## 📦 Project Structure
 
 ```
 app/src/main/java/com/bankpoker/app/
 ├── MainActivity.kt
 ├── data/
 │   ├── local/
-│   │   ├── BankPokerDatabase.kt
+│   │   ├── BankPokerDatabase.kt          # Room DB with migrations
 │   │   ├── dao/
 │   │   │   ├── BuyInDao.kt
 │   │   │   ├── ExitRecordDao.kt
+│   │   │   ├── GroupBalanceDao.kt
+│   │   │   ├── PaymentDao.kt
 │   │   │   ├── PlayerDao.kt
 │   │   │   └── PokerTableDao.kt
 │   │   └── entity/
 │   │       ├── BuyIn.kt
 │   │       ├── ExitRecord.kt
-│   │       ├── Player.kt
-│   │       └── PokerTable.kt
+│   │       ├── Group.kt
+│   │       ├── GroupBalance.kt
+│   │       ├── Payment.kt
+│   │       ├── Player.kt                  # + entryFeePaid field
+│   │       └── PokerTable.kt              # + hasEntryFee, entryFee, groupId
 │   └── repository/
 │       └── PokerRepository.kt
 ├── ui/
@@ -49,173 +100,91 @@ app/src/main/java/com/bankpoker/app/
 │   │   ├── AppNavigation.kt
 │   │   └── Screen.kt
 │   ├── screens/
+│   │   ├── HomeScreen.kt                  # Two-mode landing page
+│   │   ├── TablesScreen.kt                # Quick Tables only
 │   │   ├── TableDetailScreen.kt
-│   │   └── TablesScreen.kt
+│   │   ├── GroupsScreen.kt
+│   │   ├── GroupDetailScreen.kt           # Tables/Balances/Stats tabs
+│   │   └── StatsScreen.kt
 │   └── theme/
-│       ├── Color.kt
+│       ├── Color.kt                       # Gold, FeltBackground, Cream, etc.
 │       ├── Theme.kt
 │       └── Type.kt
 └── viewmodel/
-    ├── TableDetailViewModel.kt
-    ├── TableDetailViewModelFactory.kt
-    ├── TablesViewModel.kt
-    └── TablesViewModelFactory.kt
+    ├── TableDetailViewModel.kt            # + toggleEntryFee()
+    ├── TablesViewModel.kt                 # Filters groupId = NULL
+    ├── GroupDetailViewModel.kt
+    └── (Factories)
 ```
 
-## How to Build and Run
+## 🚀 Getting Started
 
 ### Prerequisites
-
 1. Android Studio Hedgehog (2023.1.1) or newer
 2. JDK 17 or newer
 3. Android SDK with API level 35
 
 ### Steps
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/DanaKarimi/Bank-Poker-App.git
+   cd Bank-Poker-App
+   ```
 
-1. **Open the project in Android Studio**
+2. **Open in Android Studio**
    - Launch Android Studio
    - Select "Open an Existing Project"
-   - Navigate to the `BankPoker` folder and open it
+   - Navigate to the project folder
 
-2. **Sync Gradle files**
-   - Android Studio will automatically sync the project
-   - Wait for the sync to complete
+3. **Sync Gradle files**
+   - Android Studio will automatically sync
+   - Wait for dependencies to download
 
-3. **Configure SDK path** (if needed)
-   - Edit `local.properties` and set the correct SDK path:
-     ```
+4. **Configure SDK path** (if needed)
+   - Edit `local.properties`:
+     ```properties
      sdk.dir=/path/to/your/Android/sdk
      ```
 
-4. **Build the debug APK**
-   - In Android Studio: Build → Build Bundle(s) / APK(s) → Build APK(s)
+5. **Build and Run**
+   - Click the Run button in Android Studio
    - Or via command line:
      ```bash
      ./gradlew assembleDebug
-     ```
-   - The APK will be generated at: `app/build/outputs/apk/debug/app-debug.apk`
-
-5. **Run on device/emulator**
-   - Connect an Android device or start an emulator
-   - Click the Run button in Android Studio
-   - Or install the APK manually:
-     ```bash
      adb install app/build/outputs/apk/debug/app-debug.apk
      ```
 
-## Usage Guide
+### Minimum Requirements
+- **Minimum SDK:** 24 (Android 7.0)
+- **Target SDK:** 35 (Android 15)
+- **Compile SDK:** 35
 
-### Creating a Table
+## 📋 Business Rules
 
-1. Open the app - you'll see the Tables screen
-2. Tap the floating action button (+)
-3. Enter a table name (required)
-4. Optionally enter a chip value (e.g., 1 means 1 chip = $1)
-5. Tap "Create"
-
-### Managing a Table
-
-1. Tap on a table card to open the Table Detail screen
-2. Use the tabs to navigate between sections:
-
-#### Players Tab
-- View all players in the table
-- See player status (Playing/Exited)
-- View current balance for active players
-- Add new players with the + button
-- Quick access to Buy-in and Exit actions
-
-#### Actions Tab
-- Quick access to Buy-in and Exit buttons for each active player
-- Only shows players with "Playing" status
-
-#### History Tab
-- View all transactions (buy-ins and exits)
-- Sorted by newest first
-- Shows transaction type, player name, amount, note, and timestamp
-
-#### Results Tab
-- View settlement status (Ready/Waiting for exits)
-- See each player's final result
-- Shows: total buy-ins, total exits, net result
-- Labels: Creditor (positive), Debtor (negative), Break-even (zero)
-- If chip value is set, also shows money equivalent
-
-### Recording a Buy-in
-
-1. Go to Players or Actions tab
-2. Tap "Buy-in" for the desired player
-3. Enter the chip amount (must be > 0)
-4. Optionally add a note
-5. Tap "Save"
-
-### Recording an Exit
-
-1. Go to Players or Actions tab
-2. Tap "Exit" for the desired player
-3. Enter the exit chip amount (can be any non-negative number)
-4. Note: Exit amount can be different from current balance
-5. Optionally add a note
-6. Tap "Save Exit"
-7. Player status changes to "Exited"
-
-### Closing a Table
-
-1. Tap the "Close" button in the top bar
-2. Confirm the action
-3. No new transactions will be allowed
-
-## Business Rules
-
-- A player can have multiple buy-ins
-- A player normally has one exit (which marks them as Exited)
-- Exit amount is NOT validated against current balance
-- Net Result = Total Exits - Total Buy-ins
-  - Positive = Creditor (player won)
-  - Negative = Debtor (player lost)
-  - Zero = Break-even
-- Table Remaining Balance = Total Buy-ins - Total Exits
+### Tables
+- A table can be **Active** or **Closed**
 - Closed tables cannot accept new transactions
+- Tables are either **standalone** (groupId = null) or **linked to a group**
 
-## Database Schema
+### Players & Transactions
+- A player can have multiple buy-ins
+- A player normally has one exit (marks them as Exited)
+- Exit amount is NOT validated against current balance (flexible cash-out)
+- **Net Result = Total Exits − Total Buy-ins**
+  - Positive → Creditor (won)
+  - Negative → Debtor (lost)
+  - Zero → Break-even
 
-### PokerTable
-- id (UUID)
-- name (String)
-- chipValue (Long?, nullable)
-- status (ACTIVE/CLOSED)
-- createdAt (timestamp)
-- closedAt (timestamp?, nullable)
+### Groups
+- Group balances accumulate **only when a table is closed**
+- Settlement plan uses a greedy two-pointer algorithm
+- Payments can be marked as "PAID" to track real-world settlements
 
-### Player
-- id (UUID)
-- tableId (String)
-- name (String)
-- status (PLAYING/EXITED)
-- createdAt (timestamp)
+### Voroodi (Entry Fee)
+- Optional feature for group tables only
+- Tracked separately from chip buy-ins/exits
+- Visual indicator per player (✓ paid / ○ unpaid)
 
-### BuyIn
-- id (UUID)
-- tableId (String)
-- playerId (String)
-- amount (Long)
-- note (String?, nullable)
-- createdAt (timestamp)
-
-### ExitRecord
-- id (UUID)
-- tableId (String)
-- playerId (String)
-- amount (Long)
-- note (String?, nullable)
-- createdAt (timestamp)
-
-## Minimum Requirements
-
-- Minimum SDK: 24 (Android 7.0)
-- Target SDK: 35 (Android 15)
-- Compile SDK: 35
-
-## License
+## 📄 License
 
 This project is provided as-is for educational and personal use.
