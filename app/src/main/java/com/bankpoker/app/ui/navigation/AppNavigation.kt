@@ -38,7 +38,8 @@ fun AppNavigation(
         exitRecordDao = database.exitRecordDao(),
         playerGroupDao = database.playerGroupDao(),
         groupBalanceDao = database.groupBalanceDao(),
-        paymentDao = database.paymentDao()
+        paymentDao = database.paymentDao(),
+        database = database
     )
 
     NavHost(
@@ -47,6 +48,7 @@ fun AppNavigation(
     ) {
         composable(Screen.Home.route) {
             HomeScreen(
+                repository = repository,
                 onQuickTableClick = {
                     navController.navigate(Screen.Tables.route) {
                         popUpTo(Screen.Home.route) { inclusive = false }
@@ -57,6 +59,7 @@ fun AppNavigation(
                 }
             )
         }
+
 
         composable(Screen.Tables.route) {
             val viewModel: TablesViewModel = viewModel(

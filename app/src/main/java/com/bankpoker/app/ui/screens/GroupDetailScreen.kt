@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +46,7 @@ fun GroupDetailScreen(
     onNavigateBack: () -> Unit,
     onTableClick: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val balances by viewModel.balances.collectAsState(initial = emptyList())
@@ -90,6 +93,21 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val text = buildGroupShareResultsText(
+                            groupName = group?.name ?: "Group",
+                            balances = balances,
+                            settlements = calculateGroupSettlement(balances)
+                        )
+                        shareText(context, text)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share Results",
+                            tint = Gold
+                        )
+                    }
+
                     IconButton(onClick = { showMenu = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
@@ -97,6 +115,7 @@ fun GroupDetailScreen(
                             tint = Gold
                         )
                     }
+
 
                     DropdownMenu(
                         expanded = showMenu,
@@ -1292,4 +1311,34 @@ fun DeleteGroupDialog(
         }
     )
 }
+
+fun buildGroupShareResultsText(
+    groupName: String,
+    balances: List<GroupBalance>,
+    settlements: List<Settlement>
+): String {
+    val sb = StringBuilder()
+    sb.appendLine("🃏 $groupName")
+    sb.appendLine("Players:")
+    val sorted = balances.sortedByDescending { it.balance }
+    if (sorted.isEmpty()) {
+        sb.appendLine("No player balances yet")
+    } else {
+        sorted.forEachIndexed { index, b ->
+            val sign = if (b.balance > 0) "+" else ""
+            sb.appendLine("${index + 1}. ${b.playerName}: $sign${b.balance}")
+        }
+    }
+    sb.appendLine("Settlement:")
+    if (settlements.isEmpty()) {
+        sb.appendLine("All settled!")
+    } else {
+        settlements.forEach { s ->
+            sb.appendLine("${s.fromPlayer} -> ${s.toPlayer}: ${s.amount}")
+        }
+    }
+    return sb.toString().trimEnd()
+}
+
+
 

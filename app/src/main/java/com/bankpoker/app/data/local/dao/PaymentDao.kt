@@ -14,5 +14,15 @@ interface PaymentDao {
 
     @Query("DELETE FROM payments WHERE groupId = :groupId")
     suspend fun deletePaymentsByGroupId(groupId: String)
+
+    @Query("SELECT * FROM payments")
+    suspend fun getAllPaymentsOnce(): List<Payment>
+
+    @Query("DELETE FROM payments")
+    suspend fun deleteAllPayments()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPayments(payments: List<Payment>)
 }
+
 

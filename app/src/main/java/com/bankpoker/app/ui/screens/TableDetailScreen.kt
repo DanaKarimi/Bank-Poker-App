@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,11 +59,29 @@ fun TableDetailScreen(
     viewModel: TableDetailViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val players by viewModel.players.collectAsState(initial = emptyList())
     val buyIns by viewModel.buyIns.collectAsState(initial = emptyList())
     val exitRecords by viewModel.exitRecords.collectAsState(initial = emptyList())
     
+    val playerResults = remember(players, buyIns, exitRecords) {
+        players.map { player ->
+            val totalBuyIns = buyIns.filter { it.playerId == player.id }.sumOf { it.amount }
+            val totalExits = exitRecords.filter { it.playerId == player.id }.sumOf { it.amount }
+            val netResult = totalExits - totalBuyIns
+            PlayerResult(
+                player = player,
+                totalBuyIns = totalBuyIns,
+                totalExits = totalExits,
+                netResult = netResult
+            )
+        }
+    }
+    val settlements = remember(playerResults) {
+        calculateSettlement(playerResults)
+    }
+
     var showAddPlayerDialog by remember { mutableStateOf(false) }
     var showBuyInDialog by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -82,6 +101,16 @@ fun TableDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val text = buildShareResultsText(
+                            tableName = uiState.table?.name ?: "Table",
+                            playerResults = playerResults,
+                            settlements = settlements
+                        )
+                        shareText(context, text)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share Results", tint = Gold)
+                    }
                     if (uiState.table?.status == "ACTIVE") {
                         IconButton(onClick = { showCloseTableDialog = true }) {
                             Text(
@@ -99,7 +128,8 @@ fun TableDetailScreen(
                 )
             )
         }
-    ) { paddingValues ->
+    )
+ { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1722,7 +1752,36 @@ fun calculateSettlement(playerResults: List<PlayerResult>): List<Settlement> {
     return settlements
 }
 
+fun buildShareResultsText(
+    tableName: String,
+    playerResults: List<PlayerResult>,
+    settlements: List<Settlement>
+): String {
+    val sb = StringBuilder()
+    sb.appendLine("🃏 $tableName")
+    sb.appendLine("Players:")
+    val sorted = playerResults.sortedByDescending { it.netResult }
+    if (sorted.isEmpty()) {
+        sb.appendLine("No players yet")
+    } else {
+        sorted.forEachIndexed { index, r ->
+            val sign = if (r.netResult > 0) "+" else ""
+            sb.appendLine("${index + 1}. ${r.player.name}: $sign${r.netResult}")
+        }
+    }
+    sb.appendLine("Settlement:")
+    if (settlements.isEmpty()) {
+        sb.appendLine("All settled!")
+    } else {
+        settlements.forEach { s ->
+            sb.appendLine("${s.fromPlayer} -> ${s.toPlayer}: ${s.amount}")
+        }
+    }
+    return sb.toString().trimEnd()
+}
+
 fun buildShareText(
+
     tableName: String,
     playerResults: List<PlayerResult>,
     settlements: List<Settlement>,

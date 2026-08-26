@@ -7,6 +7,7 @@ import com.bankpoker.app.data.local.dao.PaymentDao
 import com.bankpoker.app.data.local.dao.PlayerDao
 import com.bankpoker.app.data.local.dao.PokerTableDao
 import com.bankpoker.app.data.local.dao.PlayerGroupDao
+import com.bankpoker.app.data.local.BankPokerDatabase
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.GroupBalance
@@ -16,6 +17,9 @@ import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
+import androidx.room.withTransaction
+import org.json.JSONObject
+import org.json.JSONArray
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -26,8 +30,10 @@ class PokerRepository(
     private val exitRecordDao: ExitRecordDao,
     private val playerGroupDao: PlayerGroupDao,
     private val groupBalanceDao: GroupBalanceDao,
-    private val paymentDao: PaymentDao
+    private val paymentDao: PaymentDao,
+    private val database: BankPokerDatabase? = null
 ) {
+
     // Table operations
     fun getQuickTables(): Flow<List<PokerTable>> = pokerTableDao.getQuickTables()
 
@@ -250,5 +256,275 @@ class PokerRepository(
         val to = groupBalanceDao.getBalance(groupId, toPlayer)
         if (to != null) groupBalanceDao.updateBalance(to.copy(balance = to.balance - amount))
     }
+
+    // Backup & Restore operations
+    suspend fun exportBackupJson(): String {
+        val groups = playerGroupDao.getAllGroupsOnce()
+        val tables = pokerTableDao.getAllTablesOnce()
+        val players = playerDao.getAllPlayersOnce()
+        val buyIns = buyInDao.getAllBuyInsOnce()
+        val exitRecords = exitRecordDao.getAllExitRecordsOnce()
+        val payments = paymentDao.getAllPaymentsOnce()
+        val balances = groupBalanceDao.getAllBalancesOnce()
+
+        val root = JSONObject()
+        root.put("version", 1)
+        root.put("timestamp", System.currentTimeMillis())
+
+        val groupsArray = JSONArray()
+        groups.forEach { g ->
+            val obj = JSONObject()
+            obj.put("id", g.id)
+            obj.put("name", g.name)
+            obj.put("createdAt", g.createdAt)
+            groupsArray.put(obj)
+        }
+        root.put("groups", groupsArray)
+
+        val tablesArray = JSONArray()
+        tables.forEach { t ->
+            val obj = JSONObject()
+            obj.put("id", t.id)
+            obj.put("name", t.name)
+            if (t.chipValue != null) obj.put("chipValue", t.chipValue) else obj.put("chipValue", JSONObject.NULL)
+            obj.put("status", t.status)
+            obj.put("createdAt", t.createdAt)
+            if (t.closedAt != null) obj.put("closedAt", t.closedAt) else obj.put("closedAt", JSONObject.NULL)
+            if (t.groupId != null) obj.put("groupId", t.groupId) else obj.put("groupId", JSONObject.NULL)
+            obj.put("hasEntryFee", t.hasEntryFee)
+            if (t.entryFee != null) obj.put("entryFee", t.entryFee) else obj.put("entryFee", JSONObject.NULL)
+            tablesArray.put(obj)
+        }
+        root.put("tables", tablesArray)
+
+        val playersArray = JSONArray()
+        players.forEach { p ->
+            val obj = JSONObject()
+            obj.put("id", p.id)
+            obj.put("tableId", p.tableId)
+            obj.put("name", p.name)
+            obj.put("status", p.status)
+            obj.put("createdAt", p.createdAt)
+            obj.put("entryFeePaid", p.entryFeePaid)
+            playersArray.put(obj)
+        }
+        root.put("players", playersArray)
+
+        val buyInsArray = JSONArray()
+        buyIns.forEach { b ->
+            val obj = JSONObject()
+            obj.put("id", b.id)
+            obj.put("tableId", b.tableId)
+            obj.put("playerId", b.playerId)
+            obj.put("amount", b.amount)
+            if (b.note != null) obj.put("note", b.note) else obj.put("note", JSONObject.NULL)
+            obj.put("createdAt", b.createdAt)
+            buyInsArray.put(obj)
+        }
+        root.put("buyIns", buyInsArray)
+
+        val exitsArray = JSONArray()
+        exitRecords.forEach { e ->
+            val obj = JSONObject()
+            obj.put("id", e.id)
+            obj.put("tableId", e.tableId)
+            obj.put("playerId", e.playerId)
+            obj.put("amount", e.amount)
+            if (e.note != null) obj.put("note", e.note) else obj.put("note", JSONObject.NULL)
+            obj.put("createdAt", e.createdAt)
+            exitsArray.put(obj)
+        }
+        root.put("exitRecords", exitsArray)
+
+        val paymentsArray = JSONArray()
+        payments.forEach { p ->
+            val obj = JSONObject()
+            obj.put("id", p.id)
+            obj.put("groupId", p.groupId)
+            obj.put("fromPlayer", p.fromPlayer)
+            obj.put("toPlayer", p.toPlayer)
+            obj.put("amount", p.amount)
+            obj.put("createdAt", p.createdAt)
+            paymentsArray.put(obj)
+        }
+        root.put("payments", paymentsArray)
+
+        val balancesArray = JSONArray()
+        balances.forEach { b ->
+            val obj = JSONObject()
+            obj.put("id", b.id)
+            obj.put("groupId", b.groupId)
+            obj.put("playerName", b.playerName)
+            obj.put("balance", b.balance)
+            balancesArray.put(obj)
+        }
+        root.put("groupBalances", balancesArray)
+
+        return root.toString(2)
+    }
+
+    suspend fun restoreBackupJson(jsonString: String) {
+        val root = JSONObject(jsonString)
+
+        val groups = mutableListOf<PlayerGroup>()
+        val groupsArray = root.optJSONArray("groups")
+        if (groupsArray != null) {
+            for (i in 0 until groupsArray.length()) {
+                val obj = groupsArray.getJSONObject(i)
+                groups.add(
+                    PlayerGroup(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        val tables = mutableListOf<PokerTable>()
+        val tablesArray = root.optJSONArray("tables")
+        if (tablesArray != null) {
+            for (i in 0 until tablesArray.length()) {
+                val obj = tablesArray.getJSONObject(i)
+                tables.add(
+                    PokerTable(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        chipValue = if (obj.isNull("chipValue")) null else obj.optLong("chipValue"),
+                        status = obj.optString("status", "ACTIVE"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                        closedAt = if (obj.isNull("closedAt")) null else obj.optLong("closedAt"),
+                        groupId = if (obj.isNull("groupId")) null else obj.optString("groupId"),
+                        hasEntryFee = obj.optBoolean("hasEntryFee", false),
+                        entryFee = if (obj.isNull("entryFee")) null else obj.optLong("entryFee")
+                    )
+                )
+            }
+        }
+
+        val players = mutableListOf<Player>()
+        val playersArray = root.optJSONArray("players")
+        if (playersArray != null) {
+            for (i in 0 until playersArray.length()) {
+                val obj = playersArray.getJSONObject(i)
+                players.add(
+                    Player(
+                        id = obj.getString("id"),
+                        tableId = obj.getString("tableId"),
+                        name = obj.getString("name"),
+                        status = obj.optString("status", "PLAYING"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                        entryFeePaid = obj.optBoolean("entryFeePaid", false)
+                    )
+                )
+            }
+        }
+
+        val buyIns = mutableListOf<BuyIn>()
+        val buyInsArray = root.optJSONArray("buyIns")
+        if (buyInsArray != null) {
+            for (i in 0 until buyInsArray.length()) {
+                val obj = buyInsArray.getJSONObject(i)
+                buyIns.add(
+                    BuyIn(
+                        id = obj.getString("id"),
+                        tableId = obj.getString("tableId"),
+                        playerId = obj.getString("playerId"),
+                        amount = obj.getLong("amount"),
+                        note = if (obj.isNull("note")) null else obj.optString("note"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        val exitRecords = mutableListOf<ExitRecord>()
+        val exitsArray = root.optJSONArray("exitRecords")
+        if (exitsArray != null) {
+            for (i in 0 until exitsArray.length()) {
+                val obj = exitsArray.getJSONObject(i)
+                exitRecords.add(
+                    ExitRecord(
+                        id = obj.getString("id"),
+                        tableId = obj.getString("tableId"),
+                        playerId = obj.getString("playerId"),
+                        amount = obj.getLong("amount"),
+                        note = if (obj.isNull("note")) null else obj.optString("note"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        val payments = mutableListOf<Payment>()
+        val paymentsArray = root.optJSONArray("payments")
+        if (paymentsArray != null) {
+            for (i in 0 until paymentsArray.length()) {
+                val obj = paymentsArray.getJSONObject(i)
+                payments.add(
+                    Payment(
+                        id = obj.getString("id"),
+                        groupId = obj.getString("groupId"),
+                        fromPlayer = obj.getString("fromPlayer"),
+                        toPlayer = obj.getString("toPlayer"),
+                        amount = obj.getLong("amount"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        val balances = mutableListOf<GroupBalance>()
+        val balancesArray = root.optJSONArray("groupBalances")
+        if (balancesArray != null) {
+            for (i in 0 until balancesArray.length()) {
+                val obj = balancesArray.getJSONObject(i)
+                balances.add(
+                    GroupBalance(
+                        id = obj.getString("id"),
+                        groupId = obj.getString("groupId"),
+                        playerName = obj.getString("playerName"),
+                        balance = obj.getLong("balance")
+                    )
+                )
+            }
+        }
+
+        val db = database
+        if (db != null) {
+            db.withTransaction {
+                performRestore(groups, tables, players, buyIns, exitRecords, payments, balances)
+            }
+        } else {
+            performRestore(groups, tables, players, buyIns, exitRecords, payments, balances)
+        }
+    }
+
+    private suspend fun performRestore(
+        groups: List<PlayerGroup>,
+        tables: List<PokerTable>,
+        players: List<Player>,
+        buyIns: List<BuyIn>,
+        exitRecords: List<ExitRecord>,
+        payments: List<Payment>,
+        balances: List<GroupBalance>
+    ) {
+        pokerTableDao.deleteAllTables()
+        playerDao.deleteAllPlayers()
+        buyInDao.deleteAllBuyIns()
+        exitRecordDao.deleteAllExitRecords()
+        playerGroupDao.deleteAllGroups()
+        groupBalanceDao.deleteAllBalances()
+        paymentDao.deleteAllPayments()
+
+        playerGroupDao.insertGroups(groups)
+        pokerTableDao.insertTables(tables)
+        playerDao.insertPlayers(players)
+        buyInDao.insertBuyIns(buyIns)
+        exitRecordDao.insertExitRecords(exitRecords)
+        paymentDao.insertPayments(payments)
+        groupBalanceDao.insertBalances(balances)
+    }
 }
+
 

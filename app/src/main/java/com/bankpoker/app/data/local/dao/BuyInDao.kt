@@ -32,4 +32,11 @@ interface BuyInDao {
 
     @Query("DELETE FROM buy_ins WHERE tableId = :tableId")
     suspend fun deleteBuyInsForTable(tableId: String)
+
+    @Query("DELETE FROM buy_ins")
+    suspend fun deleteAllBuyIns()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBuyIns(buyIns: List<BuyIn>)
 }
+

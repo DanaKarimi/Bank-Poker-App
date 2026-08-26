@@ -71,4 +71,8 @@ class TablesViewModel(
             repository.deleteTableAndRelatedData(tableId)
         }
     }
-}
+
+    suspend fun exportBackup(): String = repository.exportBackupJson()
+
+    suspend fun restoreBackup(json: String) = repository.restoreBackupJson(json)
+}

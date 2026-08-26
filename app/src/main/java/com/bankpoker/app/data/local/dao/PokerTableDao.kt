@@ -38,5 +38,12 @@ interface PokerTableDao {
 
     @Query("DELETE FROM poker_tables WHERE groupId = :groupId")
     suspend fun deleteTablesByGroupId(groupId: String)
+
+    @Query("DELETE FROM poker_tables")
+    suspend fun deleteAllTables()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTables(tables: List<PokerTable>)
 }
+
 

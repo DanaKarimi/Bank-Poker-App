@@ -35,4 +35,11 @@ interface ExitRecordDao {
 
     @Query("SELECT * FROM exit_records")
     suspend fun getAllExitRecordsOnce(): List<ExitRecord>
+
+    @Query("DELETE FROM exit_records")
+    suspend fun deleteAllExitRecords()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExitRecords(exitRecords: List<ExitRecord>)
 }
+

@@ -44,6 +44,13 @@ interface PlayerDao {
     @Query("UPDATE players SET status = 'EXITED' WHERE tableId = :tableId")
     suspend fun setAllPlayersExitedForTable(tableId: String)
 
+    @Query("DELETE FROM players")
+    suspend fun deleteAllPlayers()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlayers(players: List<Player>)
+
+
     @Query("""
         SELECT 
             p.id AS playerId,

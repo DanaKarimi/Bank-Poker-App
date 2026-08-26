@@ -30,6 +30,13 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.flow.collectLatest
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TablesScreen(
@@ -37,11 +44,56 @@ fun TablesScreen(
     onTableClick: (String) -> Unit,
     onNavigateToStats: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showMenu by remember { mutableStateOf(false) }
+    var showConfirmRestoreDialog by remember { mutableStateOf(false) }
     var showCreateTableDialog by remember { mutableStateOf(false) }
     var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val playerCounts by viewModel.playerCounts.collectAsState(initial = emptyMap())
     val lastChipValue by viewModel.lastChipValue.collectAsState(initial = null)
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val json = viewModel.exportBackup()
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(json.toByteArray(Charsets.UTF_8))
+                    }
+                    snackbarHostState.showSnackbar("Backup exported successfully!")
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("Export failed: ${e.message ?: "Unknown error"}")
+                }
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val json = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        inputStream.bufferedReader(Charsets.UTF_8).readText()
+                    }
+                    if (!json.isNullOrBlank()) {
+                        viewModel.restoreBackup(json)
+                        snackbarHostState.showSnackbar("Backup restored successfully!")
+                    } else {
+                        snackbarHostState.showSnackbar("Failed to read backup file.")
+                    }
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("Import failed: ${e.message ?: "Invalid backup file"}")
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -67,13 +119,45 @@ fun TablesScreen(
                             letterSpacing = 1.sp
                         )
                     }
+
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Gold
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(FeltCard)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Export Backup", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    exportLauncher.launch("BankPoker_backup.json")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Import Backup", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    showConfirmRestoreDialog = true
+                                }
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = FeltBackground
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
+
             FloatingActionButton(
                 onClick = { showCreateTableDialog = true },
                 modifier = Modifier.shadow(12.dp, CircleShape),
@@ -187,7 +271,39 @@ fun TablesScreen(
             }
         )
     }
+
+    if (showConfirmRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmRestoreDialog = false },
+            containerColor = FeltCard,
+            title = { Text("Restore Backup?", color = Gold, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "This replaces ALL current data!",
+                    color = Cream,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirmRestoreDialog = false
+                        importLauncher.launch(arrayOf("application/json", "*/*"))
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Restore", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmRestoreDialog = false }) {
+                    Text("Cancel", color = Gold)
+                }
+            }
+        )
+    }
 }
+
 
 @Composable
 fun TableCard(
