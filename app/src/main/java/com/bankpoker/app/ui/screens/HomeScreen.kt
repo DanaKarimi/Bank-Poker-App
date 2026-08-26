@@ -131,6 +131,8 @@ fun HomeScreen(
                 )
                 .padding(paddingValues)
         ) {
+            CasinoWatermarks()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -141,16 +143,23 @@ fun HomeScreen(
                 // Title
                 Text(
                     text = "♠",
-                    fontSize = 120.sp,
-                    color = Gold.copy(alpha = 0.6f)
+                    fontSize = 80.sp,
+                    color = Gold.copy(alpha = 0.8f)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "BANK POKER",
                     style = MaterialTheme.typography.displaySmall,
-                    color = Gold,
+                    color = Cream,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 4.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .width(48.dp)
+                        .height(2.5.dp)
+                        .background(Gold, RoundedCornerShape(2.dp))
                 )
                 Spacer(modifier = Modifier.height(48.dp))
 
@@ -216,8 +225,8 @@ fun HomeOptionCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 2.dp,
-                color = Gold.copy(alpha = 0.5f),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
                 shape = RoundedCornerShape(20.dp)
             )
             .clickable(onClick = onClick),
@@ -236,16 +245,24 @@ fun HomeOptionCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
-                color = Gold,
+                color = Cream,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .height(2.dp)
+                    .background(Gold.copy(alpha = 0.8f), RoundedCornerShape(1.dp))
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Cream.copy(alpha = 0.7f)
+                color = Cream.copy(alpha = 0.75f)
             )
         }
     }
 }
+

@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,12 +47,16 @@ fun GroupsScreen(
         topBar = {
             TopAppBar(
                 title = { 
-                    Text(
-                        text = "♠ Groups", 
-                        color = Gold, 
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    ) 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Groups", 
+                            color = Cream, 
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = FeltBackground
@@ -85,7 +90,10 @@ fun GroupsScreen(
                 )
                 .padding(paddingValues)
         ) {
+            CasinoWatermarks()
+
             Column(modifier = Modifier.fillMaxSize()) {
+
                 if (groups.isNotEmpty()) {
                     OutlinedTextField(
                         value = searchQuery,
@@ -203,16 +211,18 @@ fun GroupCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()

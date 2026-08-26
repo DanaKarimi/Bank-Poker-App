@@ -1,13 +1,17 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,41 +63,33 @@ fun GroupDetailScreen(
     val entryFeeDebtors by viewModel.entryFeeDebtors.collectAsState(initial = emptyList())
     val entryFeeHistory by viewModel.entryFeeHistory.collectAsState(initial = emptyList())
 
-
-
     var showCreateTableDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(0) }
-    val pagerState = rememberPagerState(pageCount = { 3 })
-
-    LaunchedEffect(pagerState.currentPage) {
-        selectedTab = pagerState.currentPage
-    }
-
-    LaunchedEffect(selectedTab) {
-        pagerState.animateScrollToPage(selectedTab)
-    }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { 
-                    Text(
-                        text = group?.name ?: "Group", 
-                        color = Gold, 
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    ) 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = group?.name ?: "Group", 
+                            color = Cream, 
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            Icons.Default.Add,
+                            Icons.Default.ArrowBack,
                             contentDescription = "Back",
-                            tint = Gold,
-                            modifier = Modifier.rotate(45f)
+                            tint = Gold
                         )
                     }
                 },
@@ -191,6 +187,8 @@ fun GroupDetailScreen(
                 )
                 .padding(paddingValues)
         ) {
+            CasinoWatermarks()
+
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -221,8 +219,12 @@ fun GroupDetailScreen(
                     )
                 }
 
-                HorizontalPager(
-                    state = pagerState,
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                    },
+                    label = "GroupDetailTabAnimation",
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     when (page) {
@@ -242,9 +244,6 @@ fun GroupDetailScreen(
                             },
                             onPlayerClick = onPlayerClick
                         )
-
-
-
                     }
                 }
             }
@@ -408,15 +407,16 @@ fun TableCardSimple(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -525,14 +525,16 @@ fun BalanceCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -584,9 +586,10 @@ fun GroupStatsTab(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.5.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
+                    .border(1.5.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -603,7 +606,7 @@ fun GroupStatsTab(
                         Text(
                             text = "GROUP STATS",
                             style = MaterialTheme.typography.labelLarge,
-                            color = Gold,
+                            color = Cream,
                             letterSpacing = 3.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -638,12 +641,13 @@ fun GroupStatsTab(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, WinGreen.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, WinGreen.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
                         .clickable(enabled = onPlayerClick != null) {
                             onPlayerClick?.invoke(biggestWinner.playerName)
                         },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = FeltCard)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -675,12 +679,13 @@ fun GroupStatsTab(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, LoseRed.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .border(1.5.dp, LoseRed.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
                         .clickable(enabled = onPlayerClick != null) {
                             onPlayerClick?.invoke(biggestDebtor.playerName)
                         },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = FeltCard)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -712,10 +717,12 @@ fun GroupStatsTab(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
+                    .border(1.5.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()

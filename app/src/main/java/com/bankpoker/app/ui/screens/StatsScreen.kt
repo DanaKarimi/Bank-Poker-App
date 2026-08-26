@@ -57,7 +57,12 @@ import com.bankpoker.app.viewmodel.StatsUiState
 import com.bankpoker.app.viewmodel.StatsViewModel
 import com.bankpoker.app.viewmodel.TableStats
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import com.bankpoker.app.ui.theme.CasinoWatermarks
+import com.bankpoker.app.ui.theme.PokerChipAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,10 +77,21 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stats & History", color = Gold, fontWeight = FontWeight.Bold) },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Stats & History", 
+                            color = Cream, 
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Gold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -86,112 +102,122 @@ fun StatsScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF186349), FeltBackground),
+                        radius = 1500f
+                    )
+                )
+                .padding(paddingValues)
         ) {
-            item { OverviewCard(uiState) }
+            CasinoWatermarks()
 
-            if (uiState.biggestWinner != null) {
-                item {
-                    HighlightCard(
-                        title = "Biggest Winner",
-                        name = uiState.biggestWinner!!.name,
-                        value = "+${uiState.biggestWinner!!.netResult}",
-                        color = WinGreen,
-                        onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.biggestWinner!!.name) } } else null
-                    )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { OverviewCard(uiState) }
+
+                if (uiState.biggestWinner != null) {
+                    item {
+                        HighlightCard(
+                            title = "Biggest Winner",
+                            name = uiState.biggestWinner!!.name,
+                            value = "+${uiState.biggestWinner!!.netResult}",
+                            color = WinGreen,
+                            onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.biggestWinner!!.name) } } else null
+                        )
+                    }
                 }
-            }
 
-            if (uiState.mostActive != null) {
+                if (uiState.mostActive != null) {
+                    item {
+                        HighlightCard(
+                            title = "Most Active Player",
+                            name = uiState.mostActive!!.name,
+                            value = "${uiState.mostActive!!.gamesPlayed} games",
+                            color = Gold,
+                            onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.mostActive!!.name) } } else null
+                        )
+                    }
+                }
+
                 item {
-                    HighlightCard(
-                        title = "Most Active Player",
-                        name = uiState.mostActive!!.name,
-                        value = "${uiState.mostActive!!.gamesPlayed} games",
+                    Text(
+                        text = "ENTRY FEE DEBTORS",
+                        style = MaterialTheme.typography.titleMedium,
                         color = Gold,
-                        onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.mostActive!!.name) } } else null
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
                     )
                 }
-            }
 
-            item {
-                Text(
-                    text = "ENTRY FEE DEBTORS",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Gold,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
-                )
-            }
+                if (entryFeeDebtors.isEmpty()) {
+                    item {
+                        Text(
+                            text = "All entry fees collected!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WinGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    items(entryFeeDebtors) { debtor ->
+                        EntryFeeDebtorCard(
+                            debtor = debtor,
+                            onMarkPaid = { viewModel.markEntryFeePaid(debtor.playerId) }
+                        )
+                    }
+                }
 
-            if (entryFeeDebtors.isEmpty()) {
                 item {
                     Text(
-                        text = "All entry fees collected!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WinGreen,
-                        fontWeight = FontWeight.Medium
+                        text = "PLAYER HISTORY",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
                     )
                 }
-            } else {
 
-                items(entryFeeDebtors) { debtor ->
-                    EntryFeeDebtorCard(
-                        debtor = debtor,
-                        onMarkPaid = { viewModel.markEntryFeePaid(debtor.playerId) }
+                items(uiState.playerStats) { stat ->
+                    PlayerStatCard(
+                        stat = stat,
+                        onClick = if (onPlayerClick != null) { { onPlayerClick(stat.name) } } else null
                     )
                 }
-            }
 
-
-            item {
-                Text(
-                    text = "Player History",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            items(uiState.playerStats) { stat ->
-                PlayerStatCard(
-                    stat = stat,
-                    onClick = if (onPlayerClick != null) { { onPlayerClick(stat.name) } } else null
-                )
-            }
-
-
-            item {
-                Text(
-                    text = "Closed Tables",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (uiState.closedTableStats.isEmpty()) {
                 item {
                     Text(
-                        text = "No closed tables yet",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        text = "CLOSED TABLES",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
                     )
                 }
-            }
 
-            items(uiState.closedTableStats) { stat ->
-                ClosedTableCard(stat = stat)
+                if (uiState.closedTableStats.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No closed tables yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+
+                items(uiState.closedTableStats) { stat ->
+                    ClosedTableCard(stat = stat)
+                }
             }
         }
     }
 }
-
 
 @Composable
 fun OverviewCard(uiState: StatsUiState) {
@@ -199,26 +225,38 @@ fun OverviewCard(uiState: StatsUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(20.dp)
         ) {
-            Text(
-                text = "Overview",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "♠", color = Gold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "OVERVIEW",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Cream,
+                    letterSpacing = 3.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -234,16 +272,18 @@ fun OverviewCard(uiState: StatsUiState) {
 
 @Composable
 fun StatColumn(label: String, value: String) {
-    Column {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            style = MaterialTheme.typography.labelSmall,
+            color = Cream.copy(alpha = 0.6f),
+            letterSpacing = 1.sp
         )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Gold,
             fontWeight = FontWeight.Bold
         )
     }
@@ -261,14 +301,17 @@ fun HighlightCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                width = 1.5.dp,
+                color = color.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
             )
+            .animateContentSize()
             .clickable(enabled = onClick != null) { onClick?.invoke() },
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -280,13 +323,15 @@ fun HighlightCard(
             Column {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Cream.copy(alpha = 0.7f),
+                    letterSpacing = 1.sp
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = name,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cream,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -309,14 +354,17 @@ fun PlayerStatCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
             )
+            .animateContentSize()
             .clickable(enabled = onClick != null) { onClick?.invoke() },
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -324,34 +372,19 @@ fun PlayerStatCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val avatarColor = AvatarColors[stat.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
-            Surface(
-                color = avatarColor,
-                shape = CircleShape,
-                modifier = Modifier
-                    .size(40.dp)
-                    .border(1.5.dp, Gold, CircleShape)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = stat.name.take(1),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            PokerChipAvatar(name = stat.name, size = 44.dp)
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stat.name,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cream,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "${stat.gamesPlayed} games",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    color = Cream.copy(alpha = 0.6f)
                 )
             }
             Text(
@@ -360,7 +393,7 @@ fun PlayerStatCard(
                 color = when {
                     stat.netResult > 0 -> WinGreen
                     stat.netResult < 0 -> LoseRed
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> Cream
                 },
                 fontWeight = FontWeight.Bold
             )
@@ -375,13 +408,16 @@ fun ClosedTableCard(stat: TableStats) {
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -390,18 +426,19 @@ fun ClosedTableCard(stat: TableStats) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = stat.table.name,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cream,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = formatTimestamp(stat.table.closedAt ?: stat.table.createdAt),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    color = Cream.copy(alpha = 0.5f)
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -412,7 +449,7 @@ fun ClosedTableCard(stat: TableStats) {
                 Text(
                     text = "${stat.playerCount} players",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = Cream.copy(alpha = 0.7f)
                 )
                 Text(
                     text = "Buy-ins: ${stat.totalBuyIns}",
@@ -425,7 +462,8 @@ fun ClosedTableCard(stat: TableStats) {
                 Text(
                     text = "Winner: ${stat.topWinnerName} (+${stat.topWinnerNet})",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = WinGreen
+                    color = WinGreen,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -441,14 +479,16 @@ fun EntryFeeDebtorCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = LoseRed.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
-        shape = RoundedCornerShape(12.dp),
+                width = 1.5.dp,
+                color = LoseRed.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -508,7 +548,3 @@ fun EntryFeeDebtorCard(
         }
     }
 }
-
-
-
-

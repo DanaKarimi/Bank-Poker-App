@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -22,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.PlayerProfileViewModel
-import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,18 +31,21 @@ fun PlayerProfileScreen(
     onNavigateBack: () -> Unit
 ) {
     val profileData by viewModel.profileData.collectAsState()
-    val avatarColor = AvatarColors[abs(profileData.playerName.hashCode()) % AvatarColors.size]
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Player Profile",
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Player Profile",
+                            color = Cream,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -71,6 +74,8 @@ fun PlayerProfileScreen(
                 )
                 .padding(paddingValues)
         ) {
+            CasinoWatermarks()
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
@@ -84,40 +89,27 @@ fun PlayerProfileScreen(
                             .padding(vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Surface(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .border(2.dp, Gold, CircleShape),
-                            shape = CircleShape,
-                            color = Color.Transparent
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(avatarColor, avatarColor.copy(alpha = 0.6f))
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = profileData.playerName.take(1).uppercase(),
-                                    style = MaterialTheme.typography.displaySmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        PokerChipAvatar(
+                            name = profileData.playerName,
+                            size = 96.dp
+                        )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
                             text = profileData.playerName,
                             style = MaterialTheme.typography.headlineMedium,
-                            color = Gold,
+                            color = Cream,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                            letterSpacing = 1.5.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(2.5.dp)
+                                .background(Gold, RoundedCornerShape(2.dp))
                         )
                     }
                 }
@@ -127,9 +119,11 @@ fun PlayerProfileScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.5.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = FeltCard)
+                            .border(1.5.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
+                            .animateContentSize(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = FeltCard),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                     ) {
                         Column(
                             modifier = Modifier
@@ -146,7 +140,7 @@ fun PlayerProfileScreen(
                                 Text(
                                     text = "CAREER STATS",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = Gold,
+                                    color = Cream,
                                     letterSpacing = 3.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -232,8 +226,8 @@ fun PlayerProfileScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, Gold.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
-                            shape = RoundedCornerShape(12.dp),
+                                .border(1.5.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = FeltCard)
                         ) {
                             Box(
@@ -256,12 +250,14 @@ fun PlayerProfileScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .border(
-                                    width = 1.dp,
-                                    color = Gold.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(14.dp)
-                                ),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = FeltCard)
+                                    width = 1.5.dp,
+                                    color = Gold.copy(alpha = 0.7f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .animateContentSize(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = FeltCard),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -327,3 +323,4 @@ fun PlayerProfileScreen(
         }
     }
 }
+

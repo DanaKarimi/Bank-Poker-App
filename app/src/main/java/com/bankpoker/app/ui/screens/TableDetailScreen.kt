@@ -1,5 +1,11 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,29 +54,36 @@ import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.ui.theme.Amber80
 import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.CasinoWatermarks
 import com.bankpoker.app.ui.theme.Cream
 import com.bankpoker.app.ui.theme.FeltBackground
 import com.bankpoker.app.ui.theme.FeltCard
 import com.bankpoker.app.ui.theme.Gold
 import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.LoseRed
+import com.bankpoker.app.ui.theme.PokerChipAvatar
 import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.viewmodel.TableDetailUiState
 import com.bankpoker.app.viewmodel.TableDetailViewModel
+import androidx.compose.foundation.ExperimentalFoundationApi
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TableDetailScreen(
     viewModel: TableDetailViewModel,
     onNavigateBack: () -> Unit,
     onPlayerClick: ((String) -> Unit)? = null
 ) {
-    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val players by viewModel.players.collectAsState(initial = emptyList())
     val buyIns by viewModel.buyIns.collectAsState(initial = emptyList())
     val exitRecords by viewModel.exitRecords.collectAsState(initial = emptyList())
+    val context = LocalContext.current
     
     val playerResults = remember(players, buyIns, exitRecords) {
         players.map { player ->
@@ -101,10 +114,21 @@ fun TableDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.table?.name ?: "Table Detail", color = Gold, fontWeight = FontWeight.Bold) },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.table?.name ?: "Table Detail", 
+                            color = Cream, 
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Gold)
                     }
                 },
                 actions = {
@@ -137,43 +161,50 @@ fun TableDetailScreen(
         }
     )
  { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF186349), FeltBackground)
+                        colors = listOf(Color(0xFF186349), FeltBackground),
+                        radius = 1500f
                     )
                 )
                 .padding(paddingValues)
         ) {
-            // Summary bar
-            TableSummaryBar(
-                totalBuyIns = uiState.totalBuyIns,
-                totalExits = uiState.totalExits,
-                remainingBalance = uiState.remainingBalance,
-                chipValue = uiState.table?.chipValue
-            )
+            CasinoWatermarks()
 
-            HorizontalPagerTabs(
-                onAddPlayer = { showAddPlayerDialog = true },
-                onBuyInClick = { player ->
-                    selectedPlayerForBuyIn = player
-                    showBuyInDialog = true
-                },
-                onExitClick = { player ->
-                    selectedPlayerForExit = player
-                    showExitDialog = true
-                },
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                tableId = uiState.table?.id ?: "",
-                viewModel = viewModel,
-                isTableActive = uiState.table?.status == "ACTIVE",
-                tableHasEntryFee = uiState.table?.hasEntryFee == true,
-                onPlayerClick = onPlayerClick
-            )
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Summary bar
+                TableSummaryBar(
+                    totalBuyIns = uiState.totalBuyIns,
+                    totalExits = uiState.totalExits,
+                    remainingBalance = uiState.remainingBalance,
+                    chipValue = uiState.table?.chipValue
+                )
+
+                HorizontalPagerTabs(
+                    onAddPlayer = { showAddPlayerDialog = true },
+                    onBuyInClick = { player ->
+                        selectedPlayerForBuyIn = player
+                        showBuyInDialog = true
+                    },
+                    onExitClick = { player ->
+                        selectedPlayerForExit = player
+                        showExitDialog = true
+                    },
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    tableId = uiState.table?.id ?: "",
+                    viewModel = viewModel,
+                    isTableActive = uiState.table?.status == "ACTIVE",
+                    tableHasEntryFee = uiState.table?.hasEntryFee == true,
+                    onPlayerClick = onPlayerClick
+                )
+            }
         }
     }
 
@@ -275,13 +306,15 @@ fun TableSummaryBar(
             .padding(16.dp)
             .border(
                 width = 1.5.dp,
-                color = Gold.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -298,7 +331,7 @@ fun TableSummaryBar(
                 Text(
                     text = "TABLE SUMMARY",
                     style = MaterialTheme.typography.labelLarge,
-                    color = Gold,
+                    color = Cream,
                     letterSpacing = 3.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -394,35 +427,44 @@ fun HorizontalPagerTabs(
             )
         }
 
-        when (selectedTab) {
-            0 -> PlayersTab(
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                onAddPlayer = onAddPlayer,
-                onBuyInClick = onBuyInClick,
-                onExitClick = onExitClick,
-                isTableActive = isTableActive,
-                tableHasEntryFee = tableHasEntryFee,
-                viewModel = viewModel,
-                onPlayerClick = onPlayerClick
-            )
-            1 -> HistoryTab(
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                players = players,
-                viewModel = viewModel
-            )
-            2 -> ResultsTab(
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                viewModel = viewModel,
-                tableHasEntryFee = tableHasEntryFee
-            )
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+            },
+            label = "TableDetailTabAnimation"
+        ) { tab ->
+            when (tab) {
+                0 -> PlayersTab(
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    onAddPlayer = onAddPlayer,
+                    onBuyInClick = onBuyInClick,
+                    onExitClick = onExitClick,
+                    isTableActive = isTableActive,
+                    tableHasEntryFee = tableHasEntryFee,
+                    viewModel = viewModel,
+                    onPlayerClick = onPlayerClick
+                )
+                1 -> HistoryTab(
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    players = players,
+                    viewModel = viewModel
+                )
+                2 -> ResultsTab(
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    viewModel = viewModel,
+                    tableHasEntryFee = tableHasEntryFee
+                )
+            }
         }
     }
 }
+
 
 @Composable
 fun PlayersTab(
@@ -604,11 +646,12 @@ fun PlayerCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
@@ -678,32 +721,9 @@ fun PlayerCard(
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     } else {
-                        Surface(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .border(2.dp, Gold, CircleShape),
-                            shape = CircleShape,
-                            color = Color.Transparent
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = player.name.take(1).uppercase(),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        PokerChipAvatar(name = player.name, size = 52.dp)
                     }
+
 
                     Spacer(modifier = Modifier.width(12.dp))
 
@@ -1048,17 +1068,20 @@ fun TransactionCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
             )
+            .animateContentSize()
             .combinedClickable(
                 onClick = { },
                 onLongClick = { showActionDialog = true }
             ),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1291,13 +1314,16 @@ fun PlayerResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1718,13 +1744,16 @@ fun SettlementCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
