@@ -57,7 +57,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun TableDetailScreen(
     viewModel: TableDetailViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -164,10 +165,12 @@ fun TableDetailScreen(
                 tableId = uiState.table?.id ?: "",
                 viewModel = viewModel,
                 isTableActive = uiState.table?.status == "ACTIVE",
-                tableHasEntryFee = uiState.table?.hasEntryFee == true
+                tableHasEntryFee = uiState.table?.hasEntryFee == true,
+                onPlayerClick = onPlayerClick
             )
         }
     }
+
     
     if (showAddPlayerDialog) {
         val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
@@ -353,7 +356,8 @@ fun HorizontalPagerTabs(
     tableId: String,
     viewModel: TableDetailViewModel,
     isTableActive: Boolean,
-    tableHasEntryFee: Boolean = false
+    tableHasEntryFee: Boolean = false,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -394,7 +398,8 @@ fun HorizontalPagerTabs(
                 onExitClick = onExitClick,
                 isTableActive = isTableActive,
                 tableHasEntryFee = tableHasEntryFee,
-                viewModel = viewModel
+                viewModel = viewModel,
+                onPlayerClick = onPlayerClick
             )
             1 -> HistoryTab(
                 buyIns = buyIns,
@@ -423,7 +428,8 @@ fun PlayersTab(
     onExitClick: (Player) -> Unit,
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
-    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null
+    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -448,14 +454,16 @@ fun PlayersTab(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "No players yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Cream
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Cream.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Medium
                     )
-                    if (isTableActive) {
-                        TextButton(onClick = onAddPlayer) {
-                            Text("Add Player", color = Gold)
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tap + to add players",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.4f)
+                    )
                 }
             }
         } else {
@@ -478,7 +486,8 @@ fun PlayersTab(
                         tableHasEntryFee = tableHasEntryFee,
                         onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
                             { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
-                        } else null
+                        } else null,
+                        onPlayerClick = onPlayerClick
                     )
                 }
             }
@@ -514,7 +523,8 @@ fun PlayerCard(
     isTableActive: Boolean,
     rank: Int = 0,
     tableHasEntryFee: Boolean = false,
-    onToggleEntryFee: (() -> Unit)? = null
+    onToggleEntryFee: (() -> Unit)? = null,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
     
@@ -541,101 +551,110 @@ fun PlayerCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(end = 10.dp)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = onPlayerClick != null) {
+                            onPlayerClick?.invoke(player.name)
+                        },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "#$rank",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = if (rank == 1) Color.Black else Gold,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Entry fee status indicator
-                if (tableHasEntryFee && player.status == "PLAYING") {
-                    IconButton(
-                        onClick = { onToggleEntryFee?.invoke() },
-                        modifier = Modifier.size(32.dp)
+                    Surface(
+                        color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(end = 10.dp)
                     ) {
-                        if (player.entryFeePaid) {
+                        Text(
+                            text = "#$rank",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            color = if (rank == 1) Color.Black else Gold,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Entry fee status indicator
+                    if (tableHasEntryFee && player.status == "PLAYING") {
+                        IconButton(
+                            onClick = { onToggleEntryFee?.invoke() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            if (player.entryFeePaid) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(WinGreen, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Paid",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Empty circle for unpaid
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    } else {
+                        Surface(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .border(2.dp, Gold, CircleShape),
+                            shape = CircleShape,
+                            color = Color.Transparent
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
-                                    .background(WinGreen, CircleShape),
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
+                                        )
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "Paid",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
+                                Text(
+                                    text = player.name.take(1).uppercase(),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Empty circle for unpaid
-                            }
                         }
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                } else {
-                    Surface(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .border(2.dp, Gold, CircleShape),
-                        shape = CircleShape,
-                        color = Color.Transparent
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = player.name.take(1).uppercase(),
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = player.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Cream,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (tableHasEntryFee && player.status == "PLAYING") {
-                        Spacer(modifier = Modifier.height(2.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Entry Fee: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (player.entryFeePaid) WinGreen else LoseRed,
-                            fontWeight = FontWeight.Medium
+                            text = player.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Cream,
+                            fontWeight = FontWeight.Bold
                         )
-                    } else {
+                        if (tableHasEntryFee && player.status == "PLAYING") {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Entry Fee: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (player.entryFeePaid) WinGreen else LoseRed,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
 
-                        Spacer(modifier = Modifier.height(4.dp))
-                        StatusBadge(status = player.status)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            StatusBadge(status = player.status)
+                        }
                     }
                 }
 

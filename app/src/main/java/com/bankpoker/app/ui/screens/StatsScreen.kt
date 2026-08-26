@@ -57,11 +57,14 @@ import com.bankpoker.app.viewmodel.StatsUiState
 import com.bankpoker.app.viewmodel.StatsViewModel
 import com.bankpoker.app.viewmodel.TableStats
 
+import androidx.compose.foundation.clickable
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(
     viewModel: StatsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val entryFeeDebtors by viewModel.unpaidEntryFeeDebtors.collectAsState(initial = emptyList())
@@ -98,7 +101,8 @@ fun StatsScreen(
                         title = "Biggest Winner",
                         name = uiState.biggestWinner!!.name,
                         value = "+${uiState.biggestWinner!!.netResult}",
-                        color = WinGreen
+                        color = WinGreen,
+                        onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.biggestWinner!!.name) } } else null
                     )
                 }
             }
@@ -109,7 +113,8 @@ fun StatsScreen(
                         title = "Most Active Player",
                         name = uiState.mostActive!!.name,
                         value = "${uiState.mostActive!!.gamesPlayed} games",
-                        color = Gold
+                        color = Gold,
+                        onClick = if (onPlayerClick != null) { { onPlayerClick(uiState.mostActive!!.name) } } else null
                     )
                 }
             }
@@ -154,8 +159,12 @@ fun StatsScreen(
             }
 
             items(uiState.playerStats) { stat ->
-                PlayerStatCard(stat = stat)
+                PlayerStatCard(
+                    stat = stat,
+                    onClick = if (onPlayerClick != null) { { onPlayerClick(stat.name) } } else null
+                )
             }
+
 
             item {
                 Text(
@@ -245,7 +254,8 @@ fun HighlightCard(
     title: String,
     name: String,
     value: String,
-    color: androidx.compose.ui.graphics.Color
+    color: androidx.compose.ui.graphics.Color,
+    onClick: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -254,7 +264,8 @@ fun HighlightCard(
                 width = 1.dp,
                 color = Gold.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(12.dp)
-            ),
+            )
+            .clickable(enabled = onClick != null) { onClick?.invoke() },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -290,7 +301,10 @@ fun HighlightCard(
 }
 
 @Composable
-fun PlayerStatCard(stat: PlayerStats) {
+fun PlayerStatCard(
+    stat: PlayerStats,
+    onClick: (() -> Unit)? = null
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -298,7 +312,8 @@ fun PlayerStatCard(stat: PlayerStats) {
                 width = 1.dp,
                 color = Gold.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(12.dp)
-            ),
+            )
+            .clickable(enabled = onClick != null) { onClick?.invoke() },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -352,6 +367,7 @@ fun PlayerStatCard(stat: PlayerStats) {
         }
     }
 }
+
 
 @Composable
 fun ClosedTableCard(stat: TableStats) {

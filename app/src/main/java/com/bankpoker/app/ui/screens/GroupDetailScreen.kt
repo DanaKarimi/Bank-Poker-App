@@ -44,8 +44,10 @@ import java.util.UUID
 fun GroupDetailScreen(
     viewModel: GroupDetailViewModel,
     onNavigateBack: () -> Unit,
-    onTableClick: (String) -> Unit
+    onTableClick: (String) -> Unit,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
+
     val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
@@ -234,8 +236,10 @@ fun GroupDetailScreen(
                             },
                             onMarkEntryFeePaid = { playerId ->
                                 viewModel.markEntryFeePaid(playerId)
-                            }
+                            },
+                            onPlayerClick = onPlayerClick
                         )
+
 
 
                     }
@@ -498,7 +502,8 @@ fun GroupStatsTab(
     entryFeeDebtors: List<UnpaidEntryFeeInfo> = emptyList(),
     entryFeeHistory: List<EntryFeeHistoryInfo> = emptyList(),
     onMarkPaid: (String, String, Long) -> Unit,
-    onMarkEntryFeePaid: (String) -> Unit = {}
+    onMarkEntryFeePaid: (String) -> Unit = {},
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
@@ -570,7 +575,10 @@ fun GroupStatsTab(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, WinGreen.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
+                        .border(1.dp, WinGreen.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable(enabled = onPlayerClick != null) {
+                            onPlayerClick?.invoke(biggestWinner.playerName)
+                        },
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = FeltCard)
                 ) {
@@ -604,7 +612,10 @@ fun GroupStatsTab(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, LoseRed.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
+                        .border(1.dp, LoseRed.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable(enabled = onPlayerClick != null) {
+                            onPlayerClick?.invoke(biggestDebtor.playerName)
+                        },
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = FeltCard)
                 ) {
@@ -631,6 +642,7 @@ fun GroupStatsTab(
                 }
             }
         }
+
 
         // Settlement plan
         item {

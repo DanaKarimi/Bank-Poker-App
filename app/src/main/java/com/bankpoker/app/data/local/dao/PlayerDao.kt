@@ -3,6 +3,7 @@ package com.bankpoker.app.data.local.dao
 import androidx.room.*
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.data.local.entity.Player
+import com.bankpoker.app.data.local.entity.PlayerGameHistory
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import kotlinx.coroutines.flow.Flow
 
@@ -122,7 +123,28 @@ interface PlayerDao {
         ORDER BY p.createdAt DESC
     """)
     fun getAllEntryFeeHistory(): Flow<List<EntryFeeHistoryInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.tableId AS tableId,
+            t.name AS tableName,
+            g.name AS groupName,
+            p.createdAt AS date,
+            COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.playerId = p.id), 0) AS totalBuyIn,
+            COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.playerId = p.id), 0) AS totalExit,
+            (COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.playerId = p.id), 0) - 
+             COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.playerId = p.id), 0)) AS netResult,
+            p.entryFeePaid AS entryFeePaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE TRIM(LOWER(p.name)) = TRIM(LOWER(:name))
+        ORDER BY p.createdAt DESC
+    """)
+    fun getPlayerGamesByName(name: String): Flow<List<PlayerGameHistory>>
 }
+
 
 
 

@@ -17,11 +17,15 @@ import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
+import com.bankpoker.app.data.local.entity.PlayerGameHistory
+import com.bankpoker.app.data.local.entity.PlayerProfileData
 import androidx.room.withTransaction
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
+
 
 class PokerRepository(
     private val pokerTableDao: PokerTableDao,
@@ -525,6 +529,37 @@ class PokerRepository(
         paymentDao.insertPayments(payments)
         groupBalanceDao.insertBalances(balances)
     }
+
+    // Player Profile operations
+    fun getPlayerProfile(name: String): Flow<PlayerProfileData> {
+        val trimmedName = name.trim()
+        return playerDao.getPlayerGamesByName(trimmedName).map { games ->
+            val tablesPlayed = games.size
+            val winsCount = games.count { it.netResult > 0 }
+            val lossesCount = games.count { it.netResult < 0 }
+            val breakEvenCount = games.count { it.netResult == 0L }
+            val netResult = games.sumOf { it.netResult }
+            val biggestWin = games.filter { it.netResult > 0 }.maxOfOrNull { it.netResult } ?: 0L
+            val biggestLoss = games.filter { it.netResult < 0 }.minOfOrNull { it.netResult } ?: 0L
+            val totalBuyIns = games.sumOf { it.totalBuyIn }
+            val entryFeesPaidCount = games.count { it.entryFeePaid }
+
+            PlayerProfileData(
+                playerName = trimmedName,
+                tablesPlayed = tablesPlayed,
+                winsCount = winsCount,
+                lossesCount = lossesCount,
+                breakEvenCount = breakEvenCount,
+                netResult = netResult,
+                biggestWin = biggestWin,
+                biggestLoss = biggestLoss,
+                totalBuyIns = totalBuyIns,
+                entryFeesPaidCount = entryFeesPaidCount,
+                games = games
+            )
+        }
+    }
 }
+
 
 
