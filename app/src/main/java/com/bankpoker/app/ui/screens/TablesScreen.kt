@@ -211,6 +211,41 @@ fun TablesScreen(
             CasinoWatermarks()
 
             Column(modifier = Modifier.fillMaxSize()) {
+                // Hero Summary Strip
+                if (tables.isNotEmpty()) {
+                    val activeCount = remember(tables) { tables.count { it.status == "ACTIVE" } }
+                    val closedCount = remember(tables) { tables.count { it.status == "CLOSED" } }
+                    val totalCount = tables.size
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        com.bankpoker.app.ui.components.StatCard(
+                            label = "ACTIVE",
+                            value = "$activeCount",
+                            valueColor = WinGreen,
+                            icon = "●",
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.bankpoker.app.ui.components.StatCard(
+                            label = "CLOSED",
+                            value = "$closedCount",
+                            valueColor = Amber80,
+                            icon = "✓",
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.bankpoker.app.ui.components.StatCard(
+                            label = "TOTAL",
+                            value = "$totalCount",
+                            valueColor = Cream,
+                            icon = "♠",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
 
                 if (tables.isNotEmpty()) {
                     OutlinedTextField(
@@ -218,7 +253,7 @@ fun TablesScreen(
                         onValueChange = { searchQuery = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                         placeholder = { Text("Search tables...", color = Cream.copy(alpha = 0.5f)) },
                         leadingIcon = {
                             Icon(
@@ -239,7 +274,7 @@ fun TablesScreen(
                             }
                         },
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Gold,
                             unfocusedBorderColor = Gold.copy(alpha = 0.4f),
@@ -277,6 +312,7 @@ fun TablesScreen(
                         )
                     }
                 }
+
 
                 if (tables.isEmpty()) {
                     Column(
@@ -338,7 +374,7 @@ fun TablesScreen(
 
 
     if (showCreateTableDialog) {
-        CreateTableDialog(
+        CreateTableBottomSheet(
             initialChipValue = lastChipValue,
             onDismiss = { showCreateTableDialog = false },
             onCreateTable = { name, chipValue ->
@@ -419,6 +455,8 @@ fun TableCard(
     onLongClick: () -> Unit,
     playerCount: Int
 ) {
+    val borderColor = if (table.status == "ACTIVE") WinGreen.copy(alpha = 0.8f) else Gold.copy(alpha = 0.6f)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -428,7 +466,7 @@ fun TableCard(
             )
             .border(
                 width = 1.5.dp,
-                color = Gold.copy(alpha = 0.7f),
+                color = borderColor,
                 shape = RoundedCornerShape(20.dp)
             )
             .animateContentSize(),
@@ -436,7 +474,7 @@ fun TableCard(
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
 
         Column(
@@ -451,14 +489,16 @@ fun TableCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        color = Gold.copy(alpha = 0.2f),
+                        color = if (table.status == "ACTIVE") WinGreen.copy(alpha = 0.2f) else Gold.copy(alpha = 0.2f),
                         shape = CircleShape,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier
+                            .size(44.dp)
+                            .border(1.dp, if (table.status == "ACTIVE") WinGreen.copy(alpha = 0.5f) else Gold.copy(alpha = 0.5f), CircleShape)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = "♠",
-                                color = Gold,
+                                color = if (table.status == "ACTIVE") WinGreen else Gold,
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -477,6 +517,23 @@ fun TableCard(
             
             Spacer(modifier = Modifier.height(12.dp))
             
+            // Created / Closed date
+            Text(
+                text = "Created: ${formatTimestamp(table.createdAt)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f)
+            )
+            
+            if (table.closedAt != null) {
+                Text(
+                    text = "Closed: ${formatTimestamp(table.closedAt!!)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Cream.copy(alpha = 0.5f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             // Chip value
             if (table.chipValue != null) {
                 Row(
@@ -590,8 +647,9 @@ fun StatusBadge(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateTableDialog(
+fun CreateTableBottomSheet(
     initialChipValue: Long?,
     onDismiss: () -> Unit,
     onCreateTable: (String, Long?) -> Unit
@@ -601,69 +659,142 @@ fun CreateTableDialog(
         mutableStateOf(initialChipValue?.toString() ?: "") 
     }
     var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    AlertDialog(
+    val chipPresets = listOf(5L, 10L, 25L, 50L, 100L)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Create New Table", color = Gold, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = tableName,
-                    onValueChange = { tableName = it },
-                    label = { Text("Table Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold
-                    )
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            com.bankpoker.app.ui.components.SectionHeader(title = "NEW POKER TABLE", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = tableName,
+                onValueChange = { 
+                    tableName = it
+                    if (error != null) error = null
+                },
+                label = { Text("Table Name", color = Cream.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. High Rollers Table", color = Cream.copy(alpha = 0.4f)) },
+                singleLine = true,
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
                 )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = chipValue,
-                    onValueChange = { chipValue = it.filter { c -> c.isDigit() } },
-                    label = { Text("Chip Value (optional)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold
-                    )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Chip Value Selector
+            Text(
+                text = "DEFAULT CHIP VALUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                chipPresets.forEach { preset ->
+                    val isSelected = chipValue == preset.toString()
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) Gold else Gold.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable {
+                                chipValue = if (isSelected) "" else preset.toString()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) Gold.copy(alpha = 0.25f) else FeltBackground
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$$preset",
+                                color = if (isSelected) Gold else Cream,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = chipValue,
+                onValueChange = { chipValue = it.filter { c -> c.isDigit() } },
+                label = { Text("Custom Chip Value (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            com.bankpoker.app.ui.components.GoldGradientButton(
+                text = "CREATE TABLE",
                 onClick = {
                     if (tableName.isBlank()) {
                         error = "Table name is required"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     val chipValueLong = chipValue.toLongOrNull()
                     onCreateTable(tableName.trim(), chipValueLong)
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-            ) {
-                Text("Create", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
-            }
+                }
+            )
         }
-    )
+    }
 }

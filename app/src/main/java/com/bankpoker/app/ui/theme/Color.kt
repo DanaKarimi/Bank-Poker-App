@@ -20,6 +20,9 @@ val Gold = Color(0xFFD4AF37)
 val Cream = Color(0xFFF5F0E1)
 val WinGreen = Color(0xFF81C784)
 val LoseRed = Color(0xFFE57373)
+val Silver = Color(0xFFC0C0C0)
+val Bronze = Color(0xFFCD7F32)
+
 
 
 val AvatarColors = listOf(

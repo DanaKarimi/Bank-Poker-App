@@ -56,6 +56,7 @@ import com.bankpoker.app.viewmodel.PlayerStats
 import com.bankpoker.app.viewmodel.StatsUiState
 import com.bankpoker.app.viewmodel.StatsViewModel
 import com.bankpoker.app.viewmodel.TableStats
+import com.bankpoker.app.ui.components.SectionHeader
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
@@ -147,13 +148,7 @@ fun StatsScreen(
                 }
 
                 item {
-                    Text(
-                        text = "ENTRY FEE DEBTORS",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
-                    )
+                    SectionHeader(title = "ENTRY FEE DEBTORS", suit = "♦")
                 }
 
                 if (entryFeeDebtors.isEmpty()) {
@@ -175,13 +170,7 @@ fun StatsScreen(
                 }
 
                 item {
-                    Text(
-                        text = "PLAYER HISTORY",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
-                    )
+                    SectionHeader(title = "PLAYER HISTORY", suit = "♠")
                 }
 
                 items(uiState.playerStats) { stat ->
@@ -192,13 +181,7 @@ fun StatsScreen(
                 }
 
                 item {
-                    Text(
-                        text = "CLOSED TABLES",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
-                    )
+                    SectionHeader(title = "CLOSED TABLES", suit = "♣")
                 }
 
                 if (uiState.closedTableStats.isEmpty()) {

@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bankpoker.app.ui.components.SectionHeader
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.PlayerProfileViewModel
 
@@ -210,14 +211,7 @@ fun PlayerProfileScreen(
 
                 // Recent Games Section Title
                 item {
-                    Text(
-                        text = "RECENT GAMES",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                    SectionHeader(title = "RECENT GAMES", suit = "♠")
                 }
 
                 // Recent Games List

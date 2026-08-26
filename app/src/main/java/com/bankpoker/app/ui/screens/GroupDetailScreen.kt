@@ -41,6 +41,8 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
+import com.bankpoker.app.ui.components.GoldGradientButton
+import com.bankpoker.app.ui.components.SectionHeader
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -63,7 +65,7 @@ fun GroupDetailScreen(
     val entryFeeDebtors by viewModel.entryFeeDebtors.collectAsState(initial = emptyList())
     val entryFeeHistory by viewModel.entryFeeHistory.collectAsState(initial = emptyList())
 
-    var showCreateTableDialog by remember { mutableStateOf(false) }
+    var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -161,7 +163,7 @@ fun GroupDetailScreen(
         floatingActionButton = {
             if (selectedTab == 0) {
                 FloatingActionButton(
-                    onClick = { showCreateTableDialog = true },
+                    onClick = { showCreateTableSheet = true },
                     modifier = Modifier.shadow(12.dp, CircleShape),
                     containerColor = Gold,
                     contentColor = Color.Black
@@ -250,12 +252,12 @@ fun GroupDetailScreen(
         }
     }
 
-    if (showCreateTableDialog) {
-        CreateTableDialog(
-            onDismiss = { showCreateTableDialog = false },
+    if (showCreateTableSheet) {
+        CreateTableBottomSheet(
+            onDismiss = { showCreateTableSheet = false },
             onCreateTable = { name, chipValue, hasEntryFee, entryFee ->
                 viewModel.createTable(name, chipValue, hasEntryFee, entryFee)
-                showCreateTableDialog = false
+                showCreateTableSheet = false
             }
         )
     }
@@ -1177,8 +1179,9 @@ fun PaymentCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateTableDialog(
+fun CreateTableBottomSheet(
     onDismiss: () -> Unit,
     onCreateTable: (String, Long?, Boolean, Long?) -> Unit
 ) {
@@ -1187,112 +1190,190 @@ fun CreateTableDialog(
     var hasEntryFee by remember { mutableStateOf(false) }
     var entryFeeAmount by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    AlertDialog(
+    val chipPresets = listOf(5L, 10L, 25L, 50L, 100L)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Create Table", color = Gold, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                // Entry fee toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Entry Fee?",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Cream
-                    )
-                    Switch(
-                        checked = hasEntryFee,
-                        onCheckedChange = { hasEntryFee = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Gold,
-                            checkedTrackColor = Gold.copy(alpha = 0.5f),
-                            uncheckedThumbColor = Cream.copy(alpha = 0.5f),
-                            uncheckedTrackColor = Gold.copy(alpha = 0.2f)
-                        )
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = tableName,
-                    onValueChange = { tableName = it },
-                    label = { Text("Table Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold
-                    )
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = chipValue,
-                    onValueChange = { chipValue = it.filter { c -> c.isDigit() } },
-                    label = { Text("Chip Value (optional)") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold
-                    )
-                )
-                
-                if (hasEntryFee) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = entryFeeAmount,
-                        onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
-                        label = { Text("Entry fee amount") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                            focusedLabelColor = Gold,
-                            cursorColor = Gold
-                        )
-                    )
-                }
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "NEW GROUP TABLE", suit = "♠")
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = tableName,
+                onValueChange = { 
+                    tableName = it
+                    if (error != null) error = null
+                },
+                label = { Text("Table Name", color = Cream.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. Friday Game #1", color = Cream.copy(alpha = 0.4f)) },
+                singleLine = true,
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
+                )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Chip presets
+            Text(
+                text = "CHIP VALUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                chipPresets.forEach { preset ->
+                    val isSelected = chipValue == preset.toString()
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) Gold else Gold.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable {
+                                chipValue = if (isSelected) "" else preset.toString()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) Gold.copy(alpha = 0.25f) else FeltBackground
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$$preset",
+                                color = if (isSelected) Gold else Cream,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Entry Fee Toggle Row
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Entry Fee",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Cream,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Require entry fee for this game",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(
+                            checked = hasEntryFee,
+                            onCheckedChange = { hasEntryFee = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Gold,
+                                checkedTrackColor = Gold.copy(alpha = 0.5f),
+                                uncheckedThumbColor = Cream.copy(alpha = 0.5f),
+                                uncheckedTrackColor = Gold.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+
+                    if (hasEntryFee) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = entryFeeAmount,
+                            onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
+                            label = { Text("Entry Fee Amount", color = Cream.copy(alpha = 0.7f)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                                focusedTextColor = Cream,
+                                unfocusedTextColor = Cream,
+                                cursorColor = Gold,
+                                focusedContainerColor = FeltCard,
+                                unfocusedContainerColor = FeltCard
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "CREATE TABLE",
                 onClick = {
                     if (tableName.isBlank()) {
                         error = "Table name is required"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     val chipValueLong = chipValue.toLongOrNull()
                     val entryFeeLong = if (hasEntryFee) {
                         entryFeeAmount.toLongOrNull() ?: chipValueLong ?: 0L
                     } else null
                     onCreateTable(tableName.trim(), chipValueLong, hasEntryFee, entryFeeLong)
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-            ) {
-                Text("Create", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
-            }
+                }
+            )
         }
-    )
+    }
 }
 
 @Composable

@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import com.bankpoker.app.ui.components.ChipSelector
+import com.bankpoker.app.ui.components.GoldGradientButton
+import com.bankpoker.app.ui.components.SectionHeader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
@@ -64,6 +67,8 @@ import com.bankpoker.app.ui.theme.LoseRed
 import com.bankpoker.app.ui.theme.PokerChipAvatar
 import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.ui.theme.Silver
+import com.bankpoker.app.ui.theme.Bronze
 import com.bankpoker.app.viewmodel.TableDetailUiState
 import com.bankpoker.app.viewmodel.TableDetailViewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -211,7 +216,7 @@ fun TableDetailScreen(
     
     if (showAddPlayerDialog) {
         val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
-        AddPlayerDialog(
+        AddPlayerBottomSheet(
             onDismiss = { showAddPlayerDialog = false },
             onAddPlayer = { name ->
                 viewModel.addPlayer(name)
@@ -224,7 +229,7 @@ fun TableDetailScreen(
 
     if (showBuyInDialog && selectedPlayerForBuyIn != null) {
         val currentPlayer = selectedPlayerForBuyIn!!
-        BuyInDialog(
+        BuyInBottomSheet(
             playerName = currentPlayer.name,
             onDismiss = {
                 showBuyInDialog = false
@@ -245,9 +250,8 @@ fun TableDetailScreen(
 
     if (showExitDialog && selectedPlayerForExit != null) {
         val currentPlayer = selectedPlayerForExit!!
-        ExitDialog(
+        ExitBottomSheet(
             playerName = currentPlayer.name,
-            currentBalance = 0L, // Will be calculated in dialog
             onDismiss = {
                 showExitDialog = false
                 selectedPlayerForExit = null
@@ -640,14 +644,25 @@ fun PlayerCard(
     onToggleEntryFee: (() -> Unit)? = null,
     onPlayerClick: ((String) -> Unit)? = null
 ) {
-    val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
+    val rankBorderColor = when (rank) {
+        1 -> Gold
+        2 -> Silver
+        3 -> Bronze
+        else -> Gold.copy(alpha = 0.5f)
+    }
+    val rankElevation = when (rank) {
+        1 -> 10.dp
+        2 -> 8.dp
+        3 -> 6.dp
+        else -> 4.dp
+    }
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.5.dp,
-                color = Gold.copy(alpha = 0.7f),
+                width = if (rank in 1..3) 2.dp else 1.5.dp,
+                color = rankBorderColor,
                 shape = RoundedCornerShape(20.dp)
             )
             .animateContentSize(),
@@ -655,7 +670,7 @@ fun PlayerCard(
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = rankElevation)
     ) {
         Column(
             modifier = Modifier
@@ -674,18 +689,30 @@ fun PlayerCard(
                         },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(end = 10.dp)
-                    ) {
-                        Text(
-                            text = "#$rank",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            color = if (rank == 1) Color.Black else Gold,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                    if (rank > 0) {
+                        Surface(
+                            color = when (rank) {
+                                1 -> Gold
+                                2 -> Silver
+                                3 -> Bronze
+                                else -> Gold.copy(alpha = 0.15f)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(end = 10.dp)
+                        ) {
+                            Text(
+                                text = when (rank) {
+                                    1 -> "🥇 #1"
+                                    2 -> "🥈 #2"
+                                    3 -> "🥉 #3"
+                                    else -> "#$rank"
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                color = if (rank in 1..3) Color.Black else Gold,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     // Entry fee status indicator
@@ -1412,8 +1439,9 @@ fun PlayerResultCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddPlayerDialog(
+fun AddPlayerBottomSheet(
     onDismiss: () -> Unit,
     onAddPlayer: (String) -> Unit,
     savedNames: List<String> = emptyList(),
@@ -1421,89 +1449,133 @@ fun AddPlayerDialog(
 ) {
     var playerName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val suggestions = savedNames
         .filter { it.contains(playerName, ignoreCase = true) && it.trim() != playerName.trim() }
         .take(8)
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Player", color = Gold) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = playerName,
-                    onValueChange = { playerName = it },
-                    label = { Text("Player Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
-                    )
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "ADD PLAYER", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Live Chip-Style Avatar Preview
+            Text(
+                text = "AVATAR PREVIEW",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            PokerChipAvatar(
+                name = playerName.ifBlank { "?" },
+                size = 76.dp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = playerName,
+                onValueChange = { 
+                    playerName = it
+                    if (error != null) error = null
+                },
+                label = { Text("Player Name", color = Cream.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. DANA", color = Cream.copy(alpha = 0.4f)) },
+                singleLine = true,
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
                 )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                if (suggestions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Previous players:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        suggestions.forEach { name ->
-                            SuggestionChip(
-                                onClick = { playerName = name },
-                                label = { Text(name) }
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+            }
+
+            if (suggestions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Previous players:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Cream.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    suggestions.forEach { name ->
+                        SuggestionChip(
+                            onClick = { playerName = name },
+                            label = { Text(name, color = Cream) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = FeltBackground
+                            ),
+                            border = SuggestionChipDefaults.suggestionChipBorder(
+                                enabled = true,
+                                borderColor = Gold.copy(alpha = 0.4f)
                             )
-                        }
+                        )
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "ADD PLAYER",
                 onClick = {
                     val trimmed = playerName.trim()
                     if (trimmed.isBlank()) {
                         error = "Player name is required"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     if (existingNames.any { it.equals(trimmed, ignoreCase = true) }) {
                         error = "This player is already in the table"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onAddPlayer(trimmed.uppercase())
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BuyInDialog(
+fun BuyInBottomSheet(
     playerName: String,
     onDismiss: () -> Unit,
     onConfirm: (Long, String?) -> Unit,
@@ -1515,6 +1587,7 @@ fun BuyInDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var playerBuyIns by remember { mutableStateOf(0L) }
     var playerExits by remember { mutableStateOf(0L) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(playerId) {
         playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
@@ -1523,92 +1596,187 @@ fun BuyInDialog(
 
     val currentBal = playerBuyIns - playerExits
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Buy-in") },
-        text = {
-            Column {
-                Text(
-                    text = "Player: $playerName",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Current Balance: $currentBal chips",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text("Chip Amount") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "ADD BUY-IN: ${playerName.uppercase()}", suit = "♠")
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Player balance card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(200L, 400L, 600L, 800L).forEach { value ->
-                        SuggestionChip(
-                            onClick = { amount = value.toString() },
-                            label = { Text("+$value") }
+                    Column {
+                        Text(
+                            text = "PLAYER",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            text = playerName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Cream,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "CURRENT BALANCE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            text = "$currentBal chips",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Gold,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    singleLine = true
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Big Total Display
+            Text(
+                text = "TOTAL BUY-IN",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (amount.isNotBlank()) "$amount CHIPS" else "0 CHIPS",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Gold,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Poker Chip Selector
+            Text(
+                text = "TAP CHIPS TO ADD",
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.6f),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ChipSelector(
+                onAddAmount = { add ->
+                    val current = amount.toLongOrNull() ?: 0L
+                    amount = (current + add).toString()
+                    if (error != null) error = null
+                },
+                onRemoveLast = {
+                    val current = amount.toLongOrNull() ?: 0L
+                    val updated = maxOf(0L, current - 100L)
+                    amount = if (updated == 0L) "" else updated.toString()
+                },
+                onClear = {
+                    amount = ""
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { 
+                    amount = it.filter { c -> c.isDigit() }
+                    if (error != null) error = null
+                },
+                label = { Text("Custom Amount", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "CONFIRM BUY-IN",
                 onClick = {
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong <= 0) {
                         error = "Amount must be greater than zero"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onConfirm(amountLong, note.ifBlank { null })
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExitDialog(
+fun ExitBottomSheet(
     playerName: String,
-    currentBalance: Long,
     onDismiss: () -> Unit,
     onConfirm: (Long, String?) -> Unit,
     viewModel: TableDetailViewModel,
@@ -1619,6 +1787,7 @@ fun ExitDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var playerBuyIns by remember { mutableStateOf(0L) }
     var playerExits by remember { mutableStateOf(0L) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
     LaunchedEffect(playerId) {
         playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
@@ -1626,93 +1795,182 @@ fun ExitDialog(
     }
     
     val currentBal = playerBuyIns - playerExits
-    
-    AlertDialog(
+    val exitAmountNum = amount.toLongOrNull() ?: 0L
+    val simulatedNet = (playerExits + exitAmountNum) - playerBuyIns
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Record Exit") },
-        text = {
-            Column {
-                Text(
-                    text = "Player: $playerName",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Current Balance: $currentBal chips",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                Text(
-                    text = "Note: Exit amount can be different from balance",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Amber80.copy(alpha = 0.8f),
-                    fontStyle = FontStyle.Italic
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text("Exit Chip Amount") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "RECORD EXIT: ${playerName.uppercase()}", suit = "♠")
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Player career & exit summary card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp)
                 ) {
-                    listOf(200L, 400L, 600L, 800L).forEach { value ->
-                        SuggestionChip(
-                            onClick = { amount = value.toString() },
-                            label = { Text("+$value") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Total Buy-ins: $playerBuyIns",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "Previous Exits: $playerExits",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.7f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Current Chips: $currentBal",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Gold,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Net: ${if (simulatedNet >= 0) "+" else ""}$simulatedNet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (simulatedNet >= 0) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    singleLine = true
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Big Exit Display
+            Text(
+                text = "EXIT AMOUNT",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (amount.isNotBlank()) "$amount CHIPS" else "0 CHIPS",
+                style = MaterialTheme.typography.headlineMedium,
+                color = if (simulatedNet >= 0) WinGreen else LoseRed,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Chip Selector for exit
+            ChipSelector(
+                onAddAmount = { add ->
+                    val current = amount.toLongOrNull() ?: 0L
+                    amount = (current + add).toString()
+                    if (error != null) error = null
+                },
+                onRemoveLast = {
+                    val current = amount.toLongOrNull() ?: 0L
+                    val updated = maxOf(0L, current - 100L)
+                    amount = if (updated == 0L) "" else updated.toString()
+                },
+                onClear = {
+                    amount = ""
+                }
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { 
+                    amount = it.filter { c -> c.isDigit() }
+                    if (error != null) error = null
+                },
+                label = { Text("Exit Chip Amount", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "SAVE EXIT",
                 onClick = {
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong < 0) {
                         error = "Amount must be zero or positive"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onConfirm(amountLong, note.ifBlank { null })
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Save Exit")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
 fun formatAmount(chips: Long, chipValue: Long?): String {

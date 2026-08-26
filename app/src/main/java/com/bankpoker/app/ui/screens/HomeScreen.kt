@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -136,48 +137,84 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Title
-                Text(
-                    text = "♠",
-                    fontSize = 80.sp,
-                    color = Gold.copy(alpha = 0.8f)
-                )
+                // Hero Header
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Gold.copy(alpha = 0.25f), Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "♠",
+                        fontSize = 72.sp,
+                        color = Gold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(4.dp))
+                
                 Text(
                     text = "BANK POKER",
                     style = MaterialTheme.typography.displaySmall,
                     color = Cream,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 4.sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Card suits row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "♠", color = Gold, fontSize = 16.sp)
+                    Text(text = "♥", color = LoseRed, fontSize = 16.sp)
+                    Text(text = "♦", color = LoseRed, fontSize = 16.sp)
+                    Text(text = "♣", color = Gold, fontSize = 16.sp)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Box(
                     modifier = Modifier
                         .width(48.dp)
                         .height(2.5.dp)
                         .background(Gold, RoundedCornerShape(2.dp))
                 )
-                Spacer(modifier = Modifier.height(48.dp))
 
-                // Quick Table Card
-                HomeOptionCard(
-                    title = "QUICK TABLE",
-                    subtitle = "Start a one-time game",
-                    onClick = onQuickTableClick
-                )
+                Spacer(modifier = Modifier.height(40.dp))
 
-                Spacer(modifier = Modifier.height(16.dp))
+                // Two Side-By-Side Mode Cards
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    HomeOptionCard(
+                        title = "QUICK\nTABLE",
+                        subtitle = "Instant game",
+                        icon = "♠",
+                        onClick = onQuickTableClick,
+                        modifier = Modifier.weight(1f)
+                    )
 
-                // Groups Card
-                HomeOptionCard(
-                    title = "GROUPS",
-                    subtitle = "Manage your poker circles",
-                    onClick = onGroupsClick
-                )
+                    HomeOptionCard(
+                        title = "POKER\nGROUPS",
+                        subtitle = "Circle stats",
+                        icon = "👥",
+                        onClick = onGroupsClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
@@ -219,18 +256,21 @@ fun HomeScreen(
 fun HomeOptionCard(
     title: String,
     subtitle: String,
-    onClick: () -> Unit
+    icon: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .height(210.dp)
             .border(
                 width = 1.5.dp,
-                color = Gold.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(20.dp)
+                color = Gold.copy(alpha = 0.75f),
+                shape = RoundedCornerShape(22.dp)
             )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
@@ -238,31 +278,57 @@ fun HomeOptionCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = Cream,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
-                    .width(28.dp)
-                    .height(2.dp)
-                    .background(Gold.copy(alpha = 0.8f), RoundedCornerShape(1.dp))
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+                    .size(54.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Gold.copy(alpha = 0.2f), Color.Transparent)
+                        ),
+                        shape = CircleShape
+                    )
+                    .border(1.dp, Gold.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = icon,
+                    fontSize = 26.sp,
+                    color = Gold,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Cream,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 22.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(24.dp)
+                        .height(2.dp)
+                        .background(Gold.copy(alpha = 0.8f), RoundedCornerShape(1.dp))
+                )
+            }
+
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Cream.copy(alpha = 0.75f)
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.7f)
             )
         }
     }
 }
+
 
