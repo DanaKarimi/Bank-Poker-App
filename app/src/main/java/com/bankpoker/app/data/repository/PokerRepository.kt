@@ -165,9 +165,12 @@ class PokerRepository(
 
     fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>> = playerDao.getUnpaidVoroodiDebtors()
 
+    fun getUnpaidVoroodiDebtorsByGroupId(groupId: String): Flow<List<UnpaidVoroodiInfo>> = playerDao.getUnpaidVoroodiDebtorsByGroupId(groupId)
+
     suspend fun markVoroodiPaid(playerId: String) {
         playerDao.updateEntryFeePaid(playerId, true)
     }
+
 
     // Group operations
 

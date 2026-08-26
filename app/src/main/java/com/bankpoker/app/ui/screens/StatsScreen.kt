@@ -127,13 +127,14 @@ fun StatsScreen(
             if (voroodiDebtors.isEmpty()) {
                 item {
                     Text(
-                        text = "No unpaid voroodi",
+                        text = "All voroodi collected!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = WinGreen,
                         fontWeight = FontWeight.Medium
                     )
                 }
             } else {
+
                 items(voroodiDebtors) { debtor ->
                     VoroodiDebtorCard(
                         debtor = debtor,
@@ -448,9 +449,9 @@ fun VoroodiDebtorCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 val subtitle = if (!debtor.groupName.isNullOrBlank()) {
-                    "${debtor.groupName} • ${debtor.tableName}"
+                    "${debtor.groupName} • Table: ${debtor.tableName}"
                 } else {
-                    debtor.tableName
+                    "Table: ${debtor.tableName}"
                 }
                 Text(
                     text = subtitle,
@@ -470,7 +471,7 @@ fun VoroodiDebtorCard(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "${debtor.amount} chips",
+                    text = "Voroodi: ${debtor.amount}",
                     style = MaterialTheme.typography.titleMedium,
                     color = LoseRed,
                     fontWeight = FontWeight.Bold
@@ -481,7 +482,7 @@ fun VoroodiDebtorCard(
                     colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
                 ) {
                     Text(
-                        text = "PAID ✓",
+                        text = "MARK PAID",
                         fontWeight = FontWeight.Bold,
                         color = WinGreen
                     )
@@ -490,5 +491,6 @@ fun VoroodiDebtorCard(
         }
     }
 }
+
 
 

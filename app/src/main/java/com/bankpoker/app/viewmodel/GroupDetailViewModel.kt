@@ -7,6 +7,7 @@ import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import com.bankpoker.app.repository.PokerRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,14 @@ class GroupDetailViewModel(
     val tables: Flow<List<PokerTable>> = repository.getTablesByGroupId(groupId)
     val balances: Flow<List<GroupBalance>> = repository.getBalancesByGroupId(groupId)
     val payments: Flow<List<Payment>> = repository.getPaymentsByGroupId(groupId)
+    val voroodiDebtors: Flow<List<UnpaidVoroodiInfo>> = repository.getUnpaidVoroodiDebtorsByGroupId(groupId)
+
+    fun markVoroodiPaid(playerId: String) {
+        viewModelScope.launch {
+            repository.toggleEntryFee(playerId, true)
+        }
+    }
+
 
     init {
         viewModelScope.launch {

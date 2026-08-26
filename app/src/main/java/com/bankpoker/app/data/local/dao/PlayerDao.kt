@@ -60,5 +60,25 @@ interface PlayerDao {
         ORDER BY p.createdAt DESC
     """)
     fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.groupId = :groupId
+          AND t.hasEntryFee = 1 
+          AND p.entryFeePaid = 0 
+          AND (p.status = 'EXITED' OR t.status = 'CLOSED')
+        ORDER BY p.createdAt DESC
+    """)
+    fun getUnpaidVoroodiDebtorsByGroupId(groupId: String): Flow<List<UnpaidVoroodiInfo>>
 }
+
 

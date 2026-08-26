@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -46,6 +47,8 @@ fun GroupDetailScreen(
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val balances by viewModel.balances.collectAsState(initial = emptyList())
     val payments by viewModel.payments.collectAsState(initial = emptyList())
+    val voroodiDebtors by viewModel.voroodiDebtors.collectAsState(initial = emptyList())
+
 
     var showCreateTableDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -202,10 +205,15 @@ fun GroupDetailScreen(
                             tables = tables,
                             balances = balances,
                             payments = payments,
+                            voroodiDebtors = voroodiDebtors,
                             onMarkPaid = { from, to, amount ->
                                 viewModel.recordPayment(from, to, amount)
+                            },
+                            onMarkVoroodiPaid = { playerId ->
+                                viewModel.markVoroodiPaid(playerId)
                             }
                         )
+
                     }
                 }
             }
@@ -462,7 +470,9 @@ fun GroupStatsTab(
     tables: List<PokerTable>,
     balances: List<GroupBalance>,
     payments: List<Payment>,
-    onMarkPaid: (String, String, Long) -> Unit
+    voroodiDebtors: List<UnpaidVoroodiInfo> = emptyList(),
+    onMarkPaid: (String, String, Long) -> Unit,
+    onMarkVoroodiPaid: (String) -> Unit = {}
 ) {
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
@@ -523,6 +533,84 @@ fun GroupStatsTab(
                             style = MaterialTheme.typography.bodyMedium,
                             color = Cream.copy(alpha = 0.7f)
                         )
+                    }
+                }
+            }
+        }
+
+        // Voroodi Debtors
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "VOROODI DEBTORS",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (voroodiDebtors.isEmpty()) {
+                        Text(
+                            text = "All voroodi collected!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WinGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        voroodiDebtors.forEach { debtor ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = debtor.playerName,
+                                        color = Cream,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Table: ${debtor.tableName}",
+                                        color = Cream.copy(alpha = 0.7f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Voroodi: ${debtor.amount}",
+                                        color = LoseRed,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(
+                                        onClick = { onMarkVoroodiPaid(debtor.playerId) },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
+                                    ) {
+                                        Text(
+                                            text = "MARK PAID",
+                                            fontWeight = FontWeight.Bold,
+                                            color = WinGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -681,6 +769,7 @@ fun GroupStatsTab(
         }
     }
 }
+
 
 
 fun calculateGroupSettlement(balances: List<GroupBalance>): List<Settlement> {

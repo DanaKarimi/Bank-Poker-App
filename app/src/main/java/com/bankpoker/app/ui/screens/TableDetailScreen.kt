@@ -376,11 +376,13 @@ fun HorizontalPagerTabs(
                 players = players,
                 buyIns = buyIns,
                 exitRecords = exitRecords,
-                viewModel = viewModel
+                viewModel = viewModel,
+                tableHasEntryFee = tableHasEntryFee
             )
         }
     }
 }
+
 @Composable
 fun PlayersTab(
     players: List<Player>,
@@ -1033,7 +1035,8 @@ fun ResultsTab(
     players: List<Player>,
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
-    viewModel: TableDetailViewModel
+    viewModel: TableDetailViewModel,
+    tableHasEntryFee: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1120,7 +1123,7 @@ fun ResultsTab(
         
         // Player results
         items(playerResults) { result ->
-            PlayerResultCard(result = result)
+            PlayerResultCard(result = result, tableHasEntryFee = tableHasEntryFee)
         }
         
         // Smart settlement plan
@@ -1147,7 +1150,8 @@ data class PlayerResult(
 
 @Composable
 fun PlayerResultCard(
-    result: PlayerResult
+    result: PlayerResult,
+    tableHasEntryFee: Boolean = false
 ) {
     val resultLabel = when {
         result.netResult > 0 -> "Creditor"
@@ -1180,13 +1184,26 @@ fun PlayerResultCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = result.player.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column {
+                    Text(
+                        text = result.player.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (tableHasEntryFee) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (result.player.entryFeePaid) "Voroodi: Paid" else "Voroodi: Unpaid",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.player.entryFeePaid) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
                 Surface(
                     color = resultColor,
                     shape = MaterialTheme.shapes.small
@@ -1199,6 +1216,7 @@ fun PlayerResultCard(
                     )
                 }
             }
+
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
