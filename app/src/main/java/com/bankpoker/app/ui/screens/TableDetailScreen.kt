@@ -1397,7 +1397,7 @@ fun BuyInDialog(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(20L, 50L, 100L, 200L).forEach { value ->
+                    listOf(200L, 400L, 600L, 800L).forEach { value ->
                         SuggestionChip(
                             onClick = { amount = value.toString() },
                             label = { Text("+$value") }
@@ -1507,7 +1507,7 @@ fun ExitDialog(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(20L, 50L, 100L, 200L).forEach { value ->
+                    listOf(200L, 400L, 600L, 800L).forEach { value ->
                         SuggestionChip(
                             onClick = { amount = value.toString() },
                             label = { Text("+$value") }
