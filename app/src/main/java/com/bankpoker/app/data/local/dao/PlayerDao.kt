@@ -1,8 +1,9 @@
 package com.bankpoker.app.data.local.dao
 
 import androidx.room.*
+import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.data.local.entity.Player
-import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
+import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -59,7 +60,7 @@ interface PlayerDao {
           AND (p.status = 'EXITED' OR t.status = 'CLOSED')
         ORDER BY p.createdAt DESC
     """)
-    fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>>
+    fun getUnpaidEntryFeeDebtors(): Flow<List<UnpaidEntryFeeInfo>>
 
     @Query("""
         SELECT 
@@ -78,7 +79,43 @@ interface PlayerDao {
           AND (p.status = 'EXITED' OR t.status = 'CLOSED')
         ORDER BY p.createdAt DESC
     """)
-    fun getUnpaidVoroodiDebtorsByGroupId(groupId: String): Flow<List<UnpaidVoroodiInfo>>
+    fun getUnpaidEntryFeeDebtorsByGroupId(groupId: String): Flow<List<UnpaidEntryFeeInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp,
+            p.entryFeePaid AS isPaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.groupId = :groupId
+          AND t.hasEntryFee = 1
+        ORDER BY p.createdAt DESC
+    """)
+    fun getEntryFeeHistoryByGroupId(groupId: String): Flow<List<EntryFeeHistoryInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp,
+            p.entryFeePaid AS isPaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.hasEntryFee = 1
+        ORDER BY p.createdAt DESC
+    """)
+    fun getAllEntryFeeHistory(): Flow<List<EntryFeeHistoryInfo>>
 }
+
 
 

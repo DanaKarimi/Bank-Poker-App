@@ -41,7 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
+import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.ui.theme.Amber80
 import com.bankpoker.app.ui.theme.AvatarColors
 import com.bankpoker.app.ui.theme.Cream
@@ -64,7 +64,7 @@ fun StatsScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val voroodiDebtors by viewModel.unpaidVoroodiDebtors.collectAsState(initial = emptyList())
+    val entryFeeDebtors by viewModel.unpaidEntryFeeDebtors.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -116,7 +116,7 @@ fun StatsScreen(
 
             item {
                 Text(
-                    text = "VOROODI DEBTORS",
+                    text = "ENTRY FEE DEBTORS",
                     style = MaterialTheme.typography.titleMedium,
                     color = Gold,
                     fontWeight = FontWeight.Bold,
@@ -124,10 +124,10 @@ fun StatsScreen(
                 )
             }
 
-            if (voroodiDebtors.isEmpty()) {
+            if (entryFeeDebtors.isEmpty()) {
                 item {
                     Text(
-                        text = "All voroodi collected!",
+                        text = "All entry fees collected!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = WinGreen,
                         fontWeight = FontWeight.Medium
@@ -135,13 +135,14 @@ fun StatsScreen(
                 }
             } else {
 
-                items(voroodiDebtors) { debtor ->
-                    VoroodiDebtorCard(
+                items(entryFeeDebtors) { debtor ->
+                    EntryFeeDebtorCard(
                         debtor = debtor,
-                        onMarkPaid = { viewModel.markVoroodiPaid(debtor.playerId) }
+                        onMarkPaid = { viewModel.markEntryFeePaid(debtor.playerId) }
                     )
                 }
             }
+
 
             item {
                 Text(
@@ -416,8 +417,8 @@ fun ClosedTableCard(stat: TableStats) {
 }
 
 @Composable
-fun VoroodiDebtorCard(
-    debtor: UnpaidVoroodiInfo,
+fun EntryFeeDebtorCard(
+    debtor: UnpaidEntryFeeInfo,
     onMarkPaid: () -> Unit
 ) {
     Card(
@@ -471,7 +472,7 @@ fun VoroodiDebtorCard(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Voroodi: ${debtor.amount}",
+                    text = "Entry Fee: ${debtor.amount}",
                     style = MaterialTheme.typography.titleMedium,
                     color = LoseRed,
                     fontWeight = FontWeight.Bold
@@ -491,6 +492,7 @@ fun VoroodiDebtorCard(
         }
     }
 }
+
 
 
 

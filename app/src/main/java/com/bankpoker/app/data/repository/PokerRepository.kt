@@ -14,7 +14,8 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
-import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
+import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
+import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -163,13 +164,18 @@ class PokerRepository(
         playerDao.updateEntryFeePaid(playerId, paid)
     }
 
-    fun getUnpaidVoroodiDebtors(): Flow<List<UnpaidVoroodiInfo>> = playerDao.getUnpaidVoroodiDebtors()
+    fun getUnpaidEntryFeeDebtors(): Flow<List<UnpaidEntryFeeInfo>> = playerDao.getUnpaidEntryFeeDebtors()
 
-    fun getUnpaidVoroodiDebtorsByGroupId(groupId: String): Flow<List<UnpaidVoroodiInfo>> = playerDao.getUnpaidVoroodiDebtorsByGroupId(groupId)
+    fun getUnpaidEntryFeeDebtorsByGroupId(groupId: String): Flow<List<UnpaidEntryFeeInfo>> = playerDao.getUnpaidEntryFeeDebtorsByGroupId(groupId)
 
-    suspend fun markVoroodiPaid(playerId: String) {
+    fun getEntryFeeHistoryByGroupId(groupId: String): Flow<List<EntryFeeHistoryInfo>> = playerDao.getEntryFeeHistoryByGroupId(groupId)
+
+    fun getAllEntryFeeHistory(): Flow<List<EntryFeeHistoryInfo>> = playerDao.getAllEntryFeeHistory()
+
+    suspend fun markEntryFeePaid(playerId: String) {
         playerDao.updateEntryFeePaid(playerId, true)
     }
+
 
 
     // Group operations

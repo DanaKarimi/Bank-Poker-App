@@ -30,7 +30,8 @@ import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
-import com.bankpoker.app.data.local.entity.UnpaidVoroodiInfo
+import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
+import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -47,7 +48,9 @@ fun GroupDetailScreen(
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val balances by viewModel.balances.collectAsState(initial = emptyList())
     val payments by viewModel.payments.collectAsState(initial = emptyList())
-    val voroodiDebtors by viewModel.voroodiDebtors.collectAsState(initial = emptyList())
+    val entryFeeDebtors by viewModel.entryFeeDebtors.collectAsState(initial = emptyList())
+    val entryFeeHistory by viewModel.entryFeeHistory.collectAsState(initial = emptyList())
+
 
 
     var showCreateTableDialog by remember { mutableStateOf(false) }
@@ -205,14 +208,16 @@ fun GroupDetailScreen(
                             tables = tables,
                             balances = balances,
                             payments = payments,
-                            voroodiDebtors = voroodiDebtors,
+                            entryFeeDebtors = entryFeeDebtors,
+                            entryFeeHistory = entryFeeHistory,
                             onMarkPaid = { from, to, amount ->
                                 viewModel.recordPayment(from, to, amount)
                             },
-                            onMarkVoroodiPaid = { playerId ->
-                                viewModel.markVoroodiPaid(playerId)
+                            onMarkEntryFeePaid = { playerId ->
+                                viewModel.markEntryFeePaid(playerId)
                             }
                         )
+
 
                     }
                 }
@@ -370,12 +375,13 @@ fun TableCardSimple(
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                text = "VOROODI",
+                                text = "ENTRY FEE",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Gold,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
+
                         }
                     }
                     StatusBadge(status = table.status)
@@ -470,9 +476,10 @@ fun GroupStatsTab(
     tables: List<PokerTable>,
     balances: List<GroupBalance>,
     payments: List<Payment>,
-    voroodiDebtors: List<UnpaidVoroodiInfo> = emptyList(),
+    entryFeeDebtors: List<UnpaidEntryFeeInfo> = emptyList(),
+    entryFeeHistory: List<EntryFeeHistoryInfo> = emptyList(),
     onMarkPaid: (String, String, Long) -> Unit,
-    onMarkVoroodiPaid: (String) -> Unit = {}
+    onMarkEntryFeePaid: (String) -> Unit = {}
 ) {
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
@@ -533,84 +540,6 @@ fun GroupStatsTab(
                             style = MaterialTheme.typography.bodyMedium,
                             color = Cream.copy(alpha = 0.7f)
                         )
-                    }
-                }
-            }
-        }
-
-        // Voroodi Debtors
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "VOROODI DEBTORS",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (voroodiDebtors.isEmpty()) {
-                        Text(
-                            text = "All voroodi collected!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = WinGreen,
-                            fontWeight = FontWeight.Medium
-                        )
-                    } else {
-                        voroodiDebtors.forEach { debtor ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = debtor.playerName,
-                                        color = Cream,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Table: ${debtor.tableName}",
-                                        color = Cream.copy(alpha = 0.7f),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Voroodi: ${debtor.amount}",
-                                        color = LoseRed,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    TextButton(
-                                        onClick = { onMarkVoroodiPaid(debtor.playerId) },
-                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                    ) {
-                                        Text(
-                                            text = "MARK PAID",
-                                            fontWeight = FontWeight.Bold,
-                                            color = WinGreen
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -767,12 +696,271 @@ fun GroupStatsTab(
                 }
             }
         }
+
+        // Settlement History
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "SETTLEMENT HISTORY",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (payments.isEmpty()) {
+                        Text(
+                            text = "No settlements yet",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        payments.forEach { payment ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = payment.fromPlayer,
+                                            color = Cream,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = " → ",
+                                            color = Gold,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = payment.toPlayer,
+                                            color = Cream,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = formatTimestamp(payment.createdAt),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Cream.copy(alpha = 0.4f)
+                                    )
+                                }
+                                Text(
+                                    text = "Amount: ${payment.amount}",
+                                    color = Gold,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Entry Fee Debtors
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "ENTRY FEE DEBTORS",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (entryFeeDebtors.isEmpty()) {
+                        Text(
+                            text = "All entry fees collected!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WinGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        entryFeeDebtors.forEach { debtor ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = debtor.playerName,
+                                        color = Cream,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Table: ${debtor.tableName}",
+                                        color = Cream.copy(alpha = 0.7f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Entry Fee: ${debtor.amount}",
+                                        color = LoseRed,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(
+                                        onClick = { onMarkEntryFeePaid(debtor.playerId) },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
+                                    ) {
+                                        Text(
+                                            text = "MARK PAID",
+                                            fontWeight = FontWeight.Bold,
+                                            color = WinGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Entry Fee History
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "ENTRY FEE HISTORY",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (entryFeeHistory.isEmpty()) {
+                        Text(
+                            text = "No entry fees in this group",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        entryFeeHistory.forEach { entry ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = entry.playerName,
+                                        color = Cream,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Table: ${entry.tableName}",
+                                        color = Cream.copy(alpha = 0.7f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = formatTimestamp(entry.timestamp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Cream.copy(alpha = 0.4f)
+                                    )
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "Entry Fee: ${entry.amount}",
+                                        color = Gold,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    if (entry.isPaid) {
+                                        Text(
+                                            text = "Paid ✓",
+                                            color = WinGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    } else {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "Unpaid ✗",
+                                                color = LoseRed,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            TextButton(
+                                                onClick = { onMarkEntryFeePaid(entry.playerId) },
+                                                colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
+                                            ) {
+                                                Text(
+                                                    text = "MARK PAID",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = WinGreen
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-
-
 fun calculateGroupSettlement(balances: List<GroupBalance>): List<Settlement> {
+
     val debtors = mutableListOf<Pair<String, Long>>()
     val creditors = mutableListOf<Pair<String, Long>>()
     
@@ -904,14 +1092,14 @@ fun CreateTableDialog(
         title = { Text("Create Table", color = Gold, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                // Voroodi toggle
+                // Entry fee toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Voroodi (Entry Fee)?",
+                        text = "Entry Fee?",
                         style = MaterialTheme.typography.bodyLarge,
                         color = Cream
                     )
@@ -967,7 +1155,7 @@ fun CreateTableDialog(
                     OutlinedTextField(
                         value = entryFeeAmount,
                         onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
-                        label = { Text("Voroodi amount") },
+                        label = { Text("Entry fee amount") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Gold,
@@ -977,6 +1165,7 @@ fun CreateTableDialog(
                         )
                     )
                 }
+
             }
         },
         confirmButton = {

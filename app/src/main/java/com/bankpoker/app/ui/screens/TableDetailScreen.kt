@@ -597,12 +597,13 @@ fun PlayerCard(
                     if (tableHasEntryFee && player.status == "PLAYING") {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Voroodi: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
+                            text = "Entry Fee: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (player.entryFeePaid) WinGreen else LoseRed,
                             fontWeight = FontWeight.Medium
                         )
                     } else {
+
                         Spacer(modifier = Modifier.height(4.dp))
                         StatusBadge(status = player.status)
                     }
@@ -1197,12 +1198,13 @@ fun PlayerResultCard(
                     if (tableHasEntryFee) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (result.player.entryFeePaid) "Voroodi: Paid" else "Voroodi: Unpaid",
+                            text = if (result.player.entryFeePaid) "Entry Fee: Paid" else "Entry Fee: Unpaid",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (result.player.entryFeePaid) WinGreen else LoseRed,
                             fontWeight = FontWeight.Medium
                         )
                     }
+
                 }
                 Surface(
                     color = resultColor,

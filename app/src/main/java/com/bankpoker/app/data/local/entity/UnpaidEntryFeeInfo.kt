@@ -1,6 +1,6 @@
 ﻿package com.bankpoker.app.data.local.entity
 
-data class UnpaidVoroodiInfo(
+data class UnpaidEntryFeeInfo(
     val playerId: String,
     val playerName: String,
     val tableName: String,
