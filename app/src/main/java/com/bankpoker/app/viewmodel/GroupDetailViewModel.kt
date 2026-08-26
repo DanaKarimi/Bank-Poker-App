@@ -32,6 +32,22 @@ class GroupDetailViewModel(
         }
     }
 
+    fun updateGroupName(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            repository.updateGroupName(groupId, trimmed)
+            _group.value = _group.value?.copy(name = trimmed)
+        }
+    }
+
+    fun deleteGroup() {
+        viewModelScope.launch {
+            repository.deleteGroupCascade(groupId)
+        }
+    }
+
+
     fun createTable(name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
         viewModelScope.launch {
             repository.createTable(

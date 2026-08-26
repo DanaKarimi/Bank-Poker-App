@@ -11,4 +11,8 @@ interface PaymentDao {
 
     @Insert
     suspend fun insertPayment(payment: Payment)
+
+    @Query("DELETE FROM payments WHERE groupId = :groupId")
+    suspend fun deletePaymentsByGroupId(groupId: String)
 }
+

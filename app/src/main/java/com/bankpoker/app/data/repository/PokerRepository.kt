@@ -205,6 +205,23 @@ class PokerRepository(
         }
     }
 
+    suspend fun updateGroupName(groupId: String, newName: String) {
+        playerGroupDao.updateGroupName(groupId, newName)
+    }
+
+    suspend fun deleteGroupCascade(groupId: String) {
+        val tables = pokerTableDao.getTablesByGroupIdOnce(groupId)
+        for (table in tables) {
+            buyInDao.deleteBuyInsForTable(table.id)
+            exitRecordDao.deleteExitRecordsForTable(table.id)
+            playerDao.deletePlayersForTable(table.id)
+            pokerTableDao.deleteTable(table.id)
+        }
+        groupBalanceDao.deleteBalancesByGroupId(groupId)
+        paymentDao.deletePaymentsByGroupId(groupId)
+        playerGroupDao.deleteGroup(groupId)
+    }
+
     suspend fun recordPayment(groupId: String, fromPlayer: String, toPlayer: String, amount: Long) {
         paymentDao.insertPayment(
             Payment(UUID.randomUUID().toString(), groupId, fromPlayer, toPlayer, amount, System.currentTimeMillis())
@@ -215,3 +232,4 @@ class PokerRepository(
         if (to != null) groupBalanceDao.updateBalance(to.copy(balance = to.balance - amount))
     }
 }
+

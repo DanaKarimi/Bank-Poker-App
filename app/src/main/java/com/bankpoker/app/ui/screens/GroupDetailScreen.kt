@@ -12,10 +12,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -28,10 +33,6 @@ import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.ui.draw.rotate
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.filled.ArrowBack
-import kotlinx.coroutines.flow.collectLatest
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -47,6 +48,9 @@ fun GroupDetailScreen(
     val payments by viewModel.payments.collectAsState(initial = emptyList())
 
     var showCreateTableDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
     val pagerState = rememberPagerState(pageCount = { 3 })
 
@@ -76,6 +80,50 @@ fun GroupDetailScreen(
                             contentDescription = "Back",
                             tint = Gold,
                             modifier = Modifier.rotate(45f)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options",
+                            tint = Gold
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.background(FeltCard)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Edit Name", color = Cream) },
+                            onClick = {
+                                showMenu = false
+                                showEditDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = Gold
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete Group", color = LoseRed) },
+                            onClick = {
+                                showMenu = false
+                                showDeleteDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = LoseRed
+                                )
+                            }
                         )
                     }
                 },
@@ -173,7 +221,32 @@ fun GroupDetailScreen(
             }
         )
     }
+
+    if (showEditDialog) {
+        EditGroupNameDialog(
+            currentName = group?.name ?: "",
+            onDismiss = { showEditDialog = false },
+            onConfirm = { newName ->
+                viewModel.updateGroupName(newName)
+                showEditDialog = false
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        DeleteGroupDialog(
+            tablesCount = tables.size,
+            playersCount = balances.size,
+            onDismiss = { showDeleteDialog = false },
+            onConfirm = {
+                showDeleteDialog = false
+                viewModel.deleteGroup()
+                onNavigateBack()
+            }
+        )
+    }
 }
+
 
 
 
@@ -842,3 +915,103 @@ fun CreateTableDialog(
         }
     )
 }
+
+@Composable
+fun EditGroupNameDialog(
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(currentName) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        title = { Text("Edit Group Name", color = Gold, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        if (error != null) error = null
+                    },
+                    label = { Text("Group Name") },
+                    singleLine = true,
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedLabelColor = Gold,
+                        cursorColor = Gold,
+                        focusedTextColor = Cream,
+                        unfocusedTextColor = Cream
+                    )
+                )
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (name.isBlank()) {
+                        error = "Group name cannot be empty"
+                        return@TextButton
+                    }
+                    onConfirm(name.trim())
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
+            ) {
+                Text("Save", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Cream.copy(alpha = 0.7f))
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteGroupDialog(
+    tablesCount: Int,
+    playersCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        title = { Text("Delete Group?", color = LoseRed, fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                text = "This permanently deletes the group with its $tablesCount tables and $playersCount players. Cannot be undone.",
+                color = Cream,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = LoseRed)
+            ) {
+                Text("Delete", fontWeight = FontWeight.Bold, color = LoseRed)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Cream.copy(alpha = 0.7f))
+            }
+        }
+    )
+}
+
