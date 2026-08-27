@@ -72,6 +72,22 @@ class GroupDetailViewModel(
         }
     }
 
+    fun updateTable(tableId: String, name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
+        viewModelScope.launch {
+            repository.updateTable(tableId, name, chipValue, hasEntryFee, entryFee)
+        }
+    }
+
+    fun deleteTable(tableId: String) {
+        viewModelScope.launch {
+            repository.deleteTableCascade(tableId)
+        }
+    }
+
+    suspend fun getTableDetailsCount(tableId: String): Pair<Int, Int> {
+        return repository.getTableDetailsCount(tableId)
+    }
+
     fun recordPayment(fromPlayer: String, toPlayer: String, amount: Long) {
         viewModelScope.launch {
             repository.recordPayment(groupId, fromPlayer, toPlayer, amount)

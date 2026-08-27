@@ -163,11 +163,34 @@ class PokerRepository(
     suspend fun getAllBuyInsOnce(): List<BuyIn> = buyInDao.getAllBuyInsOnce()
     suspend fun getAllExitRecordsOnce(): List<ExitRecord> = exitRecordDao.getAllExitRecordsOnce()
 
+    suspend fun updateTable(tableId: String, name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
+        val existing = pokerTableDao.getTableById(tableId) ?: return
+        pokerTableDao.updateTable(
+            existing.copy(
+                name = name,
+                chipValue = chipValue,
+                hasEntryFee = hasEntryFee,
+                entryFee = if (hasEntryFee) entryFee else null
+            )
+        )
+    }
+
     suspend fun deleteTableAndRelatedData(tableId: String) {
         buyInDao.deleteBuyInsForTable(tableId)
         exitRecordDao.deleteExitRecordsForTable(tableId)
         playerDao.deletePlayersForTable(tableId)
         pokerTableDao.deleteTable(tableId)
+    }
+
+    suspend fun deleteTableCascade(tableId: String) {
+        deleteTableAndRelatedData(tableId)
+    }
+
+    suspend fun getTableDetailsCount(tableId: String): Pair<Int, Int> {
+        val playersCount = playerDao.getPlayersForTableOnce(tableId).size
+        val buyInsCount = buyInDao.getBuyInsByTableIdOnce(tableId).size
+        val exitsCount = exitRecordDao.getExitRecordsByTableIdOnce(tableId).size
+        return Pair(playersCount, buyInsCount + exitsCount)
     }
 
     suspend fun toggleEntryFee(playerId: String, paid: Boolean) {
