@@ -59,17 +59,32 @@ class TablesViewModel(
         _refreshTrigger.value += 1
     }
 
-    fun createTable(name: String, chipValue: Long?) {
+    fun createTable(name: String, chipValue: Long?, hasEntryFee: Boolean = false, entryFee: Long? = null) {
         viewModelScope.launch {
-            repository.createTable(name, chipValue)
+            repository.createTable(
+                name = name,
+                chipValue = chipValue,
+                hasEntryFee = hasEntryFee,
+                entryFee = entryFee
+            )
             _lastChipValue.value = chipValue
+        }
+    }
+
+    fun updateTable(tableId: String, name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
+        viewModelScope.launch {
+            repository.updateTable(tableId, name, chipValue, hasEntryFee, entryFee)
         }
     }
 
     fun deleteTable(tableId: String) {
         viewModelScope.launch {
-            repository.deleteTableAndRelatedData(tableId)
+            repository.deleteTableCascade(tableId)
         }
+    }
+
+    suspend fun getTableDetailsCount(tableId: String): Pair<Int, Int> {
+        return repository.getTableDetailsCount(tableId)
     }
 
     suspend fun exportBackup(): String = repository.exportBackupJson()

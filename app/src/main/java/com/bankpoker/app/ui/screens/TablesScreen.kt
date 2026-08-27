@@ -1,11 +1,14 @@
 package com.bankpoker.app.ui.screens
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -16,20 +19,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.ui.components.*
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.TablesViewModel
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.foundation.ExperimentalFoundationApi
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,8 +60,11 @@ fun TablesScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
     var showConfirmRestoreDialog by remember { mutableStateOf(false) }
-    var showCreateTableDialog by remember { mutableStateOf(false) }
+    var showCreateTableSheet by remember { mutableStateOf(false) }
+    var selectedTableForAction by remember { mutableStateOf<PokerTable?>(null) }
+    var selectedTableForEdit by remember { mutableStateOf<PokerTable?>(null) }
     var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
+    var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf("ALL") } // "ALL", "ACTIVE", "CLOSED"
 
@@ -183,7 +194,7 @@ fun TablesScreen(
         floatingActionButton = {
 
             FloatingActionButton(
-                onClick = { showCreateTableDialog = true },
+                onClick = { showCreateTableSheet = true },
                 modifier = Modifier.shadow(12.dp, CircleShape),
                 containerColor = Gold,
                 contentColor = Color.Black
@@ -223,21 +234,21 @@ fun TablesScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        com.bankpoker.app.ui.components.StatCard(
+                        StatCard(
                             label = "ACTIVE",
                             value = "$activeCount",
                             valueColor = WinGreen,
                             icon = "●",
                             modifier = Modifier.weight(1f)
                         )
-                        com.bankpoker.app.ui.components.StatCard(
+                        StatCard(
                             label = "CLOSED",
                             value = "$closedCount",
                             valueColor = Amber80,
                             icon = "✓",
                             modifier = Modifier.weight(1f)
                         )
-                        com.bankpoker.app.ui.components.StatCard(
+                        StatCard(
                             label = "TOTAL",
                             value = "$totalCount",
                             valueColor = Cream,
@@ -311,6 +322,20 @@ fun TablesScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+
+                    // Discoverability hint
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Text(
+                            text = "Hold a table for options",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.5f)
+                        )
+                    }
                 }
 
 
@@ -358,11 +383,11 @@ fun TablesScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(filteredTables) { table ->
+                        items(filteredTables, key = { it.id }) { table ->
                             TableCard(
                                 table = table,
                                 onClick = { onTableClick(table.id) },
-                                onLongClick = { selectedTableForDelete = table },
+                                onLongClick = { selectedTableForAction = table },
                                 playerCount = playerCounts[table.id] ?: 0
                             )
                         }
@@ -373,44 +398,57 @@ fun TablesScreen(
     }
 
 
-    if (showCreateTableDialog) {
+    if (showCreateTableSheet) {
         CreateTableBottomSheet(
             initialChipValue = lastChipValue,
-            onDismiss = { showCreateTableDialog = false },
-            onCreateTable = { name, chipValue ->
-                viewModel.createTable(name, chipValue)
-                showCreateTableDialog = false
+            onDismiss = { showCreateTableSheet = false },
+            onCreateTable = { name, chipValue, hasEntryFee, entryFee ->
+                viewModel.createTable(name, chipValue, hasEntryFee, entryFee)
+                showCreateTableSheet = false
             }
         )
     }
 
-    if (selectedTableForDelete != null) {
-        AlertDialog(
-            onDismissRequest = { selectedTableForDelete = null },
-            title = { Text("Delete Table?", color = Gold) },
-            text = { 
-                Text(
-                    "This will permanently delete '${selectedTableForDelete!!.name}' and ALL its players, buy-ins and exits. This cannot be undone.", 
-                    color = Cream 
-                ) 
+    selectedTableForAction?.let { table ->
+        TableActionBottomSheet(
+            table = table,
+            onDismiss = { selectedTableForAction = null },
+            onEditClick = {
+                val tableToEdit = table
+                selectedTableForAction = null
+                selectedTableForEdit = tableToEdit
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteTable(selectedTableForDelete!!.id)
-                        selectedTableForDelete = null
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Delete")
+            onDeleteClick = {
+                val tableToDelete = table
+                coroutineScope.launch {
+                    tableDeleteDetails = viewModel.getTableDetailsCount(tableToDelete.id)
+                    selectedTableForAction = null
+                    selectedTableForDelete = tableToDelete
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { selectedTableForDelete = null }) {
-                    Text("Cancel", color = Gold)
-                }
+            }
+        )
+    }
+
+    selectedTableForEdit?.let { table ->
+        EditTableBottomSheet(
+            table = table,
+            onDismiss = { selectedTableForEdit = null },
+            onConfirm = { name, chipValue, hasEntryFee, entryFee ->
+                viewModel.updateTable(table.id, name, chipValue, hasEntryFee, entryFee)
+                selectedTableForEdit = null
+            }
+        )
+    }
+
+    selectedTableForDelete?.let { table ->
+        DeleteTableConfirmDialog(
+            tableName = table.name,
+            playersCount = tableDeleteDetails.first,
+            recordsCount = tableDeleteDetails.second,
+            onDismiss = { selectedTableForDelete = null },
+            onConfirm = {
+                viewModel.deleteTable(table.id)
+                selectedTableForDelete = null
             }
         )
     }
@@ -448,6 +486,7 @@ fun TablesScreen(
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TableCard(
     table: PokerTable,
@@ -455,14 +494,33 @@ fun TableCard(
     onLongClick: () -> Unit,
     playerCount: Int
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = tween(150),
+        label = "tableCardScale"
+    )
+
     val borderColor = if (table.status == "ACTIVE") WinGreen.copy(alpha = 0.8f) else Gold.copy(alpha = 0.6f)
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(20.dp))
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
             )
             .border(
                 width = 1.5.dp,
@@ -512,7 +570,26 @@ fun TableCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                StatusBadge(status = table.status)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (table.hasEntryFee) {
+                        Surface(
+                            color = Gold.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "ENTRY FEE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Gold,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    StatusBadge(status = table.status)
+                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -591,59 +668,7 @@ fun TableCard(
                 color = statusColor,
                 letterSpacing = 1.sp
             )
-
-            // Long-press hint for active tables
-            if (table.status == "ACTIVE") {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Long-press to delete",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Cream.copy(alpha = 0.4f),
-                    fontStyle = FontStyle.Italic
-                )
-            }
         }
-    }
-}
-
-@Composable
-fun StatusBadge(
-    status: String,
-    modifier: Modifier = Modifier
-) {
-    val backgroundColor = when (status) {
-        "ACTIVE" -> WinGreen.copy(alpha = 0.15f)
-        "CLOSED" -> LoseRed.copy(alpha = 0.15f)
-        else -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
-    }
-    val textColor = when (status) {
-        "ACTIVE" -> WinGreen
-        "CLOSED" -> LoseRed
-        else -> MaterialTheme.colorScheme.onSecondary
-    }
-    val borderColor = when (status) {
-        "ACTIVE" -> WinGreen
-        "CLOSED" -> LoseRed
-        else -> MaterialTheme.colorScheme.secondary
-    }
-
-    Surface(
-        modifier = modifier.border(
-            width = 1.dp,
-            color = borderColor,
-            shape = RoundedCornerShape(6.dp)
-        ),
-        color = backgroundColor,
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(
-            text = status,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor,
-            letterSpacing = 1.sp,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 
@@ -652,12 +677,14 @@ fun StatusBadge(
 fun CreateTableBottomSheet(
     initialChipValue: Long?,
     onDismiss: () -> Unit,
-    onCreateTable: (String, Long?) -> Unit
+    onCreateTable: (String, Long?, Boolean, Long?) -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
     var chipValue by remember(initialChipValue) { 
         mutableStateOf(initialChipValue?.toString() ?: "") 
     }
+    var hasEntryFee by remember { mutableStateOf(false) }
+    var entryFeeAmount by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -677,7 +704,7 @@ fun CreateTableBottomSheet(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            com.bankpoker.app.ui.components.SectionHeader(title = "NEW POKER TABLE", suit = "♠")
+            SectionHeader(title = "NEW POKER TABLE", suit = "♠")
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -782,9 +809,73 @@ fun CreateTableBottomSheet(
                 )
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Entry Fee Toggle Row
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Entry Fee",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Cream,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Require entry fee for this game",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(
+                            checked = hasEntryFee,
+                            onCheckedChange = { hasEntryFee = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Gold,
+                                checkedTrackColor = Gold.copy(alpha = 0.5f),
+                                uncheckedThumbColor = Cream.copy(alpha = 0.5f),
+                                uncheckedTrackColor = Gold.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+
+                    if (hasEntryFee) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = entryFeeAmount,
+                            onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
+                            label = { Text("Entry Fee Amount", color = Cream.copy(alpha = 0.7f)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                                focusedTextColor = Cream,
+                                unfocusedTextColor = Cream,
+                                cursorColor = Gold,
+                                focusedContainerColor = FeltCard,
+                                unfocusedContainerColor = FeltCard
+                            )
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
-            com.bankpoker.app.ui.components.GoldGradientButton(
+            GoldGradientButton(
                 text = "CREATE TABLE",
                 onClick = {
                     if (tableName.isBlank()) {
@@ -792,7 +883,10 @@ fun CreateTableBottomSheet(
                         return@GoldGradientButton
                     }
                     val chipValueLong = chipValue.toLongOrNull()
-                    onCreateTable(tableName.trim(), chipValueLong)
+                    val entryFeeLong = if (hasEntryFee) {
+                        entryFeeAmount.toLongOrNull() ?: chipValueLong ?: 0L
+                    } else null
+                    onCreateTable(tableName.trim(), chipValueLong, hasEntryFee, entryFeeLong)
                 }
             )
         }
