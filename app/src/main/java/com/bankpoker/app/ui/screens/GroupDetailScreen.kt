@@ -40,9 +40,6 @@ import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
-import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
-import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
-import com.bankpoker.app.data.local.entity.SettlementRecord
 import com.bankpoker.app.ui.components.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,8 +71,6 @@ fun GroupDetailScreen(
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val balances by viewModel.balances.collectAsState(initial = emptyList())
-    val allSettlements by viewModel.settlements.collectAsState(initial = emptyList())
-    val unpaidSettlements by viewModel.unpaidSettlements.collectAsState(initial = emptyList())
 
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -123,17 +118,7 @@ fun GroupDetailScreen(
                     }
 
                     IconButton(onClick = {
-                        val shareSettlements = if (allSettlements.isNotEmpty()) {
-                            unpaidSettlements.map {
-                                Settlement(
-                                    fromPlayer = it.payerName,
-                                    toPlayer = it.receiverName,
-                                    amount = it.amount
-                                )
-                            }
-                        } else {
-                            calculateGroupSettlement(balances)
-                        }
+                        val shareSettlements = calculateGroupSettlement(balances)
                         val text = buildGroupShareResultsText(
                             groupName = group?.name ?: "Group",
                             balances = balances,
@@ -276,11 +261,6 @@ fun GroupDetailScreen(
                         2 -> GroupStatsTab(
                             tables = tables,
                             balances = balances,
-                            allSettlements = allSettlements,
-                            unpaidSettlements = unpaidSettlements,
-                            onMarkSettlementPaid = { settlementId ->
-                                viewModel.markSettlementPaid(settlementId)
-                            },
                             onRecordManualPayment = { payer, receiver, amount ->
                                 viewModel.recordManualPayment(payer, receiver, amount)
                             },
@@ -692,9 +672,6 @@ fun BalanceCard(
 fun GroupStatsTab(
     tables: List<PokerTable>,
     balances: List<GroupBalance>,
-    allSettlements: List<SettlementRecord> = emptyList(),
-    unpaidSettlements: List<SettlementRecord> = emptyList(),
-    onMarkSettlementPaid: (String) -> Unit = {},
     onRecordManualPayment: (String, String, Long) -> Unit = { _, _, _ -> },
     onMarkPaid: (String, String, Long) -> Unit,
     onNavigateToHistory: () -> Unit,
@@ -703,8 +680,7 @@ fun GroupStatsTab(
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
     val biggestDebtor = balances.minByOrNull { it.balance }
-    val hasPersistedSettlements = allSettlements.isNotEmpty()
-    val legacySettlements = if (!hasPersistedSettlements) calculateGroupSettlement(balances) else emptyList()
+    val settlements = calculateGroupSettlement(balances)
 
     var showManualPaymentSheet by remember { mutableStateOf(false) }
 
@@ -887,121 +863,62 @@ fun GroupStatsTab(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (hasPersistedSettlements) {
-                        if (unpaidSettlements.isEmpty()) {
-                            Text(
-                                text = "All settled! 🎉",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = WinGreen
-                            )
-                        } else {
-                            unpaidSettlements.forEach { s ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = s.payerName,
-                                            color = LoseRed,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = " pays ",
-                                            color = Cream.copy(alpha = 0.7f),
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = s.receiverName,
-                                            color = WinGreen,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "${s.amount}",
-                                            color = Gold,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        TextButton(
-                                            onClick = { onMarkSettlementPaid(s.id) },
-                                            colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                        ) {
-                                            Text("PAID ✓")
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    if (balances.isEmpty()) {
+                        Text(
+                            text = "No data yet. Close a table in this group first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                    } else if (settlements.isEmpty()) {
+                        Text(
+                            text = "All settled! 🎉",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WinGreen
+                        )
                     } else {
-                        // Legacy fallback
-                        if (balances.isEmpty()) {
-                            Text(
-                                text = "No data yet. Close a table in this group first.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Cream.copy(alpha = 0.6f)
-                            )
-                        } else if (legacySettlements.isEmpty()) {
-                            Text(
-                                text = "All settled! 🎉",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = WinGreen
-                            )
-                        } else {
-                            legacySettlements.forEach { s ->
+                        settlements.forEach { s ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                    Text(
+                                        text = s.fromPlayer,
+                                        color = LoseRed,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = " pays ",
+                                        color = Cream.copy(alpha = 0.7f),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = s.toPlayer,
+                                        color = WinGreen,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "${s.amount}",
+                                        color = Gold,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(
+                                        onClick = { onMarkPaid(s.fromPlayer, s.toPlayer, s.amount) },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
                                     ) {
-                                        Text(
-                                            text = s.fromPlayer,
-                                            color = LoseRed,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = " pays ",
-                                            color = Cream.copy(alpha = 0.7f),
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = s.toPlayer,
-                                            color = WinGreen,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "${s.amount}",
-                                            color = Gold,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        TextButton(
-                                            onClick = { onMarkPaid(s.fromPlayer, s.toPlayer, s.amount) },
-                                            colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                        ) {
-                                            Text("PAID ✓")
-                                        }
+                                        Text("PAID ✓")
                                     }
                                 }
                             }

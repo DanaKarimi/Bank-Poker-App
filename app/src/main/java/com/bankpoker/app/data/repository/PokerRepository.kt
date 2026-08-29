@@ -274,9 +274,6 @@ class PokerRepository(
             }
         }
 
-        val debtors = mutableListOf<Pair<String, Long>>()
-        val creditors = mutableListOf<Pair<String, Long>>()
-
         players.forEach { p ->
             val buy = buyInDao.getTotalBuyInsForPlayer(p.id) ?: 0L
             val exit = exitRecordDao.getTotalExitsForPlayer(p.id) ?: 0L
@@ -284,44 +281,6 @@ class PokerRepository(
             if (net != 0L) {
                 applyToGroupBalance(groupId, p.name, net)
             }
-            if (net < 0) {
-                debtors.add(Pair(p.name, -net))
-            } else if (net > 0) {
-                creditors.add(Pair(p.name, net))
-            }
-        }
-
-        // Greedy matching for settlements of this closed table
-        val settlementsToInsert = mutableListOf<SettlementRecord>()
-        var i = 0
-        var j = 0
-        while (i < debtors.size && j < creditors.size) {
-            val debtor = debtors[i]
-            val creditor = creditors[j]
-            val amount = minOf(debtor.second, creditor.second)
-            if (amount > 0) {
-                settlementsToInsert.add(
-                    SettlementRecord(
-                        id = UUID.randomUUID().toString(),
-                        groupId = groupId,
-                        tableId = table.id,
-                        tableName = table.name,
-                        payerName = debtor.first,
-                        receiverName = creditor.first,
-                        amount = amount,
-                        initialAmount = amount,
-                        paid = false,
-                        timestamp = now
-                    )
-                )
-            }
-            debtors[i] = Pair(debtor.first, debtor.second - amount)
-            creditors[j] = Pair(creditor.first, creditor.second - amount)
-            if (debtors[i].second == 0L) i++
-            if (creditors[j].second == 0L) j++
-        }
-        if (settlementsToInsert.isNotEmpty()) {
-            settlementRecordDao.insertSettlements(settlementsToInsert)
         }
     }
 
@@ -357,24 +316,6 @@ class PokerRepository(
         playerGroupDao.deleteGroup(groupId)
     }
 
-    // Ledger Accounting Rules
-    private suspend fun resyncSettlementsForPair(groupId: String, payerName: String, receiverName: String) {
-        val allPayments = paymentDao.getPaymentsForPair(groupId, payerName, receiverName)
-        var totalPaid = allPayments.sumOf { it.amount }
-        val allSettlements = settlementRecordDao.getAllSettlementsForPair(groupId, payerName, receiverName)
-        for (s in allSettlements) {
-            val orig = if (s.initialAmount > 0L) s.initialAmount else s.amount
-            if (totalPaid >= orig) {
-                totalPaid -= orig
-                settlementRecordDao.updateSettlementAmountAndPaid(s.id, 0L, true)
-            } else {
-                val remaining = orig - totalPaid
-                totalPaid = 0L
-                settlementRecordDao.updateSettlementAmountAndPaid(s.id, remaining, false)
-            }
-        }
-    }
-
     suspend fun recordPayment(groupId: String, fromPlayer: String, toPlayer: String, amount: Long) {
         if (amount <= 0) return
         paymentDao.insertPayment(
@@ -382,13 +323,6 @@ class PokerRepository(
         )
         applyToGroupBalance(groupId, fromPlayer, amount)
         applyToGroupBalance(groupId, toPlayer, -amount)
-        resyncSettlementsForPair(groupId, fromPlayer, toPlayer)
-    }
-
-    suspend fun markSettlementPaid(settlementId: String) {
-        val settlement = settlementRecordDao.getSettlementById(settlementId) ?: return
-        if (settlement.amount <= 0) return
-        recordPayment(settlement.groupId, settlement.payerName, settlement.receiverName, settlement.amount)
     }
 
     suspend fun recordManualPayment(groupId: String, payerName: String, receiverName: String, amount: Long) {
@@ -402,7 +336,6 @@ class PokerRepository(
         paymentDao.updatePayment(existing.copy(amount = newAmount))
         applyToGroupBalance(existing.groupId, existing.fromPlayer, delta)
         applyToGroupBalance(existing.groupId, existing.toPlayer, -delta)
-        resyncSettlementsForPair(existing.groupId, existing.fromPlayer, existing.toPlayer)
     }
 
     suspend fun deletePayment(paymentId: String) {
@@ -410,7 +343,6 @@ class PokerRepository(
         paymentDao.deletePaymentById(paymentId)
         applyToGroupBalance(existing.groupId, existing.fromPlayer, -existing.amount)
         applyToGroupBalance(existing.groupId, existing.toPlayer, existing.amount)
-        resyncSettlementsForPair(existing.groupId, existing.fromPlayer, existing.toPlayer)
     }
 
     // Entry Fee Records operations
