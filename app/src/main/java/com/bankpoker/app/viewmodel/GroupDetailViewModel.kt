@@ -7,6 +7,7 @@ import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.SettlementRecord
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.repository.PokerRepository
@@ -27,12 +28,26 @@ class GroupDetailViewModel(
     val tables: Flow<List<PokerTable>> = repository.getTablesByGroupId(groupId)
     val balances: Flow<List<GroupBalance>> = repository.getBalancesByGroupId(groupId)
     val payments: Flow<List<Payment>> = repository.getPaymentsByGroupId(groupId)
+    val settlements: Flow<List<SettlementRecord>> = repository.getSettlementsByGroupId(groupId)
+    val unpaidSettlements: Flow<List<SettlementRecord>> = repository.getUnpaidSettlementsByGroupId(groupId)
     val entryFeeDebtors: Flow<List<UnpaidEntryFeeInfo>> = repository.getUnpaidEntryFeeDebtorsByGroupId(groupId)
     val entryFeeHistory: Flow<List<EntryFeeHistoryInfo>> = repository.getEntryFeeHistoryByGroupId(groupId)
 
     fun markEntryFeePaid(playerId: String) {
         viewModelScope.launch {
             repository.toggleEntryFee(playerId, true)
+        }
+    }
+
+    fun markSettlementPaid(settlementId: String) {
+        viewModelScope.launch {
+            repository.markSettlementPaid(settlementId)
+        }
+    }
+
+    fun recordManualPayment(payerName: String, receiverName: String, amount: Long) {
+        viewModelScope.launch {
+            repository.recordManualPayment(groupId, payerName, receiverName, amount)
         }
     }
 

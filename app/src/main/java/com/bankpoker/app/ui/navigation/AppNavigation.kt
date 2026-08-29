@@ -45,6 +45,7 @@ fun AppNavigation(
         playerGroupDao = database.playerGroupDao(),
         groupBalanceDao = database.groupBalanceDao(),
         paymentDao = database.paymentDao(),
+        settlementRecordDao = database.settlementRecordDao(),
         database = database
     )
 

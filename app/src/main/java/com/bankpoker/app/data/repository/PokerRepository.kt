@@ -7,6 +7,7 @@ import com.bankpoker.app.data.local.dao.PaymentDao
 import com.bankpoker.app.data.local.dao.PlayerDao
 import com.bankpoker.app.data.local.dao.PokerTableDao
 import com.bankpoker.app.data.local.dao.PlayerGroupDao
+import com.bankpoker.app.data.local.dao.SettlementRecordDao
 import com.bankpoker.app.data.local.BankPokerDatabase
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
@@ -15,6 +16,7 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.SettlementRecord
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.data.local.entity.PlayerGameHistory
@@ -35,6 +37,7 @@ class PokerRepository(
     private val playerGroupDao: PlayerGroupDao,
     private val groupBalanceDao: GroupBalanceDao,
     private val paymentDao: PaymentDao,
+    private val settlementRecordDao: SettlementRecordDao,
     private val database: BankPokerDatabase? = null
 ) {
 
@@ -176,6 +179,7 @@ class PokerRepository(
     }
 
     suspend fun deleteTableAndRelatedData(tableId: String) {
+        settlementRecordDao.deleteSettlementsByTableId(tableId)
         buyInDao.deleteBuyInsForTable(tableId)
         exitRecordDao.deleteExitRecordsForTable(tableId)
         playerDao.deletePlayersForTable(tableId)
@@ -233,16 +237,66 @@ class PokerRepository(
 
     fun getPaymentsByGroupId(groupId: String): Flow<List<Payment>> = paymentDao.getPaymentsByGroupId(groupId)
 
+    fun getSettlementsByGroupId(groupId: String): Flow<List<SettlementRecord>> = settlementRecordDao.getSettlementsByGroupId(groupId)
+
+    fun getUnpaidSettlementsByGroupId(groupId: String): Flow<List<SettlementRecord>> = settlementRecordDao.getUnpaidSettlementsByGroupId(groupId)
+
+    suspend fun getAllSettlementsByGroupIdOnce(groupId: String): List<SettlementRecord> = settlementRecordDao.getAllSettlementsByGroupIdOnce(groupId)
+
     suspend fun closeTableAndApplyToGroup(tableId: String) {
         val table = pokerTableDao.getTableById(tableId) ?: return
         closeTable(tableId)
         val groupId = table.groupId ?: return
         val players = playerDao.getPlayersForTableOnce(tableId)
+
+        val debtors = mutableListOf<Pair<String, Long>>()
+        val creditors = mutableListOf<Pair<String, Long>>()
+
         players.forEach { p ->
-            val buy = buyInDao.getTotalBuyInsForPlayer(p.id)
-            val exit = exitRecordDao.getTotalExitsForPlayer(p.id)
-            val net = (exit ?: 0L) - (buy ?: 0L)
-            if (net != 0L) applyToGroupBalance(groupId, p.name, net)
+            val buy = buyInDao.getTotalBuyInsForPlayer(p.id) ?: 0L
+            val exit = exitRecordDao.getTotalExitsForPlayer(p.id) ?: 0L
+            val net = exit - buy
+            if (net != 0L) {
+                applyToGroupBalance(groupId, p.name, net)
+            }
+            if (net < 0) {
+                debtors.add(Pair(p.name, -net))
+            } else if (net > 0) {
+                creditors.add(Pair(p.name, net))
+            }
+        }
+
+        // Greedy matching for settlements of this closed table
+        val settlementsToInsert = mutableListOf<SettlementRecord>()
+        var i = 0
+        var j = 0
+        val now = System.currentTimeMillis()
+        while (i < debtors.size && j < creditors.size) {
+            val debtor = debtors[i]
+            val creditor = creditors[j]
+            val amount = minOf(debtor.second, creditor.second)
+            if (amount > 0) {
+                settlementsToInsert.add(
+                    SettlementRecord(
+                        id = UUID.randomUUID().toString(),
+                        groupId = groupId,
+                        tableId = table.id,
+                        tableName = table.name,
+                        payerName = debtor.first,
+                        receiverName = creditor.first,
+                        amount = amount,
+                        paid = false,
+                        timestamp = now
+                    )
+                )
+            }
+            debtors[i] = Pair(debtor.first, debtor.second - amount)
+            creditors[j] = Pair(creditor.first, creditor.second - amount)
+            if (debtors[i].second == 0L) i++
+            if (creditors[j].second == 0L) j++
+        }
+        if (settlementsToInsert.isNotEmpty()) {
+            settlementRecordDao.insertSettlements(settlementsToInsert)
         }
     }
 
@@ -264,11 +318,13 @@ class PokerRepository(
     suspend fun deleteGroupCascade(groupId: String) {
         val tables = pokerTableDao.getTablesByGroupIdOnce(groupId)
         for (table in tables) {
+            settlementRecordDao.deleteSettlementsByTableId(table.id)
             buyInDao.deleteBuyInsForTable(table.id)
             exitRecordDao.deleteExitRecordsForTable(table.id)
             playerDao.deletePlayersForTable(table.id)
             pokerTableDao.deleteTable(table.id)
         }
+        settlementRecordDao.deleteSettlementsByGroupId(groupId)
         groupBalanceDao.deleteBalancesByGroupId(groupId)
         paymentDao.deletePaymentsByGroupId(groupId)
         playerGroupDao.deleteGroup(groupId)
@@ -278,10 +334,49 @@ class PokerRepository(
         paymentDao.insertPayment(
             Payment(UUID.randomUUID().toString(), groupId, fromPlayer, toPlayer, amount, System.currentTimeMillis())
         )
-        val from = groupBalanceDao.getBalance(groupId, fromPlayer)
-        if (from != null) groupBalanceDao.updateBalance(from.copy(balance = from.balance + amount))
-        val to = groupBalanceDao.getBalance(groupId, toPlayer)
-        if (to != null) groupBalanceDao.updateBalance(to.copy(balance = to.balance - amount))
+    }
+
+    suspend fun markSettlementPaid(settlementId: String) {
+        val settlement = settlementRecordDao.getSettlementById(settlementId) ?: return
+        settlementRecordDao.markSettlementPaid(settlementId)
+        paymentDao.insertPayment(
+            Payment(
+                id = UUID.randomUUID().toString(),
+                groupId = settlement.groupId,
+                fromPlayer = settlement.payerName,
+                toPlayer = settlement.receiverName,
+                amount = settlement.amount,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun recordManualPayment(groupId: String, payerName: String, receiverName: String, amount: Long) {
+        if (amount <= 0) return
+        paymentDao.insertPayment(
+            Payment(
+                id = UUID.randomUUID().toString(),
+                groupId = groupId,
+                fromPlayer = payerName,
+                toPlayer = receiverName,
+                amount = amount,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+
+        val unpaidMatching = settlementRecordDao.getUnpaidSettlementsForPair(groupId, payerName, receiverName)
+        var remaining = amount
+        for (record in unpaidMatching) {
+            if (remaining <= 0) break
+            if (record.amount <= remaining) {
+                remaining -= record.amount
+                settlementRecordDao.updateSettlementAmountAndPaid(record.id, record.amount, true)
+            } else {
+                val newAmount = record.amount - remaining
+                remaining = 0
+                settlementRecordDao.updateSettlementAmountAndPaid(record.id, newAmount, false)
+            }
+        }
     }
 
     // Backup & Restore operations
@@ -293,6 +388,7 @@ class PokerRepository(
         val exitRecords = exitRecordDao.getAllExitRecordsOnce()
         val payments = paymentDao.getAllPaymentsOnce()
         val balances = groupBalanceDao.getAllBalancesOnce()
+        val settlements = settlementRecordDao.getAllSettlementsOnce()
 
         val root = JSONObject()
         root.put("version", 1)
@@ -386,6 +482,22 @@ class PokerRepository(
             balancesArray.put(obj)
         }
         root.put("groupBalances", balancesArray)
+
+        val settlementsArray = JSONArray()
+        settlements.forEach { s ->
+            val obj = JSONObject()
+            obj.put("id", s.id)
+            obj.put("groupId", s.groupId)
+            obj.put("tableId", s.tableId)
+            obj.put("tableName", s.tableName)
+            obj.put("payerName", s.payerName)
+            obj.put("receiverName", s.receiverName)
+            obj.put("amount", s.amount)
+            obj.put("paid", s.paid)
+            obj.put("timestamp", s.timestamp)
+            settlementsArray.put(obj)
+        }
+        root.put("settlements", settlementsArray)
 
         return root.toString(2)
     }
@@ -517,13 +629,34 @@ class PokerRepository(
             }
         }
 
+        val settlements = mutableListOf<SettlementRecord>()
+        val settlementsArray = root.optJSONArray("settlements")
+        if (settlementsArray != null) {
+            for (i in 0 until settlementsArray.length()) {
+                val obj = settlementsArray.getJSONObject(i)
+                settlements.add(
+                    SettlementRecord(
+                        id = obj.getString("id"),
+                        groupId = obj.getString("groupId"),
+                        tableId = obj.getString("tableId"),
+                        tableName = obj.getString("tableName"),
+                        payerName = obj.getString("payerName"),
+                        receiverName = obj.getString("receiverName"),
+                        amount = obj.getLong("amount"),
+                        paid = obj.optBoolean("paid", false),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
         val db = database
         if (db != null) {
             db.withTransaction {
-                performRestore(groups, tables, players, buyIns, exitRecords, payments, balances)
+                performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements)
             }
         } else {
-            performRestore(groups, tables, players, buyIns, exitRecords, payments, balances)
+            performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements)
         }
     }
 
@@ -534,7 +667,8 @@ class PokerRepository(
         buyIns: List<BuyIn>,
         exitRecords: List<ExitRecord>,
         payments: List<Payment>,
-        balances: List<GroupBalance>
+        balances: List<GroupBalance>,
+        settlements: List<SettlementRecord>
     ) {
         pokerTableDao.deleteAllTables()
         playerDao.deleteAllPlayers()
@@ -543,6 +677,7 @@ class PokerRepository(
         playerGroupDao.deleteAllGroups()
         groupBalanceDao.deleteAllBalances()
         paymentDao.deleteAllPayments()
+        settlementRecordDao.deleteAllSettlements()
 
         playerGroupDao.insertGroups(groups)
         pokerTableDao.insertTables(tables)
@@ -551,6 +686,7 @@ class PokerRepository(
         exitRecordDao.insertExitRecords(exitRecords)
         paymentDao.insertPayments(payments)
         groupBalanceDao.insertBalances(balances)
+        settlementRecordDao.insertSettlements(settlements)
     }
 
     // Player Profile operations
