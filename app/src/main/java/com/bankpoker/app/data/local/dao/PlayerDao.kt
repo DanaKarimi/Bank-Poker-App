@@ -1,7 +1,10 @@
 package com.bankpoker.app.data.local.dao
 
 import androidx.room.*
+import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.data.local.entity.Player
+import com.bankpoker.app.data.local.entity.PlayerGameHistory
+import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -38,4 +41,110 @@ interface PlayerDao {
 
     @Query("UPDATE players SET entryFeePaid = :paid WHERE id = :playerId")
     suspend fun updateEntryFeePaid(playerId: String, paid: Boolean)
+
+    @Query("UPDATE players SET status = 'EXITED' WHERE tableId = :tableId")
+    suspend fun setAllPlayersExitedForTable(tableId: String)
+
+    @Query("DELETE FROM players")
+    suspend fun deleteAllPlayers()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlayers(players: List<Player>)
+
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.hasEntryFee = 1 
+          AND p.entryFeePaid = 0 
+          AND (p.status = 'EXITED' OR t.status = 'CLOSED')
+        ORDER BY p.createdAt DESC
+    """)
+    fun getUnpaidEntryFeeDebtors(): Flow<List<UnpaidEntryFeeInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.groupId = :groupId
+          AND t.hasEntryFee = 1 
+          AND p.entryFeePaid = 0 
+          AND (p.status = 'EXITED' OR t.status = 'CLOSED')
+        ORDER BY p.createdAt DESC
+    """)
+    fun getUnpaidEntryFeeDebtorsByGroupId(groupId: String): Flow<List<UnpaidEntryFeeInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp,
+            p.entryFeePaid AS isPaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.groupId = :groupId
+          AND t.hasEntryFee = 1
+        ORDER BY p.createdAt DESC
+    """)
+    fun getEntryFeeHistoryByGroupId(groupId: String): Flow<List<EntryFeeHistoryInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.name AS playerName,
+            t.name AS tableName,
+            g.name AS groupName,
+            COALESCE(t.entryFee, 0) AS amount,
+            p.createdAt AS timestamp,
+            p.entryFeePaid AS isPaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE t.hasEntryFee = 1
+        ORDER BY p.createdAt DESC
+    """)
+    fun getAllEntryFeeHistory(): Flow<List<EntryFeeHistoryInfo>>
+
+    @Query("""
+        SELECT 
+            p.id AS playerId,
+            p.tableId AS tableId,
+            t.name AS tableName,
+            g.name AS groupName,
+            p.createdAt AS date,
+            COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.playerId = p.id), 0) AS totalBuyIn,
+            COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.playerId = p.id), 0) AS totalExit,
+            (COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.playerId = p.id), 0) - 
+             COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.playerId = p.id), 0)) AS netResult,
+            p.entryFeePaid AS entryFeePaid
+        FROM players p
+        INNER JOIN poker_tables t ON p.tableId = t.id
+        LEFT JOIN player_groups g ON t.groupId = g.id
+        WHERE TRIM(LOWER(p.name)) = TRIM(LOWER(:name))
+        ORDER BY p.createdAt DESC
+    """)
+    fun getPlayerGamesByName(name: String): Flow<List<PlayerGameHistory>>
 }
+
+
+
+

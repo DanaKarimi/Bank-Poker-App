@@ -17,4 +17,18 @@ interface GroupBalanceDao {
 
     @Update
     suspend fun updateBalance(balance: GroupBalance)
+
+    @Query("DELETE FROM group_balances WHERE groupId = :groupId")
+    suspend fun deleteBalancesByGroupId(groupId: String)
+
+    @Query("SELECT * FROM group_balances")
+    suspend fun getAllBalancesOnce(): List<GroupBalance>
+
+    @Query("DELETE FROM group_balances")
+    suspend fun deleteAllBalances()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBalances(balances: List<GroupBalance>)
 }
+
+

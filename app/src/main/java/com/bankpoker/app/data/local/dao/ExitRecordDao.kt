@@ -9,6 +9,9 @@ interface ExitRecordDao {
     @Query("SELECT * FROM exit_records WHERE tableId = :tableId ORDER BY createdAt DESC")
     fun getExitRecordsByTableId(tableId: String): Flow<List<ExitRecord>>
 
+    @Query("SELECT * FROM exit_records WHERE tableId = :tableId")
+    suspend fun getExitRecordsByTableIdOnce(tableId: String): List<ExitRecord>
+
     @Query("SELECT * FROM exit_records WHERE playerId = :playerId ORDER BY createdAt DESC")
     fun getExitRecordsByPlayerId(playerId: String): Flow<List<ExitRecord>>
 
@@ -35,4 +38,11 @@ interface ExitRecordDao {
 
     @Query("SELECT * FROM exit_records")
     suspend fun getAllExitRecordsOnce(): List<ExitRecord>
+
+    @Query("DELETE FROM exit_records")
+    suspend fun deleteAllExitRecords()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExitRecords(exitRecords: List<ExitRecord>)
 }
+

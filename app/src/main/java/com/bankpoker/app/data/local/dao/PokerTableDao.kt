@@ -32,4 +32,18 @@ interface PokerTableDao {
 
     @Query("SELECT * FROM poker_tables WHERE groupId = :groupId ORDER BY createdAt DESC")
     fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>>
+
+    @Query("SELECT * FROM poker_tables WHERE groupId = :groupId")
+    suspend fun getTablesByGroupIdOnce(groupId: String): List<PokerTable>
+
+    @Query("DELETE FROM poker_tables WHERE groupId = :groupId")
+    suspend fun deleteTablesByGroupId(groupId: String)
+
+    @Query("DELETE FROM poker_tables")
+    suspend fun deleteAllTables()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTables(tables: List<PokerTable>)
 }
+
+

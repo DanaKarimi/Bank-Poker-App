@@ -22,9 +22,18 @@ import com.bankpoker.app.viewmodel.TableDetailViewModel
 import com.bankpoker.app.viewmodel.TableDetailViewModelFactory
 import com.bankpoker.app.viewmodel.TablesViewModel
 import com.bankpoker.app.viewmodel.TablesViewModelFactory
+import com.bankpoker.app.viewmodel.PlayerProfileViewModel
+import com.bankpoker.app.viewmodel.PlayerProfileViewModelFactory
 import com.bankpoker.app.ui.screens.GroupsScreen
 import com.bankpoker.app.ui.screens.GroupDetailScreen
+import com.bankpoker.app.ui.screens.GroupHistoryScreen
 import com.bankpoker.app.ui.screens.StatsScreen
+import com.bankpoker.app.ui.screens.PlayerProfileScreen
+import com.bankpoker.app.viewmodel.GroupHistoryViewModel
+import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+
 
 @Composable
 fun AppNavigation(
@@ -38,7 +47,10 @@ fun AppNavigation(
         exitRecordDao = database.exitRecordDao(),
         playerGroupDao = database.playerGroupDao(),
         groupBalanceDao = database.groupBalanceDao(),
-        paymentDao = database.paymentDao()
+        paymentDao = database.paymentDao(),
+        settlementRecordDao = database.settlementRecordDao(),
+        entryFeeRecordDao = database.entryFeeRecordDao(),
+        database = database
     )
 
     NavHost(
@@ -47,6 +59,7 @@ fun AppNavigation(
     ) {
         composable(Screen.Home.route) {
             HomeScreen(
+                repository = repository,
                 onQuickTableClick = {
                     navController.navigate(Screen.Tables.route) {
                         popUpTo(Screen.Home.route) { inclusive = false }
@@ -57,6 +70,7 @@ fun AppNavigation(
                 }
             )
         }
+
 
         composable(Screen.Tables.route) {
             val viewModel: TablesViewModel = viewModel(
@@ -87,6 +101,9 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onPlayerClick = { playerName ->
+                    navController.navigate(Screen.PlayerProfile.createRoute(playerName))
                 }
             )
         }
@@ -120,6 +137,30 @@ fun AppNavigation(
                 },
                 onTableClick = { tableId ->
                     navController.navigate(Screen.TableDetail.createRoute(tableId))
+                },
+                onNavigateToHistory = {
+                    navController.navigate(Screen.GroupHistory.createRoute(groupId))
+                },
+                onPlayerClick = { playerName ->
+                    navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.GroupHistory.route,
+            arguments = listOf(
+                navArgument("groupId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val viewModel: GroupHistoryViewModel = viewModel(
+                factory = GroupHistoryViewModelFactory(repository, groupId)
+            )
+            GroupHistoryScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -132,8 +173,36 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onPlayerClick = { playerName ->
+                    navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                }
+            )
+        }
+
+
+        composable(
+            route = Screen.PlayerProfile.route,
+            arguments = listOf(
+                navArgument("playerName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val rawPlayerName = backStackEntry.arguments?.getString("playerName") ?: return@composable
+            val playerName = try {
+                URLDecoder.decode(rawPlayerName, StandardCharsets.UTF_8.toString())
+            } catch (e: Exception) {
+                rawPlayerName
+            }
+            val viewModel: PlayerProfileViewModel = viewModel(
+                factory = PlayerProfileViewModelFactory(repository, playerName)
+            )
+            PlayerProfileScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
     }
 }
+

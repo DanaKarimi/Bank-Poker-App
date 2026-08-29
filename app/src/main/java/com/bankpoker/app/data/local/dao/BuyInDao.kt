@@ -9,6 +9,9 @@ interface BuyInDao {
     @Query("SELECT * FROM buy_ins WHERE tableId = :tableId ORDER BY createdAt DESC")
     fun getBuyInsByTableId(tableId: String): Flow<List<BuyIn>>
 
+    @Query("SELECT * FROM buy_ins WHERE tableId = :tableId")
+    suspend fun getBuyInsByTableIdOnce(tableId: String): List<BuyIn>
+
     @Query("SELECT * FROM buy_ins WHERE playerId = :playerId ORDER BY createdAt DESC")
     fun getBuyInsByPlayerId(playerId: String): Flow<List<BuyIn>>
 
@@ -32,4 +35,11 @@ interface BuyInDao {
 
     @Query("DELETE FROM buy_ins WHERE tableId = :tableId")
     suspend fun deleteBuyInsForTable(tableId: String)
+
+    @Query("DELETE FROM buy_ins")
+    suspend fun deleteAllBuyIns()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBuyIns(buyIns: List<BuyIn>)
 }
+

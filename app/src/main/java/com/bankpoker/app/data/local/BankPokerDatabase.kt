@@ -13,6 +13,8 @@ import com.bankpoker.app.data.local.dao.PaymentDao
 import com.bankpoker.app.data.local.dao.PlayerDao
 import com.bankpoker.app.data.local.dao.PlayerGroupDao
 import com.bankpoker.app.data.local.dao.PokerTableDao
+import com.bankpoker.app.data.local.dao.SettlementRecordDao
+import com.bankpoker.app.data.local.dao.EntryFeeRecordDao
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.GroupBalance
@@ -20,10 +22,12 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.local.entity.SettlementRecord
+import com.bankpoker.app.data.local.entity.EntryFeeRecord
 
 @Database(
-    entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class],
-    version = 3,
+    entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class, SettlementRecord::class, EntryFeeRecord::class],
+    version = 5,
     exportSchema = false
 )
 abstract class BankPokerDatabase : RoomDatabase() {
@@ -34,6 +38,8 @@ abstract class BankPokerDatabase : RoomDatabase() {
     abstract fun playerGroupDao(): PlayerGroupDao
     abstract fun groupBalanceDao(): GroupBalanceDao
     abstract fun paymentDao(): PaymentDao
+    abstract fun settlementRecordDao(): SettlementRecordDao
+    abstract fun entryFeeRecordDao(): EntryFeeRecordDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -53,6 +59,43 @@ abstract class BankPokerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `settlements` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`groupId` TEXT NOT NULL, " +
+                        "`tableId` TEXT NOT NULL, " +
+                        "`tableName` TEXT NOT NULL, " +
+                        "`payerName` TEXT NOT NULL, " +
+                        "`receiverName` TEXT NOT NULL, " +
+                        "`amount` INTEGER NOT NULL, " +
+                        "`paid` INTEGER NOT NULL DEFAULT 0, " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `settlements` ADD COLUMN `initialAmount` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("UPDATE `settlements` SET `initialAmount` = `amount` WHERE `initialAmount` = 0")
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `entry_fee_records` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`groupId` TEXT NOT NULL, " +
+                        "`tableId` TEXT NOT NULL, " +
+                        "`tableName` TEXT NOT NULL, " +
+                        "`playerName` TEXT NOT NULL, " +
+                        "`amount` INTEGER NOT NULL, " +
+                        "`paid` INTEGER NOT NULL DEFAULT 0, " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: BankPokerDatabase? = null
 
@@ -62,7 +105,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankPokerDatabase::class.java,
                     "bank_poker_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
                 INSTANCE = instance
                 instance
             }

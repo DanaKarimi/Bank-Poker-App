@@ -15,11 +15,15 @@ val PokerSurfaceVariant = Color(0xFF2D2D2D)
 
 // Casino Classic theme colors
 val FeltBackground = Color(0xFF0E3B2E)
-val FeltCard = Color(0xFF123F33)
+val FeltCard = Color(0xFF0A2B21)
 val Gold = Color(0xFFD4AF37)
 val Cream = Color(0xFFF5F0E1)
 val WinGreen = Color(0xFF81C784)
 val LoseRed = Color(0xFFE57373)
+val Silver = Color(0xFFC0C0C0)
+val Bronze = Color(0xFFCD7F32)
+
+
 
 val AvatarColors = listOf(
     Color(0xFFE57373),  // Red

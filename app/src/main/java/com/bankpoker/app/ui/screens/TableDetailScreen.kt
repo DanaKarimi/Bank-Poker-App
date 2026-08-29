@@ -1,5 +1,11 @@
 package com.bankpoker.app.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,19 +16,26 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExitToApp
+
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
+
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,34 +48,63 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import com.bankpoker.app.ui.components.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.ui.theme.Amber80
 import com.bankpoker.app.ui.theme.AvatarColors
+import com.bankpoker.app.ui.theme.CasinoWatermarks
 import com.bankpoker.app.ui.theme.Cream
 import com.bankpoker.app.ui.theme.FeltBackground
 import com.bankpoker.app.ui.theme.FeltCard
 import com.bankpoker.app.ui.theme.Gold
 import com.bankpoker.app.ui.theme.Green80
 import com.bankpoker.app.ui.theme.LoseRed
+import com.bankpoker.app.ui.theme.PokerChipAvatar
 import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.ui.theme.WinGreen
+import com.bankpoker.app.ui.theme.Silver
+import com.bankpoker.app.ui.theme.Bronze
+import com.bankpoker.app.viewmodel.TableDetailUiState
 import com.bankpoker.app.viewmodel.TableDetailViewModel
+import androidx.compose.foundation.ExperimentalFoundationApi
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TableDetailScreen(
     viewModel: TableDetailViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val players by viewModel.players.collectAsState(initial = emptyList())
     val buyIns by viewModel.buyIns.collectAsState(initial = emptyList())
     val exitRecords by viewModel.exitRecords.collectAsState(initial = emptyList())
+    val context = LocalContext.current
     
+    val playerResults = remember(players, buyIns, exitRecords) {
+        players.map { player ->
+            val totalBuyIns = buyIns.filter { it.playerId == player.id }.sumOf { it.amount }
+            val totalExits = exitRecords.filter { it.playerId == player.id }.sumOf { it.amount }
+            val netResult = totalExits - totalBuyIns
+            PlayerResult(
+                player = player,
+                totalBuyIns = totalBuyIns,
+                totalExits = totalExits,
+                netResult = netResult
+            )
+        }
+    }
+    val settlements = remember(playerResults) {
+        calculateSettlement(playerResults)
+    }
+
     var showAddPlayerDialog by remember { mutableStateOf(false) }
     var showBuyInDialog by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -75,13 +117,34 @@ fun TableDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.table?.name ?: "Table Detail", color = Gold, fontWeight = FontWeight.Bold) },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.table?.name ?: "Table Detail", 
+                            color = Cream, 
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Gold)
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val text = buildShareResultsText(
+                            tableName = uiState.table?.name ?: "Table",
+                            playerResults = playerResults,
+                            settlements = settlements
+                        )
+                        shareText(context, text)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share Results", tint = Gold)
+                    }
                     if (uiState.table?.status == "ACTIVE") {
                         IconButton(onClick = { showCloseTableDialog = true }) {
                             Text(
@@ -99,49 +162,59 @@ fun TableDetailScreen(
                 )
             )
         }
-    ) { paddingValues ->
-        Column(
+    )
+ { paddingValues ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF186349), FeltBackground)
+                        colors = listOf(Color(0xFF186349), FeltBackground),
+                        radius = 1500f
                     )
                 )
                 .padding(paddingValues)
         ) {
-            // Summary bar
-            TableSummaryBar(
-                totalBuyIns = uiState.totalBuyIns,
-                totalExits = uiState.totalExits,
-                remainingBalance = uiState.remainingBalance,
-                chipValue = uiState.table?.chipValue
-            )
+            CasinoWatermarks()
 
-            HorizontalPagerTabs(
-                onAddPlayer = { showAddPlayerDialog = true },
-                onBuyInClick = { player ->
-                    selectedPlayerForBuyIn = player
-                    showBuyInDialog = true
-                },
-                onExitClick = { player ->
-                    selectedPlayerForExit = player
-                    showExitDialog = true
-                },
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                tableId = uiState.table?.id ?: "",
-                viewModel = viewModel,
-                isTableActive = uiState.table?.status == "ACTIVE",
-                tableHasEntryFee = uiState.table?.hasEntryFee == true
-            )
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Summary bar
+                TableSummaryBar(
+                    totalBuyIns = uiState.totalBuyIns,
+                    totalExits = uiState.totalExits,
+                    remainingBalance = uiState.remainingBalance,
+                    chipValue = uiState.table?.chipValue
+                )
+
+                HorizontalPagerTabs(
+                    onAddPlayer = { showAddPlayerDialog = true },
+                    onBuyInClick = { player ->
+                        selectedPlayerForBuyIn = player
+                        showBuyInDialog = true
+                    },
+                    onExitClick = { player ->
+                        selectedPlayerForExit = player
+                        showExitDialog = true
+                    },
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    tableId = uiState.table?.id ?: "",
+                    viewModel = viewModel,
+                    isTableActive = uiState.table?.status == "ACTIVE",
+                    tableHasEntryFee = uiState.table?.hasEntryFee == true,
+                    onPlayerClick = onPlayerClick
+                )
+            }
         }
     }
+
     
     if (showAddPlayerDialog) {
         val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
-        AddPlayerDialog(
+        AddPlayerBottomSheet(
             onDismiss = { showAddPlayerDialog = false },
             onAddPlayer = { name ->
                 viewModel.addPlayer(name)
@@ -154,7 +227,7 @@ fun TableDetailScreen(
 
     if (showBuyInDialog && selectedPlayerForBuyIn != null) {
         val currentPlayer = selectedPlayerForBuyIn!!
-        BuyInDialog(
+        BuyInBottomSheet(
             playerName = currentPlayer.name,
             onDismiss = {
                 showBuyInDialog = false
@@ -175,9 +248,8 @@ fun TableDetailScreen(
 
     if (showExitDialog && selectedPlayerForExit != null) {
         val currentPlayer = selectedPlayerForExit!!
-        ExitDialog(
+        ExitBottomSheet(
             playerName = currentPlayer.name,
-            currentBalance = 0L, // Will be calculated in dialog
             onDismiss = {
                 showExitDialog = false
                 selectedPlayerForExit = null
@@ -236,13 +308,15 @@ fun TableSummaryBar(
             .padding(16.dp)
             .border(
                 width = 1.5.dp,
-                color = Gold.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -259,7 +333,7 @@ fun TableSummaryBar(
                 Text(
                     text = "TABLE SUMMARY",
                     style = MaterialTheme.typography.labelLarge,
-                    color = Gold,
+                    color = Cream,
                     letterSpacing = 3.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -323,7 +397,8 @@ fun HorizontalPagerTabs(
     tableId: String,
     viewModel: TableDetailViewModel,
     isTableActive: Boolean,
-    tableHasEntryFee: Boolean = false
+    tableHasEntryFee: Boolean = false,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -354,33 +429,45 @@ fun HorizontalPagerTabs(
             )
         }
 
-        when (selectedTab) {
-            0 -> PlayersTab(
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                onAddPlayer = onAddPlayer,
-                onBuyInClick = onBuyInClick,
-                onExitClick = onExitClick,
-                isTableActive = isTableActive,
-                tableHasEntryFee = tableHasEntryFee,
-                viewModel = viewModel
-            )
-            1 -> HistoryTab(
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                players = players,
-                viewModel = viewModel
-            )
-            2 -> ResultsTab(
-                players = players,
-                buyIns = buyIns,
-                exitRecords = exitRecords,
-                viewModel = viewModel
-            )
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+            },
+            label = "TableDetailTabAnimation"
+        ) { tab ->
+            when (tab) {
+                0 -> PlayersTab(
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    onAddPlayer = onAddPlayer,
+                    onBuyInClick = onBuyInClick,
+                    onExitClick = onExitClick,
+                    isTableActive = isTableActive,
+                    tableHasEntryFee = tableHasEntryFee,
+                    viewModel = viewModel,
+                    onPlayerClick = onPlayerClick
+                )
+                1 -> HistoryTab(
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    players = players,
+                    viewModel = viewModel
+                )
+                2 -> ResultsTab(
+                    players = players,
+                    buyIns = buyIns,
+                    exitRecords = exitRecords,
+                    viewModel = viewModel,
+                    tableHasEntryFee = tableHasEntryFee
+                )
+            }
         }
     }
 }
+
+
 @Composable
 fun PlayersTab(
     players: List<Player>,
@@ -391,7 +478,8 @@ fun PlayersTab(
     onExitClick: (Player) -> Unit,
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
-    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null
+    viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -399,55 +487,123 @@ fun PlayersTab(
         return buy - exit
     }
 
-    val sortedPlayers = players.sortedByDescending { balanceOf(it.id) }
+    val sortedPlayersWithRank = remember(players, buyIns, exitRecords) {
+        players.sortedByDescending { balanceOf(it.id) }.mapIndexed { index, player ->
+            Pair(player, index + 1)
+        }
+    }
+
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredPlayers = remember(sortedPlayersWithRank, searchQuery) {
+        if (searchQuery.isBlank()) sortedPlayersWithRank
+        else sortedPlayersWithRank.filter { (player, _) ->
+            player.name.contains(searchQuery.trim(), ignoreCase = true)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (players.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "♠",
-                        fontSize = 64.sp,
-                        color = Gold.copy(alpha = 0.4f)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "No players yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Cream
-                    )
-                    if (isTableActive) {
-                        TextButton(onClick = onAddPlayer) {
-                            Text("Add Player", color = Gold)
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (players.isNotEmpty()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Search players...", color = Cream.copy(alpha = 0.5f)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = Gold
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = Gold
+                                )
+                            }
                         }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedTextColor = Cream,
+                        unfocusedTextColor = Cream,
+                        cursorColor = Gold,
+                        focusedContainerColor = FeltCard,
+                        unfocusedContainerColor = FeltCard
+                    )
+                )
+            }
+
+            if (players.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "♠",
+                            fontSize = 64.sp,
+                            color = Gold.copy(alpha = 0.4f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No players yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Cream.copy(alpha = 0.7f),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Tap + to add players",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.4f)
+                        )
                     }
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(sortedPlayers) { index, player ->
-                    val balance = balanceOf(player.id)
-
-                    PlayerCard(
-                        player = player,
-                        currentBalance = balance,
-                        finalResult = -balance,
-                        onBuyInClick = { onBuyInClick(player) },
-                        onExitClick = { onExitClick(player) },
-                        isTableActive = isTableActive,
-                        rank = index + 1,
-                        tableHasEntryFee = tableHasEntryFee,
-                        onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
-                            { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
-                        } else null
+            } else if (filteredPlayers.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No players found",
+                        color = Cream.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.bodyLarge
                     )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredPlayers) { (player, rank) ->
+                        val balance = balanceOf(player.id)
+
+                        PlayerCard(
+                            player = player,
+                            currentBalance = balance,
+                            finalResult = -balance,
+                            onBuyInClick = { onBuyInClick(player) },
+                            onExitClick = { onExitClick(player) },
+                            isTableActive = isTableActive,
+                            rank = rank,
+                            tableHasEntryFee = tableHasEntryFee,
+                            onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
+                                { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
+                            } else null,
+                            onPlayerClick = onPlayerClick
+                        )
+                    }
                 }
             }
         }
@@ -472,6 +628,7 @@ fun PlayersTab(
     }
 }
 
+
 @Composable
 fun PlayerCard(
     player: Player,
@@ -482,23 +639,36 @@ fun PlayerCard(
     isTableActive: Boolean,
     rank: Int = 0,
     tableHasEntryFee: Boolean = false,
-    onToggleEntryFee: (() -> Unit)? = null
+    onToggleEntryFee: (() -> Unit)? = null,
+    onPlayerClick: ((String) -> Unit)? = null
 ) {
-    val avatarColor = AvatarColors[player.name.hashCode().mod(AvatarColors.size).let { if (it < 0) it + AvatarColors.size else it }]
+    val rankBorderColor = when (rank) {
+        1 -> Gold
+        2 -> Silver
+        3 -> Bronze
+        else -> Gold.copy(alpha = 0.5f)
+    }
+    val rankElevation = when (rank) {
+        1 -> 10.dp
+        2 -> 8.dp
+        3 -> 6.dp
+        else -> 4.dp
+    }
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+                width = if (rank in 1..3) 2.dp else 1.5.dp,
+                color = rankBorderColor,
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = FeltCard
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = rankElevation)
     ) {
         Column(
             modifier = Modifier
@@ -509,100 +679,99 @@ fun PlayerCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = if (rank == 1) Gold else Gold.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(end = 10.dp)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = onPlayerClick != null) {
+                            onPlayerClick?.invoke(player.name)
+                        },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "#$rank",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = if (rank == 1) Color.Black else Gold,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Entry fee status indicator
-                if (tableHasEntryFee && player.status == "PLAYING") {
-                    IconButton(
-                        onClick = { onToggleEntryFee?.invoke() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        if (player.entryFeePaid) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .background(WinGreen, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "Paid",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Empty circle for unpaid
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                } else {
-                    Surface(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .border(2.dp, Gold, CircleShape),
-                        shape = CircleShape,
-                        color = Color.Transparent
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(avatarColor, avatarColor.copy(alpha = 0.5f))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
+                    if (rank > 0) {
+                        Surface(
+                            color = when (rank) {
+                                1 -> Gold
+                                2 -> Silver
+                                3 -> Bronze
+                                else -> Gold.copy(alpha = 0.15f)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(end = 10.dp)
                         ) {
                             Text(
-                                text = player.name.take(1).uppercase(),
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
+                                text = when (rank) {
+                                    1 -> "🥇 #1"
+                                    2 -> "🥈 #2"
+                                    3 -> "🥉 #3"
+                                    else -> "#$rank"
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                color = if (rank in 1..3) Color.Black else Gold,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = player.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Cream,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // Entry fee status indicator
                     if (tableHasEntryFee && player.status == "PLAYING") {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Voroodi: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (player.entryFeePaid) WinGreen else LoseRed,
-                            fontWeight = FontWeight.Medium
-                        )
+                        IconButton(
+                            onClick = { onToggleEntryFee?.invoke() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            if (player.entryFeePaid) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(WinGreen, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Paid",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .border(2.dp, Cream.copy(alpha = 0.5f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Empty circle for unpaid
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                     } else {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        StatusBadge(status = player.status)
+                        PokerChipAvatar(name = player.name, size = 52.dp)
+                    }
+
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = player.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Cream,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (tableHasEntryFee && player.status == "PLAYING") {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Entry Fee: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (player.entryFeePaid) WinGreen else LoseRed,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                            StatusBadge(status = player.status)
+                        }
                     }
                 }
 
@@ -924,17 +1093,20 @@ fun TransactionCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
             )
+            .animateContentSize()
             .combinedClickable(
                 onClick = { },
                 onLongClick = { showActionDialog = true }
             ),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1033,7 +1205,8 @@ fun ResultsTab(
     players: List<Player>,
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
-    viewModel: TableDetailViewModel
+    viewModel: TableDetailViewModel,
+    tableHasEntryFee: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1120,7 +1293,7 @@ fun ResultsTab(
         
         // Player results
         items(playerResults) { result ->
-            PlayerResultCard(result = result)
+            PlayerResultCard(result = result, tableHasEntryFee = tableHasEntryFee)
         }
         
         // Smart settlement plan
@@ -1147,7 +1320,8 @@ data class PlayerResult(
 
 @Composable
 fun PlayerResultCard(
-    result: PlayerResult
+    result: PlayerResult,
+    tableHasEntryFee: Boolean = false
 ) {
     val resultLabel = when {
         result.netResult > 0 -> "Creditor"
@@ -1165,13 +1339,16 @@ fun PlayerResultCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1180,13 +1357,27 @@ fun PlayerResultCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = result.player.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column {
+                    Text(
+                        text = result.player.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (tableHasEntryFee) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (result.player.entryFeePaid) "Entry Fee: Paid" else "Entry Fee: Unpaid",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.player.entryFeePaid) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                }
                 Surface(
                     color = resultColor,
                     shape = MaterialTheme.shapes.small
@@ -1199,6 +1390,7 @@ fun PlayerResultCard(
                     )
                 }
             }
+
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1245,8 +1437,9 @@ fun PlayerResultCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddPlayerDialog(
+fun AddPlayerBottomSheet(
     onDismiss: () -> Unit,
     onAddPlayer: (String) -> Unit,
     savedNames: List<String> = emptyList(),
@@ -1254,89 +1447,133 @@ fun AddPlayerDialog(
 ) {
     var playerName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val suggestions = savedNames
         .filter { it.contains(playerName, ignoreCase = true) && it.trim() != playerName.trim() }
         .take(8)
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Player", color = Gold) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = playerName,
-                    onValueChange = { playerName = it },
-                    label = { Text("Player Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.5f)
-                    )
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "ADD PLAYER", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Live Chip-Style Avatar Preview
+            Text(
+                text = "AVATAR PREVIEW",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            PokerChipAvatar(
+                name = playerName.ifBlank { "?" },
+                size = 76.dp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = playerName,
+                onValueChange = { 
+                    playerName = it
+                    if (error != null) error = null
+                },
+                label = { Text("Player Name", color = Cream.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. DANA", color = Cream.copy(alpha = 0.4f)) },
+                singleLine = true,
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
                 )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                if (suggestions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Previous players:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        suggestions.forEach { name ->
-                            SuggestionChip(
-                                onClick = { playerName = name },
-                                label = { Text(name) }
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+            }
+
+            if (suggestions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Previous players:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Cream.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    suggestions.forEach { name ->
+                        SuggestionChip(
+                            onClick = { playerName = name },
+                            label = { Text(name, color = Cream) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = FeltBackground
+                            ),
+                            border = SuggestionChipDefaults.suggestionChipBorder(
+                                enabled = true,
+                                borderColor = Gold.copy(alpha = 0.4f)
                             )
-                        }
+                        )
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "ADD PLAYER",
                 onClick = {
                     val trimmed = playerName.trim()
                     if (trimmed.isBlank()) {
                         error = "Player name is required"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     if (existingNames.any { it.equals(trimmed, ignoreCase = true) }) {
                         error = "This player is already in the table"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onAddPlayer(trimmed.uppercase())
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BuyInDialog(
+fun BuyInBottomSheet(
     playerName: String,
     onDismiss: () -> Unit,
     onConfirm: (Long, String?) -> Unit,
@@ -1348,6 +1585,7 @@ fun BuyInDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var playerBuyIns by remember { mutableStateOf(0L) }
     var playerExits by remember { mutableStateOf(0L) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(playerId) {
         playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
@@ -1356,92 +1594,187 @@ fun BuyInDialog(
 
     val currentBal = playerBuyIns - playerExits
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Buy-in") },
-        text = {
-            Column {
-                Text(
-                    text = "Player: $playerName",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Current Balance: $currentBal chips",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text("Chip Amount") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "ADD BUY-IN: ${playerName.uppercase()}", suit = "♠")
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Player balance card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(20L, 50L, 100L, 200L).forEach { value ->
-                        SuggestionChip(
-                            onClick = { amount = value.toString() },
-                            label = { Text("+$value") }
+                    Column {
+                        Text(
+                            text = "PLAYER",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            text = playerName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Cream,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "CURRENT BALANCE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Cream.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            text = "$currentBal chips",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Gold,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    singleLine = true
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Big Total Display
+            Text(
+                text = "TOTAL BUY-IN",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (amount.isNotBlank()) "$amount CHIPS" else "0 CHIPS",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Gold,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Poker Chip Selector
+            Text(
+                text = "TAP CHIPS TO ADD",
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.6f),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ChipSelector(
+                onAddAmount = { add ->
+                    val current = amount.toLongOrNull() ?: 0L
+                    amount = (current + add).toString()
+                    if (error != null) error = null
+                },
+                onRemoveLast = {
+                    val current = amount.toLongOrNull() ?: 0L
+                    val updated = maxOf(0L, current - 100L)
+                    amount = if (updated == 0L) "" else updated.toString()
+                },
+                onClear = {
+                    amount = ""
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { 
+                    amount = it.filter { c -> c.isDigit() }
+                    if (error != null) error = null
+                },
+                label = { Text("Custom Amount", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "CONFIRM BUY-IN",
                 onClick = {
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong <= 0) {
                         error = "Amount must be greater than zero"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onConfirm(amountLong, note.ifBlank { null })
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExitDialog(
+fun ExitBottomSheet(
     playerName: String,
-    currentBalance: Long,
     onDismiss: () -> Unit,
     onConfirm: (Long, String?) -> Unit,
     viewModel: TableDetailViewModel,
@@ -1452,6 +1785,7 @@ fun ExitDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var playerBuyIns by remember { mutableStateOf(0L) }
     var playerExits by remember { mutableStateOf(0L) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
     LaunchedEffect(playerId) {
         playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
@@ -1459,93 +1793,182 @@ fun ExitDialog(
     }
     
     val currentBal = playerBuyIns - playerExits
-    
-    AlertDialog(
+    val exitAmountNum = amount.toLongOrNull() ?: 0L
+    val simulatedNet = (playerExits + exitAmountNum) - playerBuyIns
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Record Exit") },
-        text = {
-            Column {
-                Text(
-                    text = "Player: $playerName",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Current Balance: $currentBal chips",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-                Text(
-                    text = "Note: Exit amount can be different from balance",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Amber80.copy(alpha = 0.8f),
-                    fontStyle = FontStyle.Italic
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text("Exit Chip Amount") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "RECORD EXIT: ${playerName.uppercase()}", suit = "♠")
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Player career & exit summary card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp)
                 ) {
-                    listOf(20L, 50L, 100L, 200L).forEach { value ->
-                        SuggestionChip(
-                            onClick = { amount = value.toString() },
-                            label = { Text("+$value") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Total Buy-ins: $playerBuyIns",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "Previous Exits: $playerExits",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.7f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Current Chips: $currentBal",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Gold,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Net: ${if (simulatedNet >= 0) "+" else ""}$simulatedNet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (simulatedNet >= 0) WinGreen else LoseRed,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    singleLine = true
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Big Exit Display
+            Text(
+                text = "EXIT AMOUNT",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (amount.isNotBlank()) "$amount CHIPS" else "0 CHIPS",
+                style = MaterialTheme.typography.headlineMedium,
+                color = if (simulatedNet >= 0) WinGreen else LoseRed,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Chip Selector for exit
+            ChipSelector(
+                onAddAmount = { add ->
+                    val current = amount.toLongOrNull() ?: 0L
+                    amount = (current + add).toString()
+                    if (error != null) error = null
+                },
+                onRemoveLast = {
+                    val current = amount.toLongOrNull() ?: 0L
+                    val updated = maxOf(0L, current - 100L)
+                    amount = if (updated == 0L) "" else updated.toString()
+                },
+                onClear = {
+                    amount = ""
+                }
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { 
+                    amount = it.filter { c -> c.isDigit() }
+                    if (error != null) error = null
+                },
+                label = { Text("Exit Chip Amount", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = "SAVE EXIT",
                 onClick = {
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong < 0) {
                         error = "Amount must be zero or positive"
-                        return@TextButton
+                        return@GoldGradientButton
                     }
                     onConfirm(amountLong, note.ifBlank { null })
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
-                )
-            ) {
-                Text("Save Exit")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
-            }
+                }
+            )
         }
-    )
+    }
 }
 
 fun formatAmount(chips: Long, chipValue: Long?): String {
@@ -1577,13 +2000,16 @@ fun SettlementCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = Gold.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(12.dp)
-            ),
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1702,7 +2128,36 @@ fun calculateSettlement(playerResults: List<PlayerResult>): List<Settlement> {
     return settlements
 }
 
+fun buildShareResultsText(
+    tableName: String,
+    playerResults: List<PlayerResult>,
+    settlements: List<Settlement>
+): String {
+    val sb = StringBuilder()
+    sb.appendLine("🃏 $tableName")
+    sb.appendLine("Players:")
+    val sorted = playerResults.sortedByDescending { it.netResult }
+    if (sorted.isEmpty()) {
+        sb.appendLine("No players yet")
+    } else {
+        sorted.forEachIndexed { index, r ->
+            val sign = if (r.netResult > 0) "+" else ""
+            sb.appendLine("${index + 1}. ${r.player.name}: $sign${r.netResult}")
+        }
+    }
+    sb.appendLine("Settlement:")
+    if (settlements.isEmpty()) {
+        sb.appendLine("All settled!")
+    } else {
+        settlements.forEach { s ->
+            sb.appendLine("${s.fromPlayer} -> ${s.toPlayer}: ${s.amount}")
+        }
+    }
+    return sb.toString().trimEnd()
+}
+
 fun buildShareText(
+
     tableName: String,
     playerResults: List<PlayerResult>,
     settlements: List<Settlement>,
