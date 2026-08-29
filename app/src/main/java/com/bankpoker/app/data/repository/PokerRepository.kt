@@ -29,6 +29,9 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 
+import com.bankpoker.app.data.local.dao.EntryFeeRecordDao
+import com.bankpoker.app.data.local.entity.EntryFeeRecord
+
 class PokerRepository(
     private val pokerTableDao: PokerTableDao,
     private val playerDao: PlayerDao,
@@ -38,6 +41,7 @@ class PokerRepository(
     private val groupBalanceDao: GroupBalanceDao,
     private val paymentDao: PaymentDao,
     private val settlementRecordDao: SettlementRecordDao,
+    private val entryFeeRecordDao: EntryFeeRecordDao,
     private val database: BankPokerDatabase? = null
 ) {
 
@@ -179,6 +183,7 @@ class PokerRepository(
     }
 
     suspend fun deleteTableAndRelatedData(tableId: String) {
+        entryFeeRecordDao.deleteEntryFeeRecordsByTableId(tableId)
         settlementRecordDao.deleteSettlementsByTableId(tableId)
         buyInDao.deleteBuyInsForTable(tableId)
         exitRecordDao.deleteExitRecordsForTable(tableId)
@@ -248,6 +253,26 @@ class PokerRepository(
         closeTable(tableId)
         val groupId = table.groupId ?: return
         val players = playerDao.getPlayersForTableOnce(tableId)
+        val now = System.currentTimeMillis()
+
+        // Insert Entry Fee records if table has entry fee
+        if (table.hasEntryFee && table.entryFee != null && table.entryFee > 0) {
+            val feeRecords = players.map { p ->
+                EntryFeeRecord(
+                    id = UUID.randomUUID().toString(),
+                    groupId = groupId,
+                    tableId = table.id,
+                    tableName = table.name,
+                    playerName = p.name,
+                    amount = table.entryFee,
+                    paid = p.entryFeePaid,
+                    timestamp = now
+                )
+            }
+            if (feeRecords.isNotEmpty()) {
+                entryFeeRecordDao.insertEntryFeeRecords(feeRecords)
+            }
+        }
 
         val debtors = mutableListOf<Pair<String, Long>>()
         val creditors = mutableListOf<Pair<String, Long>>()
@@ -270,7 +295,6 @@ class PokerRepository(
         val settlementsToInsert = mutableListOf<SettlementRecord>()
         var i = 0
         var j = 0
-        val now = System.currentTimeMillis()
         while (i < debtors.size && j < creditors.size) {
             val debtor = debtors[i]
             val creditor = creditors[j]
@@ -285,6 +309,7 @@ class PokerRepository(
                         payerName = debtor.first,
                         receiverName = creditor.first,
                         amount = amount,
+                        initialAmount = amount,
                         paid = false,
                         timestamp = now
                     )
@@ -318,65 +343,93 @@ class PokerRepository(
     suspend fun deleteGroupCascade(groupId: String) {
         val tables = pokerTableDao.getTablesByGroupIdOnce(groupId)
         for (table in tables) {
+            entryFeeRecordDao.deleteEntryFeeRecordsByTableId(table.id)
             settlementRecordDao.deleteSettlementsByTableId(table.id)
             buyInDao.deleteBuyInsForTable(table.id)
             exitRecordDao.deleteExitRecordsForTable(table.id)
             playerDao.deletePlayersForTable(table.id)
             pokerTableDao.deleteTable(table.id)
         }
+        entryFeeRecordDao.deleteEntryFeeRecordsByGroupId(groupId)
         settlementRecordDao.deleteSettlementsByGroupId(groupId)
         groupBalanceDao.deleteBalancesByGroupId(groupId)
         paymentDao.deletePaymentsByGroupId(groupId)
         playerGroupDao.deleteGroup(groupId)
     }
 
+    // Ledger Accounting Rules
+    private suspend fun resyncSettlementsForPair(groupId: String, payerName: String, receiverName: String) {
+        val allPayments = paymentDao.getPaymentsForPair(groupId, payerName, receiverName)
+        var totalPaid = allPayments.sumOf { it.amount }
+        val allSettlements = settlementRecordDao.getAllSettlementsForPair(groupId, payerName, receiverName)
+        for (s in allSettlements) {
+            val orig = if (s.initialAmount > 0L) s.initialAmount else s.amount
+            if (totalPaid >= orig) {
+                totalPaid -= orig
+                settlementRecordDao.updateSettlementAmountAndPaid(s.id, 0L, true)
+            } else {
+                val remaining = orig - totalPaid
+                totalPaid = 0L
+                settlementRecordDao.updateSettlementAmountAndPaid(s.id, remaining, false)
+            }
+        }
+    }
+
     suspend fun recordPayment(groupId: String, fromPlayer: String, toPlayer: String, amount: Long) {
+        if (amount <= 0) return
         paymentDao.insertPayment(
             Payment(UUID.randomUUID().toString(), groupId, fromPlayer, toPlayer, amount, System.currentTimeMillis())
         )
+        applyToGroupBalance(groupId, fromPlayer, amount)
+        applyToGroupBalance(groupId, toPlayer, -amount)
+        resyncSettlementsForPair(groupId, fromPlayer, toPlayer)
     }
 
     suspend fun markSettlementPaid(settlementId: String) {
         val settlement = settlementRecordDao.getSettlementById(settlementId) ?: return
-        settlementRecordDao.markSettlementPaid(settlementId)
-        paymentDao.insertPayment(
-            Payment(
-                id = UUID.randomUUID().toString(),
-                groupId = settlement.groupId,
-                fromPlayer = settlement.payerName,
-                toPlayer = settlement.receiverName,
-                amount = settlement.amount,
-                createdAt = System.currentTimeMillis()
-            )
-        )
+        if (settlement.amount <= 0) return
+        recordPayment(settlement.groupId, settlement.payerName, settlement.receiverName, settlement.amount)
     }
 
     suspend fun recordManualPayment(groupId: String, payerName: String, receiverName: String, amount: Long) {
-        if (amount <= 0) return
-        paymentDao.insertPayment(
-            Payment(
-                id = UUID.randomUUID().toString(),
-                groupId = groupId,
-                fromPlayer = payerName,
-                toPlayer = receiverName,
-                amount = amount,
-                createdAt = System.currentTimeMillis()
-            )
-        )
+        recordPayment(groupId, payerName, receiverName, amount)
+    }
 
-        val unpaidMatching = settlementRecordDao.getUnpaidSettlementsForPair(groupId, payerName, receiverName)
-        var remaining = amount
-        for (record in unpaidMatching) {
-            if (remaining <= 0) break
-            if (record.amount <= remaining) {
-                remaining -= record.amount
-                settlementRecordDao.updateSettlementAmountAndPaid(record.id, record.amount, true)
-            } else {
-                val newAmount = record.amount - remaining
-                remaining = 0
-                settlementRecordDao.updateSettlementAmountAndPaid(record.id, newAmount, false)
-            }
-        }
+    suspend fun updatePaymentAmount(paymentId: String, newAmount: Long) {
+        val existing = paymentDao.getPaymentById(paymentId) ?: return
+        if (newAmount <= 0) return
+        val delta = newAmount - existing.amount
+        paymentDao.updatePayment(existing.copy(amount = newAmount))
+        applyToGroupBalance(existing.groupId, existing.fromPlayer, delta)
+        applyToGroupBalance(existing.groupId, existing.toPlayer, -delta)
+        resyncSettlementsForPair(existing.groupId, existing.fromPlayer, existing.toPlayer)
+    }
+
+    suspend fun deletePayment(paymentId: String) {
+        val existing = paymentDao.getPaymentById(paymentId) ?: return
+        paymentDao.deletePaymentById(paymentId)
+        applyToGroupBalance(existing.groupId, existing.fromPlayer, -existing.amount)
+        applyToGroupBalance(existing.groupId, existing.toPlayer, existing.amount)
+        resyncSettlementsForPair(existing.groupId, existing.fromPlayer, existing.toPlayer)
+    }
+
+    // Entry Fee Records operations
+    fun getEntryFeeRecordsByGroupId(groupId: String): Flow<List<EntryFeeRecord>> =
+        entryFeeRecordDao.getEntryFeeRecordsByGroupId(groupId)
+
+    fun getUnpaidEntryFeeRecordsByGroupId(groupId: String): Flow<List<EntryFeeRecord>> =
+        entryFeeRecordDao.getUnpaidEntryFeeRecordsByGroupId(groupId)
+
+    suspend fun updateEntryFeeRecord(id: String, amount: Long, paid: Boolean) {
+        entryFeeRecordDao.updateEntryFeeRecordAmountAndPaid(id, amount, paid)
+    }
+
+    suspend fun deleteEntryFeeRecord(id: String) {
+        entryFeeRecordDao.deleteEntryFeeRecordById(id)
+    }
+
+    suspend fun markEntryFeeRecordPaid(id: String) {
+        entryFeeRecordDao.updateEntryFeeRecordPaid(id, true)
     }
 
     // Backup & Restore operations
@@ -389,6 +442,7 @@ class PokerRepository(
         val payments = paymentDao.getAllPaymentsOnce()
         val balances = groupBalanceDao.getAllBalancesOnce()
         val settlements = settlementRecordDao.getAllSettlementsOnce()
+        val entryFees = entryFeeRecordDao.getAllEntryFeeRecordsOnce()
 
         val root = JSONObject()
         root.put("version", 1)
@@ -493,11 +547,27 @@ class PokerRepository(
             obj.put("payerName", s.payerName)
             obj.put("receiverName", s.receiverName)
             obj.put("amount", s.amount)
+            obj.put("initialAmount", s.initialAmount)
             obj.put("paid", s.paid)
             obj.put("timestamp", s.timestamp)
             settlementsArray.put(obj)
         }
         root.put("settlements", settlementsArray)
+
+        val entryFeesArray = JSONArray()
+        entryFees.forEach { ef ->
+            val obj = JSONObject()
+            obj.put("id", ef.id)
+            obj.put("groupId", ef.groupId)
+            obj.put("tableId", ef.tableId)
+            obj.put("tableName", ef.tableName)
+            obj.put("playerName", ef.playerName)
+            obj.put("amount", ef.amount)
+            obj.put("paid", ef.paid)
+            obj.put("timestamp", ef.timestamp)
+            entryFeesArray.put(obj)
+        }
+        root.put("entryFees", entryFeesArray)
 
         return root.toString(2)
     }
@@ -643,6 +713,27 @@ class PokerRepository(
                         payerName = obj.getString("payerName"),
                         receiverName = obj.getString("receiverName"),
                         amount = obj.getLong("amount"),
+                        initialAmount = obj.optLong("initialAmount", obj.getLong("amount")),
+                        paid = obj.optBoolean("paid", false),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
+        val entryFees = mutableListOf<EntryFeeRecord>()
+        val entryFeesArray = root.optJSONArray("entryFees")
+        if (entryFeesArray != null) {
+            for (i in 0 until entryFeesArray.length()) {
+                val obj = entryFeesArray.getJSONObject(i)
+                entryFees.add(
+                    EntryFeeRecord(
+                        id = obj.getString("id"),
+                        groupId = obj.getString("groupId"),
+                        tableId = obj.getString("tableId"),
+                        tableName = obj.getString("tableName"),
+                        playerName = obj.getString("playerName"),
+                        amount = obj.getLong("amount"),
                         paid = obj.optBoolean("paid", false),
                         timestamp = obj.optLong("timestamp", System.currentTimeMillis())
                     )
@@ -653,10 +744,10 @@ class PokerRepository(
         val db = database
         if (db != null) {
             db.withTransaction {
-                performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements)
+                performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements, entryFees)
             }
         } else {
-            performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements)
+            performRestore(groups, tables, players, buyIns, exitRecords, payments, balances, settlements, entryFees)
         }
     }
 
@@ -668,7 +759,8 @@ class PokerRepository(
         exitRecords: List<ExitRecord>,
         payments: List<Payment>,
         balances: List<GroupBalance>,
-        settlements: List<SettlementRecord>
+        settlements: List<SettlementRecord>,
+        entryFees: List<EntryFeeRecord>
     ) {
         pokerTableDao.deleteAllTables()
         playerDao.deleteAllPlayers()
@@ -678,6 +770,7 @@ class PokerRepository(
         groupBalanceDao.deleteAllBalances()
         paymentDao.deleteAllPayments()
         settlementRecordDao.deleteAllSettlements()
+        entryFeeRecordDao.deleteAllEntryFeeRecords()
 
         playerGroupDao.insertGroups(groups)
         pokerTableDao.insertTables(tables)
@@ -687,6 +780,7 @@ class PokerRepository(
         paymentDao.insertPayments(payments)
         groupBalanceDao.insertBalances(balances)
         settlementRecordDao.insertSettlements(settlements)
+        entryFeeRecordDao.insertEntryFeeRecords(entryFees)
     }
 
     // Player Profile operations

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -65,6 +66,7 @@ fun GroupDetailScreen(
     viewModel: GroupDetailViewModel,
     onNavigateBack: () -> Unit,
     onTableClick: (String) -> Unit,
+    onNavigateToHistory: () -> Unit,
     onPlayerClick: ((String) -> Unit)? = null
 ) {
 
@@ -72,11 +74,8 @@ fun GroupDetailScreen(
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
     val balances by viewModel.balances.collectAsState(initial = emptyList())
-    val payments by viewModel.payments.collectAsState(initial = emptyList())
     val allSettlements by viewModel.settlements.collectAsState(initial = emptyList())
     val unpaidSettlements by viewModel.unpaidSettlements.collectAsState(initial = emptyList())
-    val entryFeeDebtors by viewModel.entryFeeDebtors.collectAsState(initial = emptyList())
-    val entryFeeHistory by viewModel.entryFeeHistory.collectAsState(initial = emptyList())
 
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -115,6 +114,14 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.List,
+                            contentDescription = "History",
+                            tint = Gold
+                        )
+                    }
+
                     IconButton(onClick = {
                         val shareSettlements = if (allSettlements.isNotEmpty()) {
                             unpaidSettlements.map {
@@ -269,11 +276,8 @@ fun GroupDetailScreen(
                         2 -> GroupStatsTab(
                             tables = tables,
                             balances = balances,
-                            payments = payments,
                             allSettlements = allSettlements,
                             unpaidSettlements = unpaidSettlements,
-                            entryFeeDebtors = entryFeeDebtors,
-                            entryFeeHistory = entryFeeHistory,
                             onMarkSettlementPaid = { settlementId ->
                                 viewModel.markSettlementPaid(settlementId)
                             },
@@ -283,9 +287,7 @@ fun GroupDetailScreen(
                             onMarkPaid = { from, to, amount ->
                                 viewModel.recordPayment(from, to, amount)
                             },
-                            onMarkEntryFeePaid = { playerId ->
-                                viewModel.markEntryFeePaid(playerId)
-                            },
+                            onNavigateToHistory = onNavigateToHistory,
                             onPlayerClick = onPlayerClick
                         )
                     }
@@ -690,21 +692,17 @@ fun BalanceCard(
 fun GroupStatsTab(
     tables: List<PokerTable>,
     balances: List<GroupBalance>,
-    payments: List<Payment>,
     allSettlements: List<SettlementRecord> = emptyList(),
     unpaidSettlements: List<SettlementRecord> = emptyList(),
-    entryFeeDebtors: List<UnpaidEntryFeeInfo> = emptyList(),
-    entryFeeHistory: List<EntryFeeHistoryInfo> = emptyList(),
     onMarkSettlementPaid: (String) -> Unit = {},
     onRecordManualPayment: (String, String, Long) -> Unit = { _, _, _ -> },
     onMarkPaid: (String, String, Long) -> Unit,
-    onMarkEntryFeePaid: (String) -> Unit = {},
+    onNavigateToHistory: () -> Unit,
     onPlayerClick: ((String) -> Unit)? = null
 ) {
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
     val biggestDebtor = balances.minByOrNull { it.balance }
-    val totalPaid = payments.sumOf { it.amount }
     val hasPersistedSettlements = allSettlements.isNotEmpty()
     val legacySettlements = if (!hasPersistedSettlements) calculateGroupSettlement(balances) else emptyList()
 
@@ -753,17 +751,6 @@ fun GroupStatsTab(
                         HeroStat(label = "TABLES", value = "${tables.size}", color = Cream)
                         HeroStat(label = "CLOSED", value = "$closedCount", color = Amber80)
                         HeroStat(label = "PLAYERS", value = "${balances.size}", color = WinGreen)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Total settled so far: $totalPaid chips",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Cream.copy(alpha = 0.7f)
-                        )
                     }
                 }
             }
@@ -845,7 +832,6 @@ fun GroupStatsTab(
             }
         }
 
-
         // Settlement plan
         item {
             Card(
@@ -856,7 +842,6 @@ fun GroupStatsTab(
                 colors = CardDefaults.cardColors(containerColor = FeltCard),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1026,264 +1011,14 @@ fun GroupStatsTab(
             }
         }
 
-        // Settlement History
+        // Full History Button
         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "SETTLEMENT HISTORY",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (payments.isEmpty()) {
-                        Text(
-                            text = "No settlements yet",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Cream.copy(alpha = 0.6f)
-                        )
-                    } else {
-                        payments.forEach { payment ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = payment.fromPlayer,
-                                            color = Cream,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = " → ",
-                                            color = Gold,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = payment.toPlayer,
-                                            color = Cream,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = formatTimestamp(payment.createdAt),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Cream.copy(alpha = 0.4f)
-                                    )
-                                }
-                                Text(
-                                    text = "Amount: ${payment.amount}",
-                                    color = Gold,
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Entry Fee Debtors
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "ENTRY FEE DEBTORS",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (entryFeeDebtors.isEmpty()) {
-                        Text(
-                            text = "All entry fees collected!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = WinGreen,
-                            fontWeight = FontWeight.Medium
-                        )
-                    } else {
-                        entryFeeDebtors.forEach { debtor ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = debtor.playerName,
-                                        color = Cream,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Table: ${debtor.tableName}",
-                                        color = Cream.copy(alpha = 0.7f),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Entry Fee: ${debtor.amount}",
-                                        color = LoseRed,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    TextButton(
-                                        onClick = { onMarkEntryFeePaid(debtor.playerId) },
-                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                    ) {
-                                        Text(
-                                            text = "MARK PAID",
-                                            fontWeight = FontWeight.Bold,
-                                            color = WinGreen
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Entry Fee History
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltCard)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "ENTRY FEE HISTORY",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (entryFeeHistory.isEmpty()) {
-                        Text(
-                            text = "No entry fees in this group",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Cream.copy(alpha = 0.6f)
-                        )
-                    } else {
-                        entryFeeHistory.forEach { entry ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = entry.playerName,
-                                        color = Cream,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Table: ${entry.tableName}",
-                                        color = Cream.copy(alpha = 0.7f),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = formatTimestamp(entry.timestamp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Cream.copy(alpha = 0.4f)
-                                    )
-                                }
-                                Column(
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = "Entry Fee: ${entry.amount}",
-                                        color = Gold,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    if (entry.isPaid) {
-                                        Text(
-                                            text = "Paid ✓",
-                                            color = WinGreen,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    } else {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "Unpaid ✗",
-                                                color = LoseRed,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            TextButton(
-                                                onClick = { onMarkEntryFeePaid(entry.playerId) },
-                                                colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                            ) {
-                                                Text(
-                                                    text = "MARK PAID",
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = WinGreen
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+            GoldGradientButton(
+                text = "VIEW FULL HISTORY",
+                onClick = onNavigateToHistory,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 

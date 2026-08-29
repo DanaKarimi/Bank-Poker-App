@@ -18,6 +18,9 @@ interface SettlementRecordDao {
     @Query("SELECT * FROM settlements WHERE groupId = :groupId AND payerName = :payerName AND receiverName = :receiverName AND paid = 0 ORDER BY timestamp ASC")
     suspend fun getUnpaidSettlementsForPair(groupId: String, payerName: String, receiverName: String): List<SettlementRecord>
 
+    @Query("SELECT * FROM settlements WHERE groupId = :groupId AND payerName = :payerName AND receiverName = :receiverName ORDER BY timestamp ASC")
+    suspend fun getAllSettlementsForPair(groupId: String, payerName: String, receiverName: String): List<SettlementRecord>
+
     @Query("SELECT * FROM settlements WHERE groupId = :groupId ORDER BY timestamp ASC")
     suspend fun getAllSettlementsByGroupIdOnce(groupId: String): List<SettlementRecord>
 

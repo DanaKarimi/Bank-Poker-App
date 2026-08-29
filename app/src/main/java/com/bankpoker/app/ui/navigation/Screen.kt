@@ -14,6 +14,9 @@ sealed class Screen(val route: String) {
         fun createRoute(groupId: String) = "group_detail/$groupId"
     }
     object Stats : Screen("stats")
+    object GroupHistory : Screen("group_history/{groupId}") {
+        fun createRoute(groupId: String) = "group_history/$groupId"
+    }
     object PlayerProfile : Screen("player_profile/{playerName}") {
         fun createRoute(playerName: String): String {
             val encoded = URLEncoder.encode(playerName, StandardCharsets.UTF_8.toString())

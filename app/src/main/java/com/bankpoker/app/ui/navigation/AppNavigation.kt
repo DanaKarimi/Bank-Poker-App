@@ -26,8 +26,11 @@ import com.bankpoker.app.viewmodel.PlayerProfileViewModel
 import com.bankpoker.app.viewmodel.PlayerProfileViewModelFactory
 import com.bankpoker.app.ui.screens.GroupsScreen
 import com.bankpoker.app.ui.screens.GroupDetailScreen
+import com.bankpoker.app.ui.screens.GroupHistoryScreen
 import com.bankpoker.app.ui.screens.StatsScreen
 import com.bankpoker.app.ui.screens.PlayerProfileScreen
+import com.bankpoker.app.viewmodel.GroupHistoryViewModel
+import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -46,6 +49,7 @@ fun AppNavigation(
         groupBalanceDao = database.groupBalanceDao(),
         paymentDao = database.paymentDao(),
         settlementRecordDao = database.settlementRecordDao(),
+        entryFeeRecordDao = database.entryFeeRecordDao(),
         database = database
     )
 
@@ -134,8 +138,29 @@ fun AppNavigation(
                 onTableClick = { tableId ->
                     navController.navigate(Screen.TableDetail.createRoute(tableId))
                 },
+                onNavigateToHistory = {
+                    navController.navigate(Screen.GroupHistory.createRoute(groupId))
+                },
                 onPlayerClick = { playerName ->
                     navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.GroupHistory.route,
+            arguments = listOf(
+                navArgument("groupId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val viewModel: GroupHistoryViewModel = viewModel(
+                factory = GroupHistoryViewModelFactory(repository, groupId)
+            )
+            GroupHistoryScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
