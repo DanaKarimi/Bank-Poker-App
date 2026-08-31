@@ -31,7 +31,8 @@ fun HomeScreen(
     repository: PokerRepository,
     onQuickTableClick: () -> Unit,
     onGroupsClick: () -> Unit,
-    onServerTestClick: () -> Unit = {}
+    onServerTestClick: () -> Unit = {},
+    onCreateGroupClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -97,6 +98,13 @@ fun HomeScreen(
                             onDismissRequest = { showMenu = false },
                             modifier = Modifier.background(FeltCard)
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Create Server Group", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    onCreateGroupClick()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Server Test", color = Cream) },
                                 onClick = {

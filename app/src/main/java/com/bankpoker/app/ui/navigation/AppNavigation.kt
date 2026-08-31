@@ -32,6 +32,7 @@ import com.bankpoker.app.ui.screens.PlayerProfileScreen
 import com.bankpoker.app.viewmodel.GroupHistoryViewModel
 import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
 import com.bankpoker.app.ui.screens.ServerTestScreen
+import com.bankpoker.app.ui.screens.CreateGroupScreen
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -71,6 +72,9 @@ fun AppNavigation(
                 },
                 onServerTestClick = {
                     navController.navigate(Screen.ServerTest.route)
+                },
+                onCreateGroupClick = {
+                    navController.navigate(Screen.CreateGroup.route)
                 }
             )
         }
@@ -120,6 +124,9 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onGroupClick = { groupId ->
                     navController.navigate(Screen.GroupDetail.createRoute(groupId))
+                },
+                onCreateServerGroupClick = {
+                    navController.navigate(Screen.CreateGroup.route)
                 }
             )
         }
@@ -210,6 +217,14 @@ fun AppNavigation(
 
         composable(Screen.ServerTest.route) {
             ServerTestScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.CreateGroup.route) {
+            CreateGroupScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

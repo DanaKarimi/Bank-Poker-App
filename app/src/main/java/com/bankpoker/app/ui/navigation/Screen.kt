@@ -24,5 +24,6 @@ sealed class Screen(val route: String) {
         }
     }
     object ServerTest : Screen("server_test")
+    object CreateGroup : Screen("create_group")
 }
 

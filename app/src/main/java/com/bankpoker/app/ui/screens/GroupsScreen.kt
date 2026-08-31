@@ -34,7 +34,8 @@ import com.bankpoker.app.viewmodel.GroupsViewModel
 @Composable
 fun GroupsScreen(
     viewModel: GroupsViewModel,
-    onGroupClick: (String) -> Unit
+    onGroupClick: (String) -> Unit,
+    onCreateServerGroupClick: () -> Unit = {}
 ) {
     var showCreateGroupSheet by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -57,6 +58,18 @@ fun GroupsScreen(
                             color = Cream, 
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.5.sp
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = onCreateServerGroupClick,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Create Server Group",
+                            tint = Gold
                         )
                     }
                 },

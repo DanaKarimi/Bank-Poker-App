@@ -3,7 +3,10 @@ package com.bankpoker.app.repository
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.ApiService
 import com.bankpoker.app.data.remote.TokenManager
+import com.bankpoker.app.data.remote.dto.CreateGroupRequest
+import com.bankpoker.app.data.remote.dto.CreateGroupResponse
 import com.bankpoker.app.data.remote.dto.HealthResponse
+import com.bankpoker.app.data.remote.dto.InviteCodeResponse
 import com.bankpoker.app.data.remote.dto.LoginRequest
 import com.bankpoker.app.data.remote.dto.LoginResponse
 import com.bankpoker.app.data.remote.dto.RegisterRequest
@@ -93,6 +96,53 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Registration failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Create a new remote group on the server (Admin only)
+     */
+    suspend fun createGroup(name: String): Result<CreateGroupResponse> = withContext(Dispatchers.IO) {
+        try {
+            val token = tokenManager.getToken()
+            val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else ""
+            val request = CreateGroupRequest(name.trim())
+            val response = apiService.createGroup(request, authHeader)
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Create group failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieve invite code for a group (Admin only)
+     */
+    suspend fun getInviteCode(groupId: String): Result<InviteCodeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val token = tokenManager.getToken()
+            val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else ""
+            val response = apiService.getInviteCode(groupId, authHeader)
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to get invite code (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {
