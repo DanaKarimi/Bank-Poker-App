@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     invite_code TEXT UNIQUE,
+    mode TEXT DEFAULT 'OFFLINE',
     created_by TEXT,
     created_at INTEGER,
     server_id TEXT,
@@ -150,6 +151,48 @@ CREATE TABLE IF NOT EXISTS entry_fee_records (
     FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 
+-- 11. Join Requests Table
+CREATE TABLE IF NOT EXISTS join_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 12. Buy-In Requests Table
+CREATE TABLE IF NOT EXISTS buy_in_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    table_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 13. Exit Requests Table
+CREATE TABLE IF NOT EXISTS exit_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    table_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
@@ -162,3 +205,12 @@ CREATE INDEX IF NOT EXISTS idx_exit_records_player ON exit_records(player_id);
 CREATE INDEX IF NOT EXISTS idx_payments_group ON payments(group_id);
 CREATE INDEX IF NOT EXISTS idx_settlement_records_group ON settlement_records(group_id);
 CREATE INDEX IF NOT EXISTS idx_entry_fee_records_group ON entry_fee_records(group_id);
+
+CREATE INDEX IF NOT EXISTS idx_join_requests_group ON join_requests(group_id);
+CREATE INDEX IF NOT EXISTS idx_join_requests_user ON join_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_group ON buy_in_requests(group_id);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_table ON buy_in_requests(table_id);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_user ON buy_in_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_group ON exit_requests(group_id);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_table ON exit_requests(table_id);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_user ON exit_requests(user_id);

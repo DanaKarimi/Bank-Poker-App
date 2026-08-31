@@ -68,6 +68,9 @@ const initDb = async () => {
         if (!columnNames.includes('created_at')) {
             await run("ALTER TABLE groups ADD COLUMN created_at INTEGER");
         }
+        if (!columnNames.includes('mode')) {
+            await run("ALTER TABLE groups ADD COLUMN mode TEXT DEFAULT 'OFFLINE'");
+        }
 
         console.log('Database schema initialized successfully');
     } catch (error) {

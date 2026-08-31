@@ -12,13 +12,14 @@ const { generateInviteCode } = require('../utils/helpers');
  */
 router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { name } = req.body;
+        const { name, mode } = req.body;
 
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Group name is required' });
         }
 
         const trimmedName = name.trim();
+        const groupMode = (mode && typeof mode === 'string' && mode.trim().toUpperCase() === 'ONLINE') ? 'ONLINE' : 'OFFLINE';
         const groupId = crypto.randomUUID();
         const now = Date.now();
         const createdBy = req.user.id;
@@ -35,9 +36,9 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 
         // Insert into groups table
         await run(
-            `INSERT INTO groups (id, name, invite_code, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)`,
-            [groupId, trimmedName, inviteCode, createdBy, now, groupId, now]
+            `INSERT INTO groups (id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+            [groupId, trimmedName, inviteCode, groupMode, createdBy, now, groupId, now]
         );
 
         // Also add the admin creator to group_members
@@ -51,10 +52,12 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
             message: 'Group created successfully',
             groupId,
             inviteCode,
+            mode: groupMode,
             group: {
                 id: groupId,
                 name: trimmedName,
                 invite_code: inviteCode,
+                mode: groupMode,
                 created_by: createdBy,
                 created_at: now,
                 updated_at: now
@@ -174,6 +177,7 @@ router.post('/join', authenticateToken, async (req, res) => {
                     id: group.id,
                     name: group.name,
                     invite_code: group.invite_code,
+                    mode: group.mode || 'OFFLINE',
                     joined_at: existingMembership.joined_at
                 }
             });
@@ -191,6 +195,7 @@ router.post('/join', authenticateToken, async (req, res) => {
                 id: group.id,
                 name: group.name,
                 invite_code: group.invite_code,
+                mode: group.mode || 'OFFLINE',
                 joined_at: joinedAt
             }
         });
@@ -214,7 +219,7 @@ router.get('/my-groups', authenticateToken, async (req, res) => {
         let groups;
         if (userRole === 'ADMIN') {
             groups = await all(
-                `SELECT DISTINCT g.id, g.name, g.invite_code, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
+                `SELECT DISTINCT g.id, g.name, g.invite_code, g.mode, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
                  FROM groups g
                  LEFT JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
                  WHERE (g.created_by = ? OR gm.user_id = ?) AND g.is_deleted = 0
@@ -223,7 +228,7 @@ router.get('/my-groups', authenticateToken, async (req, res) => {
             );
         } else {
             groups = await all(
-                `SELECT g.id, g.name, g.invite_code, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
+                `SELECT g.id, g.name, g.invite_code, g.mode, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
                  FROM groups g
                  INNER JOIN group_members gm ON g.id = gm.group_id
                  WHERE gm.user_id = ? AND g.is_deleted = 0

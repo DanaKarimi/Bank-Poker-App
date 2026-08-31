@@ -9,6 +9,8 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const { initDb } = require('./database/db');
 const authRoutes = require('./routes/auth');
 const groupRoutes = require('./routes/groups');
+const requestRoutes = require('./routes/requests');
+const tableRoutes = require('./routes/tables');
 const syncRoutes = require('./routes/sync');
 
 const app = express();
@@ -29,6 +31,8 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/requests', requestRoutes);
+app.use('/api/tables', tableRoutes);
 app.use('/api/sync', syncRoutes);
 
 // 404 Handler
