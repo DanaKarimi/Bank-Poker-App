@@ -61,25 +61,64 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * GET /api/tables
  * Query param: groupId
- * Returns all active tables for a group
+ * Returns all active tables for a group including playerCount
  */
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const { groupId } = req.query;
-        let query = 'SELECT * FROM tables WHERE is_deleted = 0';
+        let query = `
+            SELECT t.*, (
+                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
+            ) as playerCount
+            FROM tables t
+            WHERE t.is_deleted = 0
+        `;
         const params = [];
 
         if (groupId) {
-            query += ' AND group_id = ?';
+            query += ' AND t.group_id = ?';
             params.push(groupId);
         }
 
-        query += ' ORDER BY created_at DESC';
+        query += ' ORDER BY t.created_at DESC';
         const tables = await all(query, params);
         return res.status(200).json({ tables });
     } catch (error) {
         console.error('Error fetching tables:', error);
         return res.status(500).json({ error: 'Internal server error while fetching tables' });
+    }
+});
+
+/**
+ * GET /api/tables/:id/players
+ * (Requires Auth)
+ * Returns all players currently at a table
+ */
+router.get('/:id/players', authenticateToken, async (req, res) => {
+    try {
+        const tableId = req.params.id;
+
+        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+
+        const players = await all(
+            `SELECT p.id, p.table_id, p.user_id, p.name, p.status, p.created_at, p.entry_fee_paid, u.username
+             FROM players p
+             LEFT JOIN users u ON p.user_id = u.id
+             WHERE p.table_id = ? AND p.is_deleted = 0
+             ORDER BY p.created_at ASC`,
+            [tableId]
+        );
+
+        return res.status(200).json({
+            tableId,
+            players
+        });
+    } catch (error) {
+        console.error('Error fetching table players:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching table players' });
     }
 });
 

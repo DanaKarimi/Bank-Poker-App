@@ -453,6 +453,9 @@ const GroupStats = () => {
                                 Fee: ${table.entry_fee}
                               </span>
                             )}
+                            <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-300 font-semibold">
+                              {table.playerCount || 0} {table.playerCount === 1 ? 'Player' : 'Players'}
+                            </span>
                           </div>
                         </div>
 
@@ -485,7 +488,7 @@ const GroupStats = () => {
                   <div className="bg-felt-card/50 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center text-cream-text/60">
                     <p className="text-sm font-medium">No requests submitted yet.</p>
                     <p className="text-xs mt-1 text-cream-text/40">
-                      Select an active table above to request buy-in chips or exit payouts.
+                      Select an active table above to join and request buy-in chips or exit payouts.
                     </p>
                   </div>
                 ) : (
@@ -506,14 +509,15 @@ const GroupStats = () => {
         ) : null}
       </main>
 
-      {/* Table Detail Modal (Initiates Buy-in or Exit for the selected table) */}
+      {/* Table Detail Modal (Initiates Join, Buy-in or Exit for the selected table) */}
       <TableDetailModal
         isOpen={isTableDetailOpen}
         onClose={() => setIsTableDetailOpen(false)}
         table={selectedTableForDetail}
-        myRequests={allRequests}
+        myRequests={requests}
         onRequestBuyIn={handleRequestBuyInFromTable}
         onRequestExit={handleRequestExitFromTable}
+        onJoinSuccess={() => fetchData(true)}
       />
 
       {/* Request Modal */}

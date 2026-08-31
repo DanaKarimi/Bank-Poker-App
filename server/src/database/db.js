@@ -72,6 +72,18 @@ const initDb = async () => {
             await run("ALTER TABLE groups ADD COLUMN mode TEXT DEFAULT 'OFFLINE'");
         }
 
+        const joinReqColumns = await all("PRAGMA table_info(join_requests)");
+        const joinReqColNames = joinReqColumns.map(c => c.name);
+        if (!joinReqColNames.includes('table_id')) {
+            await run("ALTER TABLE join_requests ADD COLUMN table_id TEXT");
+        }
+
+        const playersColumns = await all("PRAGMA table_info(players)");
+        const playerColNames = playersColumns.map(c => c.name);
+        if (!playerColNames.includes('user_id')) {
+            await run("ALTER TABLE players ADD COLUMN user_id TEXT");
+        }
+
         console.log('Database schema initialized successfully');
     } catch (error) {
         console.error('Error initializing database schema:', error);

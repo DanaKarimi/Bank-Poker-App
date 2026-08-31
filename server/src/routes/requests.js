@@ -7,15 +7,27 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 /**
  * POST /api/requests/join
  * (Requires Auth)
- * Player requests to join an online group
+ * Player requests to join a specific table in an online group
  */
 router.post('/join', authenticateToken, async (req, res) => {
     try {
-        const { groupId } = req.body;
+        const { tableId, groupId: rawGroupId } = req.body;
         const userId = req.user.id;
+        const username = req.user.username;
+
+        let table = null;
+        let groupId = rawGroupId;
+
+        if (tableId) {
+            table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+            if (!table) {
+                return res.status(404).json({ error: 'Table not found' });
+            }
+            groupId = table.group_id;
+        }
 
         if (!groupId) {
-            return res.status(400).json({ error: 'groupId is required' });
+            return res.status(400).json({ error: 'tableId or groupId is required' });
         }
 
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
@@ -23,34 +35,54 @@ router.post('/join', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        // Check if already a member
-        const existingMember = await get(
-            'SELECT * FROM group_members WHERE user_id = ? AND group_id = ?',
-            [userId, groupId]
-        );
-        if (existingMember) {
-            return res.status(400).json({ error: 'Already a member of this group' });
-        }
+        // If tableId is specified, check if already a player in this table
+        if (tableId) {
+            const existingPlayer = await get(
+                `SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0 AND status = 'ACTIVE'`,
+                [tableId, userId, username]
+            );
+            if (existingPlayer) {
+                return res.status(400).json({ error: 'You are already a player at this table' });
+            }
 
-        // Check if a pending join request exists
-        const pendingRequest = await get(
-            'SELECT * FROM join_requests WHERE user_id = ? AND group_id = ? AND status = "PENDING"',
-            [userId, groupId]
-        );
-        if (pendingRequest) {
-            return res.status(400).json({
-                error: 'A pending join request already exists for this group',
-                requestId: pendingRequest.id
-            });
+            // Check if pending request exists for this table
+            const pendingRequest = await get(
+                `SELECT * FROM join_requests WHERE user_id = ? AND table_id = ? AND status = 'PENDING'`,
+                [userId, tableId]
+            );
+            if (pendingRequest) {
+                return res.status(400).json({
+                    error: 'A pending join request already exists for this table',
+                    requestId: pendingRequest.id
+                });
+            }
+        } else {
+            // Check if pending request exists for group
+            const pendingRequest = await get(
+                `SELECT * FROM join_requests WHERE user_id = ? AND group_id = ? AND status = 'PENDING'`,
+                [userId, groupId]
+            );
+            if (pendingRequest) {
+                return res.status(400).json({
+                    error: 'A pending join request already exists for this group',
+                    requestId: pendingRequest.id
+                });
+            }
         }
 
         const requestId = crypto.randomUUID();
         const now = Date.now();
 
         await run(
-            `INSERT INTO join_requests (id, group_id, user_id, status, created_at, updated_at)
-             VALUES (?, ?, ?, 'PENDING', ?, ?)`,
-            [requestId, groupId, userId, now, now]
+            `INSERT INTO join_requests (id, group_id, table_id, user_id, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`,
+            [requestId, groupId, tableId || null, userId, now, now]
+        );
+
+        // Ensure user is in group_members
+        await run(
+            'INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at) VALUES (?, ?, ?)',
+            [userId, groupId, now]
         );
 
         return res.status(201).json({
@@ -67,7 +99,7 @@ router.post('/join', authenticateToken, async (req, res) => {
 /**
  * POST /api/requests/join/:id/approve
  * (Requires Auth + role='ADMIN')
- * Admin approves a join request and adds player to group_members
+ * Admin approves a join request and creates a Player record in the database
  */
 router.post('/join/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -82,19 +114,54 @@ router.post('/join/:id/approve', authenticateToken, requireAdmin, async (req, re
             return res.status(400).json({ error: `Join request is already ${request.status}` });
         }
 
+        const targetUser = await get('SELECT * FROM users WHERE id = ?', [request.user_id]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'Requesting user not found' });
+        }
+
         const now = Date.now();
+
+        // Update join request status
         await run(
             'UPDATE join_requests SET status = "APPROVED", updated_at = ? WHERE id = ?',
             [now, requestId]
         );
 
-        // Add player to group_members
+        // Add user to group_members
         await run(
             'INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at) VALUES (?, ?, ?)',
             [request.user_id, request.group_id, now]
         );
 
-        return res.status(200).json({ message: 'Join request approved successfully' });
+        let playerId = null;
+
+        // If join request was for a table, CREATE Player record in database
+        if (request.table_id) {
+            let player = await get(
+                'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
+                [request.table_id, request.user_id, targetUser.username]
+            );
+
+            if (!player) {
+                playerId = crypto.randomUUID();
+                await run(
+                    `INSERT INTO players (id, table_id, user_id, name, status, created_at, entry_fee_paid, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, 'ACTIVE', ?, 0, ?, ?, 1, 0)`,
+                    [playerId, request.table_id, request.user_id, targetUser.username, now, playerId, now]
+                );
+            } else {
+                playerId = player.id;
+                await run(
+                    'UPDATE players SET status = "ACTIVE", user_id = ?, updated_at = ? WHERE id = ?',
+                    [request.user_id, now, player.id]
+                );
+            }
+        }
+
+        return res.status(200).json({
+            message: 'Join request approved successfully',
+            playerId
+        });
     } catch (error) {
         console.error('Error approving join request:', error);
         return res.status(500).json({ error: 'Internal server error while approving join request' });
@@ -141,6 +208,7 @@ router.post('/buy-in', authenticateToken, async (req, res) => {
     try {
         const { groupId, tableId, amount } = req.body;
         const userId = req.user.id;
+        const username = req.user.username;
 
         if (!groupId || !tableId || amount == null) {
             return res.status(400).json({ error: 'groupId, tableId, and amount are required' });
@@ -159,6 +227,18 @@ router.post('/buy-in', authenticateToken, async (req, res) => {
         const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
+        }
+
+        // Verify player has joined table (or has active player record)
+        const player = await get(
+            `SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0 AND status = 'ACTIVE'`,
+            [tableId, userId, username]
+        );
+
+        if (!player) {
+            return res.status(400).json({
+                error: 'You must join this table before requesting a buy-in.'
+            });
         }
 
         const requestId = crypto.randomUUID();
@@ -184,7 +264,7 @@ router.post('/buy-in', authenticateToken, async (req, res) => {
 /**
  * POST /api/requests/buy-in/:id/approve
  * (Requires Auth + role='ADMIN')
- * Admin approves a buy-in request
+ * Admin approves a buy-in request (status -> APPROVED)
  */
 router.post('/buy-in/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -246,12 +326,13 @@ router.post('/buy-in/:id/reject', authenticateToken, requireAdmin, async (req, r
 /**
  * POST /api/requests/buy-in/:id/confirm
  * (Requires Auth)
- * Player confirms receipt of chips after Admin approved; creates actual BuyIn record
+ * Player confirms receipt of chips; creates actual BuyIn record in database
  */
 router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
     try {
         const requestId = req.params.id;
         const userId = req.user.id;
+        const username = req.user.username;
 
         const request = await get('SELECT * FROM buy_in_requests WHERE id = ?', [requestId]);
         if (!request) {
@@ -275,18 +356,17 @@ router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
         );
 
         // Find or create Player record in table
-        const username = req.user.username;
         let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [request.table_id, username]
+            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
+            [request.table_id, userId, username]
         );
 
         if (!player) {
             const playerId = crypto.randomUUID();
             await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                [playerId, request.table_id, username, now, playerId, now]
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
+                [playerId, request.table_id, userId, username, now, playerId, now]
             );
             player = { id: playerId };
         } else if (player.status === 'EXITED') {
@@ -320,6 +400,7 @@ router.post('/exit', authenticateToken, async (req, res) => {
     try {
         const { groupId, tableId, amount } = req.body;
         const userId = req.user.id;
+        const username = req.user.username;
 
         if (!groupId || !tableId || amount == null) {
             return res.status(400).json({ error: 'groupId, tableId, and amount are required' });
@@ -338,6 +419,18 @@ router.post('/exit', authenticateToken, async (req, res) => {
         const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
+        }
+
+        // Verify player exists in table
+        const player = await get(
+            `SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0 AND status = 'ACTIVE'`,
+            [tableId, userId, username]
+        );
+
+        if (!player) {
+            return res.status(400).json({
+                error: 'You must be an active player at this table to request an exit.'
+            });
         }
 
         const requestId = crypto.randomUUID();
@@ -363,7 +456,7 @@ router.post('/exit', authenticateToken, async (req, res) => {
 /**
  * POST /api/requests/exit/:id/approve
  * (Requires Auth + role='ADMIN')
- * Admin approves an exit request
+ * Admin approves an exit request (status -> APPROVED)
  */
 router.post('/exit/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -425,12 +518,13 @@ router.post('/exit/:id/reject', authenticateToken, requireAdmin, async (req, res
 /**
  * POST /api/requests/exit/:id/confirm
  * (Requires Auth)
- * Player confirms payout receipt; creates actual Exit record
+ * Player confirms payout receipt; creates actual Exit record in database
  */
 router.post('/exit/:id/confirm', authenticateToken, async (req, res) => {
     try {
         const requestId = req.params.id;
         const userId = req.user.id;
+        const username = req.user.username;
 
         const request = await get('SELECT * FROM exit_requests WHERE id = ?', [requestId]);
         if (!request) {
@@ -454,18 +548,17 @@ router.post('/exit/:id/confirm', authenticateToken, async (req, res) => {
         );
 
         // Find or create Player record in table
-        const username = req.user.username;
         let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [request.table_id, username]
+            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
+            [request.table_id, userId, username]
         );
 
         if (!player) {
             const playerId = crypto.randomUUID();
             await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
-                [playerId, request.table_id, username, now, playerId, now]
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
+                [playerId, request.table_id, userId, username, now, playerId, now]
             );
             player = { id: playerId };
         } else {
@@ -493,78 +586,60 @@ router.post('/exit/:id/confirm', authenticateToken, async (req, res) => {
 /**
  * GET /api/requests/pending
  * (Requires Auth + role='ADMIN')
- * Return all pending requests (Join, BuyIn, Exit) for a group or all admin groups
+ * Return all pending requests (Join, BuyIn, Exit) for a group or table
  */
 router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { groupId } = req.query;
+        const { groupId, tableId } = req.query;
 
-        let joinRequests;
-        let buyInRequests;
-        let exitRequests;
+        let joinQuery = `
+            SELECT jr.*, u.username, g.name as group_name, t.name as table_name
+            FROM join_requests jr
+            JOIN users u ON jr.user_id = u.id
+            JOIN groups g ON jr.group_id = g.id
+            LEFT JOIN tables t ON jr.table_id = t.id
+            WHERE jr.status = 'PENDING'
+        `;
+        let buyInQuery = `
+            SELECT br.*, u.username, g.name as group_name, t.name as table_name
+            FROM buy_in_requests br
+            JOIN users u ON br.user_id = u.id
+            JOIN groups g ON br.group_id = g.id
+            JOIN tables t ON br.table_id = t.id
+            WHERE br.status = 'PENDING'
+        `;
+        let exitQuery = `
+            SELECT er.*, u.username, g.name as group_name, t.name as table_name
+            FROM exit_requests er
+            JOIN users u ON er.user_id = u.id
+            JOIN groups g ON er.group_id = g.id
+            JOIN tables t ON er.table_id = t.id
+            WHERE er.status = 'PENDING'
+        `;
 
-        if (groupId) {
-            joinRequests = await all(
-                `SELECT jr.*, u.username, g.name as group_name
-                 FROM join_requests jr
-                 JOIN users u ON jr.user_id = u.id
-                 JOIN groups g ON jr.group_id = g.id
-                 WHERE jr.group_id = ? AND jr.status = 'PENDING'
-                 ORDER BY jr.created_at DESC`,
-                [groupId]
-            );
+        const params = [];
 
-            buyInRequests = await all(
-                `SELECT br.*, u.username, g.name as group_name, t.name as table_name
-                 FROM buy_in_requests br
-                 JOIN users u ON br.user_id = u.id
-                 JOIN groups g ON br.group_id = g.id
-                 JOIN tables t ON br.table_id = t.id
-                 WHERE br.group_id = ? AND br.status = 'PENDING'
-                 ORDER BY br.created_at DESC`,
-                [groupId]
-            );
-
-            exitRequests = await all(
-                `SELECT er.*, u.username, g.name as group_name, t.name as table_name
-                 FROM exit_requests er
-                 JOIN users u ON er.user_id = u.id
-                 JOIN groups g ON er.group_id = g.id
-                 JOIN tables t ON er.table_id = t.id
-                 WHERE er.group_id = ? AND er.status = 'PENDING'
-                 ORDER BY er.created_at DESC`,
-                [groupId]
-            );
-        } else {
-            joinRequests = await all(
-                `SELECT jr.*, u.username, g.name as group_name
-                 FROM join_requests jr
-                 JOIN users u ON jr.user_id = u.id
-                 JOIN groups g ON jr.group_id = g.id
-                 WHERE jr.status = 'PENDING'
-                 ORDER BY jr.created_at DESC`
-            );
-
-            buyInRequests = await all(
-                `SELECT br.*, u.username, g.name as group_name, t.name as table_name
-                 FROM buy_in_requests br
-                 JOIN users u ON br.user_id = u.id
-                 JOIN groups g ON br.group_id = g.id
-                 JOIN tables t ON br.table_id = t.id
-                 WHERE br.status = 'PENDING'
-                 ORDER BY br.created_at DESC`
-            );
-
-            exitRequests = await all(
-                `SELECT er.*, u.username, g.name as group_name, t.name as table_name
-                 FROM exit_requests er
-                 JOIN users u ON er.user_id = u.id
-                 JOIN groups g ON er.group_id = g.id
-                 JOIN tables t ON er.table_id = t.id
-                 WHERE er.status = 'PENDING'
-                 ORDER BY er.created_at DESC`
-            );
+        if (tableId) {
+            joinQuery += ' AND jr.table_id = ?';
+            buyInQuery += ' AND br.table_id = ?';
+            exitQuery += ' AND er.table_id = ?';
+            params.push(tableId);
+        } else if (groupId) {
+            joinQuery += ' AND jr.group_id = ?';
+            buyInQuery += ' AND br.group_id = ?';
+            exitQuery += ' AND er.group_id = ?';
+            params.push(groupId);
         }
+
+        joinQuery += ' ORDER BY jr.created_at DESC';
+        buyInQuery += ' ORDER BY br.created_at DESC';
+        exitQuery += ' ORDER BY er.created_at DESC';
+
+        const [joinRequests, buyInRequests, exitRequests] = await Promise.all([
+            all(joinQuery, params),
+            all(buyInQuery, params),
+            all(exitQuery, params)
+        ]);
 
         return res.status(200).json({
             joinRequests,
@@ -580,76 +655,58 @@ router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
 /**
  * GET /api/requests/my
  * (Requires Auth)
- * Return all requests by the authenticated user in a group or across all groups
+ * Return all requests by the authenticated user
  */
 router.get('/my', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { groupId } = req.query;
+        const { groupId, tableId } = req.query;
 
-        let joinRequests;
-        let buyInRequests;
-        let exitRequests;
+        let joinQuery = `
+            SELECT jr.*, g.name as group_name, t.name as table_name
+            FROM join_requests jr
+            JOIN groups g ON jr.group_id = g.id
+            LEFT JOIN tables t ON jr.table_id = t.id
+            WHERE jr.user_id = ?
+        `;
+        let buyInQuery = `
+            SELECT br.*, g.name as group_name, t.name as table_name
+            FROM buy_in_requests br
+            JOIN groups g ON br.group_id = g.id
+            JOIN tables t ON br.table_id = t.id
+            WHERE br.user_id = ?
+        `;
+        let exitQuery = `
+            SELECT er.*, g.name as group_name, t.name as table_name
+            FROM exit_requests er
+            JOIN groups g ON er.group_id = g.id
+            JOIN tables t ON er.table_id = t.id
+            WHERE er.user_id = ?
+        `;
 
-        if (groupId) {
-            joinRequests = await all(
-                `SELECT jr.*, g.name as group_name
-                 FROM join_requests jr
-                 JOIN groups g ON jr.group_id = g.id
-                 WHERE jr.user_id = ? AND jr.group_id = ?
-                 ORDER BY jr.created_at DESC`,
-                [userId, groupId]
-            );
+        const params = [userId];
 
-            buyInRequests = await all(
-                `SELECT br.*, g.name as group_name, t.name as table_name
-                 FROM buy_in_requests br
-                 JOIN groups g ON br.group_id = g.id
-                 JOIN tables t ON br.table_id = t.id
-                 WHERE br.user_id = ? AND br.group_id = ?
-                 ORDER BY br.created_at DESC`,
-                [userId, groupId]
-            );
-
-            exitRequests = await all(
-                `SELECT er.*, g.name as group_name, t.name as table_name
-                 FROM exit_requests er
-                 JOIN groups g ON er.group_id = g.id
-                 JOIN tables t ON er.table_id = t.id
-                 WHERE er.user_id = ? AND er.group_id = ?
-                 ORDER BY er.created_at DESC`,
-                [userId, groupId]
-            );
-        } else {
-            joinRequests = await all(
-                `SELECT jr.*, g.name as group_name
-                 FROM join_requests jr
-                 JOIN groups g ON jr.group_id = g.id
-                 WHERE jr.user_id = ?
-                 ORDER BY jr.created_at DESC`,
-                [userId]
-            );
-
-            buyInRequests = await all(
-                `SELECT br.*, g.name as group_name, t.name as table_name
-                 FROM buy_in_requests br
-                 JOIN groups g ON br.group_id = g.id
-                 JOIN tables t ON br.table_id = t.id
-                 WHERE br.user_id = ?
-                 ORDER BY br.created_at DESC`,
-                [userId]
-            );
-
-            exitRequests = await all(
-                `SELECT er.*, g.name as group_name, t.name as table_name
-                 FROM exit_requests er
-                 JOIN groups g ON er.group_id = g.id
-                 JOIN tables t ON er.table_id = t.id
-                 WHERE er.user_id = ?
-                 ORDER BY er.created_at DESC`,
-                [userId]
-            );
+        if (tableId) {
+            joinQuery += ' AND jr.table_id = ?';
+            buyInQuery += ' AND br.table_id = ?';
+            exitQuery += ' AND er.table_id = ?';
+            params.push(tableId);
+        } else if (groupId) {
+            joinQuery += ' AND jr.group_id = ?';
+            buyInQuery += ' AND br.group_id = ?';
+            exitQuery += ' AND er.group_id = ?';
+            params.push(groupId);
         }
+
+        joinQuery += ' ORDER BY jr.created_at DESC';
+        buyInQuery += ' ORDER BY br.created_at DESC';
+        exitQuery += ' ORDER BY er.created_at DESC';
+
+        const [joinRequests, buyInRequests, exitRequests] = await Promise.all([
+            all(joinQuery, params),
+            all(buyInQuery, params),
+            all(exitQuery, params)
+        ]);
 
         return res.status(200).json({
             joinRequests,
@@ -659,150 +716,6 @@ router.get('/my', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching user requests:', error);
         return res.status(500).json({ error: 'Internal server error while fetching requests' });
-    }
-});
-
-/**
- * POST /api/requests/tables/:id/buy-in-direct
- * (Requires Auth + role='ADMIN')
- * Directly create a BuyIn record for a user (bypassing the request system)
- */
-router.post('/tables/:id/buy-in-direct', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-        const tableId = req.params.id;
-        const { userId, username, amount } = req.body;
-
-        if (amount == null) {
-            return res.status(400).json({ error: 'amount is required' });
-        }
-
-        const numAmount = Number(amount);
-        if (isNaN(numAmount) || numAmount <= 0) {
-            return res.status(400).json({ error: 'amount must be a positive number' });
-        }
-
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
-        if (!table) {
-            return res.status(404).json({ error: 'Table not found' });
-        }
-
-        let targetUsername = username;
-        if (userId) {
-            const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-            targetUsername = user.username;
-        }
-
-        if (!targetUsername || !targetUsername.trim()) {
-            return res.status(400).json({ error: 'userId or username is required' });
-        }
-
-        const now = Date.now();
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [tableId, targetUsername.trim()]
-        );
-
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                [playerId, tableId, targetUsername.trim(), now, playerId, now]
-            );
-            player = { id: playerId };
-        } else if (player.status === 'EXITED') {
-            await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
-        }
-
-        const buyInId = crypto.randomUUID();
-        await run(
-            `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Direct Admin Buy-In', ?, ?, ?, 1, 0)`,
-            [buyInId, tableId, player.id, numAmount, now, buyInId, now]
-        );
-
-        return res.status(201).json({
-            message: 'Buy-in recorded directly',
-            buyInId
-        });
-    } catch (error) {
-        console.error('Error recording direct buy-in:', error);
-        return res.status(500).json({ error: 'Internal server error while recording direct buy-in' });
-    }
-});
-
-/**
- * POST /api/requests/tables/:id/exit-direct
- * (Requires Auth + role='ADMIN')
- * Directly create an Exit record for a user (bypassing the request system)
- */
-router.post('/tables/:id/exit-direct', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-        const tableId = req.params.id;
-        const { userId, username, amount } = req.body;
-
-        if (amount == null) {
-            return res.status(400).json({ error: 'amount is required' });
-        }
-
-        const numAmount = Number(amount);
-        if (isNaN(numAmount) || numAmount < 0) {
-            return res.status(400).json({ error: 'amount must be a non-negative number' });
-        }
-
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
-        if (!table) {
-            return res.status(404).json({ error: 'Table not found' });
-        }
-
-        let targetUsername = username;
-        if (userId) {
-            const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-            targetUsername = user.username;
-        }
-
-        if (!targetUsername || !targetUsername.trim()) {
-            return res.status(400).json({ error: 'userId or username is required' });
-        }
-
-        const now = Date.now();
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [tableId, targetUsername.trim()]
-        );
-
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
-                [playerId, tableId, targetUsername.trim(), now, playerId, now]
-            );
-            player = { id: playerId };
-        } else {
-            await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
-        }
-
-        const exitId = crypto.randomUUID();
-        await run(
-            `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Direct Admin Exit', ?, ?, ?, 1, 0)`,
-            [exitId, tableId, player.id, numAmount, now, exitId, now]
-        );
-
-        return res.status(201).json({
-            message: 'Exit recorded directly',
-            exitId
-        });
-    } catch (error) {
-        console.error('Error recording direct exit:', error);
-        return res.status(500).json({ error: 'Internal server error while recording direct exit' });
     }
 });
 

@@ -34,9 +34,19 @@ api.interceptors.response.use(
 
 // --- Request System APIs ---
 
-// Join requests
-export const sendJoinRequest = (groupId) => api.post('/api/requests/join', { groupId });
-export const getMyRequests = (groupId) => api.get('/api/requests/my', { params: { groupId } });
+// Join table requests
+export const sendJoinRequest = (tableId, groupId = null) => {
+  if (typeof tableId === 'object') {
+    return api.post('/api/requests/join', tableId);
+  }
+  return api.post('/api/requests/join', { tableId, groupId });
+};
+
+export const getMyRequests = (groupId, tableId = null) =>
+  api.get('/api/requests/my', { params: { groupId, tableId } });
+
+export const getMyJoinRequests = (groupId) =>
+  api.get('/api/requests/my', { params: { groupId } });
 
 // Buy-in requests
 export const sendBuyInRequest = (groupId, tableId, amount) =>
@@ -54,6 +64,8 @@ export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${
 export const getMyGroups = () => api.get('/api/groups/my-groups');
 export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
 export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);
+export const getPlayers = (tableId) => api.get(`/api/tables/${tableId}/players`);
+
 export const getGroupTables = async (groupId) => {
   try {
     const response = await api.get(`/api/groups/${groupId}/tables`);

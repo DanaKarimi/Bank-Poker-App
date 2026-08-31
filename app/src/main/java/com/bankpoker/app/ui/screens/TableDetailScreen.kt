@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -80,7 +81,8 @@ import kotlinx.coroutines.launch
 fun TableDetailScreen(
     viewModel: TableDetailViewModel,
     onNavigateBack: () -> Unit,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onNavigateToRequests: ((String, String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val players by viewModel.players.collectAsState(initial = emptyList())
@@ -135,6 +137,20 @@ fun TableDetailScreen(
                     }
                 },
                 actions = {
+                    if (onNavigateToRequests != null && uiState.table?.groupId != null) {
+                        IconButton(onClick = {
+                            uiState.table?.let { t ->
+                                onNavigateToRequests(t.groupId ?: "", t.name)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Pending Requests",
+                                tint = Color(0xFFFFB300)
+                            )
+                        }
+                    }
+
                     IconButton(onClick = {
                         val text = buildShareResultsText(
                             tableName = uiState.table?.name ?: "Table",

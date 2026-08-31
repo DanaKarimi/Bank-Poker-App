@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tables (
 CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY,
     table_id TEXT NOT NULL,
+    user_id TEXT,
     name TEXT NOT NULL,
     status TEXT NOT NULL,
     created_at INTEGER NOT NULL,
@@ -155,11 +156,13 @@ CREATE TABLE IF NOT EXISTS entry_fee_records (
 CREATE TABLE IF NOT EXISTS join_requests (
     id TEXT PRIMARY KEY,
     group_id TEXT NOT NULL,
+    table_id TEXT,
     user_id TEXT NOT NULL,
     status TEXT DEFAULT 'PENDING',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

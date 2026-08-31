@@ -118,6 +118,9 @@ fun AppNavigation(
                 },
                 onPlayerClick = { playerName ->
                     navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                },
+                onNavigateToRequests = { id, name ->
+                    navController.navigate(Screen.Requests.createRoute(id, name))
                 }
             )
         }

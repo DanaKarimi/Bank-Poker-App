@@ -395,7 +395,12 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
         }
 
         const tables = await all(
-            'SELECT * FROM tables WHERE group_id = ? AND is_deleted = 0 ORDER BY created_at DESC',
+            `SELECT t.*, (
+                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
+             ) as playerCount
+             FROM tables t
+             WHERE t.group_id = ? AND t.is_deleted = 0
+             ORDER BY t.created_at DESC`,
             [groupId]
         );
 
