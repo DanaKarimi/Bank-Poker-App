@@ -3,6 +3,7 @@ package com.bankpoker.app.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,10 +49,12 @@ fun CreateGroupScreen(
     }
 
     var groupName by remember { mutableStateOf("") }
+    var selectedMode by remember { mutableStateOf("OFFLINE") } // "OFFLINE" or "ONLINE"
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var createdInviteCode by remember { mutableStateOf<String?>(null) }
     var createdGroupName by remember { mutableStateOf<String?>(null) }
+    var createdMode by remember { mutableStateOf<String>("OFFLINE") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var isCopied by remember { mutableStateOf(false) }
 
@@ -72,13 +75,14 @@ fun CreateGroupScreen(
         errorMessage = null
 
         coroutineScope.launch {
-            val result = remoteRepository.createGroup(groupName.trim())
+            val result = remoteRepository.createGroup(groupName.trim(), selectedMode)
             isLoading = false
 
             if (result.isSuccess) {
                 val data = result.getOrNull()
                 createdInviteCode = data?.inviteCode
                 createdGroupName = groupName.trim()
+                createdMode = selectedMode
                 showSuccessDialog = true
             } else {
                 errorMessage = result.exceptionOrNull()?.message ?: "Failed to create group."
@@ -94,7 +98,7 @@ fun CreateGroupScreen(
                         Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "CREATE SERVER GROUP",
+                            text = "CREATE GROUP",
                             style = MaterialTheme.typography.titleMedium,
                             color = Cream,
                             fontWeight = FontWeight.Bold,
@@ -182,7 +186,7 @@ fun CreateGroupScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = "Create a cloud group on the BankPoker server. Players will be able to join using the 6-character invite code.",
+                            text = "Choose whether this group is run entirely Offline by the admin, or Online with live player requests.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Cream.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center
@@ -205,7 +209,7 @@ fun CreateGroupScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "GROUP DETAILS",
+                            text = "GROUP NAME",
                             style = MaterialTheme.typography.labelLarge,
                             color = Gold,
                             letterSpacing = 1.sp,
@@ -231,6 +235,90 @@ fun CreateGroupScreen(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
                         )
+
+                        // Mode Selection (Offline vs Online)
+                        Text(
+                            text = "GROUP MODE",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Gold,
+                            letterSpacing = 1.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // OFFLINE Option
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedMode = "OFFLINE" }
+                                    .border(
+                                        width = if (selectedMode == "OFFLINE") 2.dp else 1.dp,
+                                        color = if (selectedMode == "OFFLINE") Gold else Gold.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selectedMode == "OFFLINE") Color(0xFF041C0E) else FeltCard
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "🎲 OFFLINE",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selectedMode == "OFFLINE") Gold else Cream.copy(alpha = 0.8f),
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Admin manages all tables & chip counts directly.",
+                                        fontSize = 11.sp,
+                                        color = Cream.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+
+                            // ONLINE Option
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedMode = "ONLINE" }
+                                    .border(
+                                        width = if (selectedMode == "ONLINE") 2.dp else 1.dp,
+                                        color = if (selectedMode == "ONLINE") Gold else Gold.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selectedMode == "ONLINE") Color(0xFF041C0E) else FeltCard
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "🌐 ONLINE",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selectedMode == "ONLINE") Gold else Cream.copy(alpha = 0.8f),
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Players join with code & send live buy-in requests.",
+                                        fontSize = 11.sp,
+                                        color = Cream.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
 
                         if (errorMessage != null) {
                             Card(
@@ -258,8 +346,8 @@ fun CreateGroupScreen(
         }
     }
 
-    // Success Dialog with Large Invite Code
-    if (showSuccessDialog && createdInviteCode != null) {
+    // Success Dialog
+    if (showSuccessDialog) {
         Dialog(onDismissRequest = {
             showSuccessDialog = false
             onNavigateBack()
@@ -296,63 +384,81 @@ fun CreateGroupScreen(
                     )
 
                     Text(
-                        text = "Share this invite code with players so they can join on their app or web dashboard:",
+                        text = if (createdMode == "ONLINE") {
+                            "Online Group Created! Share this invite code with players so they can join on their app or web dashboard:"
+                        } else {
+                            "Offline Group Created! You can now create tables and record sessions directly."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = Cream.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center
                     )
 
-                    // Invite Code Display Box
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF041C0E), RoundedCornerShape(16.dp))
-                            .border(1.5.dp, Gold, RoundedCornerShape(16.dp))
-                            .padding(vertical = 18.dp, horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = createdInviteCode!!,
-                            color = Gold,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 8.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    // Action Buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(createdInviteCode!!))
-                                isCopied = true
-                                Toast.makeText(context, "Invite code copied!", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Gold,
-                                containerColor = FeltCard
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                brush = Brush.linearGradient(listOf(Gold, Gold.copy(alpha = 0.6f)))
-                            ),
-                            modifier = Modifier.weight(1f)
+                    if (createdMode == "ONLINE" && createdInviteCode != null) {
+                        // Invite Code Display Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF041C0E), RoundedCornerShape(16.dp))
+                                .border(1.5.dp, Gold, RoundedCornerShape(16.dp))
+                                .padding(vertical = 18.dp, horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Share,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Gold
+                            Text(
+                                text = createdInviteCode!!,
+                                color = Gold,
+                                fontSize = 34.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 8.sp,
+                                textAlign = TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isCopied) "Copied" else "Copy Code", fontWeight = FontWeight.Bold)
                         }
 
+                        // Action Buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(createdInviteCode!!))
+                                    isCopied = true
+                                    Toast.makeText(context, "Invite code copied!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Gold,
+                                    containerColor = FeltCard
+                                ),
+                                border = ButtonDefaults.outlinedButtonBorder.copy(
+                                    brush = Brush.linearGradient(listOf(Gold, Gold.copy(alpha = 0.6f)))
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Share,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Gold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (isCopied) "Copied" else "Copy Code", fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    showSuccessDialog = false
+                                    onNavigateBack()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Done", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
                         Button(
                             onClick = {
                                 showSuccessDialog = false
@@ -360,7 +466,7 @@ fun CreateGroupScreen(
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Done", fontWeight = FontWeight.Bold)
                         }

@@ -9,6 +9,8 @@ import com.bankpoker.app.data.remote.dto.HealthResponse
 import com.bankpoker.app.data.remote.dto.InviteCodeResponse
 import com.bankpoker.app.data.remote.dto.LoginRequest
 import com.bankpoker.app.data.remote.dto.LoginResponse
+import com.bankpoker.app.data.remote.dto.MessageResponse
+import com.bankpoker.app.data.remote.dto.PendingRequestsResponse
 import com.bankpoker.app.data.remote.dto.RegisterRequest
 import com.bankpoker.app.data.remote.dto.RegisterResponse
 import com.google.gson.Gson
@@ -28,6 +30,11 @@ class RemoteRepository(
 
     fun updateApiService(newService: ApiService) {
         this.apiService = newService
+    }
+
+    private fun getAuthHeader(): String {
+        val token = tokenManager.getToken()
+        return if (!token.isNullOrBlank()) "Bearer $token" else ""
     }
 
     /**
@@ -108,12 +115,10 @@ class RemoteRepository(
     /**
      * Create a new remote group on the server (Admin only)
      */
-    suspend fun createGroup(name: String): Result<CreateGroupResponse> = withContext(Dispatchers.IO) {
+    suspend fun createGroup(name: String, mode: String = "OFFLINE"): Result<CreateGroupResponse> = withContext(Dispatchers.IO) {
         try {
-            val token = tokenManager.getToken()
-            val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else ""
-            val request = CreateGroupRequest(name.trim())
-            val response = apiService.createGroup(request, authHeader)
+            val request = CreateGroupRequest(name.trim(), mode)
+            val response = apiService.createGroup(request, getAuthHeader())
 
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
@@ -134,15 +139,160 @@ class RemoteRepository(
      */
     suspend fun getInviteCode(groupId: String): Result<InviteCodeResponse> = withContext(Dispatchers.IO) {
         try {
-            val token = tokenManager.getToken()
-            val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else ""
-            val response = apiService.getInviteCode(groupId, authHeader)
+            val response = apiService.getInviteCode(groupId, getAuthHeader())
 
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to get invite code (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Get pending requests for an online group (Admin only)
+     */
+    suspend fun getPendingRequests(groupId: String): Result<PendingRequestsResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getPendingRequests(groupId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch pending requests (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Approve a join request (Admin only)
+     */
+    suspend fun approveJoinRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.approveJoinRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to approve join request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Reject a join request (Admin only)
+     */
+    suspend fun rejectJoinRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.rejectJoinRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reject join request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Approve a buy-in request (Admin only)
+     */
+    suspend fun approveBuyInRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.approveBuyInRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to approve buy-in request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Reject a buy-in request (Admin only)
+     */
+    suspend fun rejectBuyInRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.rejectBuyInRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reject buy-in request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Approve an exit request (Admin only)
+     */
+    suspend fun approveExitRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.approveExitRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to approve exit request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Reject an exit request (Admin only)
+     */
+    suspend fun rejectExitRequest(requestId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.rejectExitRequest(requestId, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reject exit request (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {

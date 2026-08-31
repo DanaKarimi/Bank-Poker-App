@@ -9,6 +9,8 @@ data class GroupDto(
     val name: String,
     @SerializedName("invite_code")
     val inviteCode: String? = null,
+    @SerializedName("mode")
+    val mode: String? = "OFFLINE",
     @SerializedName("created_by")
     val createdBy: String? = null,
     @SerializedName("created_at")

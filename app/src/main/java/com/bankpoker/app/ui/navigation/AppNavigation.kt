@@ -33,6 +33,7 @@ import com.bankpoker.app.viewmodel.GroupHistoryViewModel
 import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
 import com.bankpoker.app.ui.screens.ServerTestScreen
 import com.bankpoker.app.ui.screens.CreateGroupScreen
+import com.bankpoker.app.ui.screens.RequestsScreen
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -154,6 +155,9 @@ fun AppNavigation(
                 },
                 onPlayerClick = { playerName ->
                     navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                },
+                onNavigateToRequests = { id, name ->
+                    navController.navigate(Screen.Requests.createRoute(id, name))
                 }
             )
         }
@@ -225,6 +229,32 @@ fun AppNavigation(
 
         composable(Screen.CreateGroup.route) {
             CreateGroupScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.Requests.route,
+            arguments = listOf(
+                navArgument("groupId") { type = NavType.StringType },
+                navArgument("groupName") {
+                    type = NavType.StringType
+                    defaultValue = "Online Group"
+                }
+            )
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val rawGroupName = backStackEntry.arguments?.getString("groupName") ?: "Online Group"
+            val groupName = try {
+                URLDecoder.decode(rawGroupName, StandardCharsets.UTF_8.toString())
+            } catch (e: Exception) {
+                rawGroupName
+            }
+            RequestsScreen(
+                groupId = groupId,
+                groupName = groupName,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

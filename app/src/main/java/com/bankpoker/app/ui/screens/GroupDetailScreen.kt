@@ -64,7 +64,8 @@ fun GroupDetailScreen(
     onNavigateBack: () -> Unit,
     onTableClick: (String) -> Unit,
     onNavigateToHistory: () -> Unit,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onNavigateToRequests: ((String, String) -> Unit)? = null
 ) {
 
     val context = LocalContext.current
@@ -109,6 +110,20 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
+                    if (onNavigateToRequests != null) {
+                        IconButton(onClick = {
+                            group?.let { g ->
+                                onNavigateToRequests(g.id, g.name)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.List,
+                                contentDescription = "Pending Requests",
+                                tint = Gold
+                            )
+                        }
+                    }
+
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.List,
@@ -147,6 +162,22 @@ fun GroupDetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(FeltCard)
                     ) {
+                        if (onNavigateToRequests != null) {
+                            DropdownMenuItem(
+                                text = { Text("Pending Requests", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    group?.let { g -> onNavigateToRequests(g.id, g.name) }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.List,
+                                        contentDescription = null,
+                                        tint = Gold
+                                    )
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Edit Name", color = Cream) },
                             onClick = {

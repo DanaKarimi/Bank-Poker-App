@@ -25,5 +25,11 @@ sealed class Screen(val route: String) {
     }
     object ServerTest : Screen("server_test")
     object CreateGroup : Screen("create_group")
+    object Requests : Screen("requests/{groupId}?groupName={groupName}") {
+        fun createRoute(groupId: String, groupName: String = ""): String {
+            val encodedName = URLEncoder.encode(groupName, StandardCharsets.UTF_8.toString())
+            return "requests/$groupId?groupName=$encodedName"
+        }
+    }
 }
 

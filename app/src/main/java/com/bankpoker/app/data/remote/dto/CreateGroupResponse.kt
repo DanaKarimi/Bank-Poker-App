@@ -9,6 +9,8 @@ data class CreateGroupResponse(
     val groupId: String? = null,
     @SerializedName("inviteCode")
     val inviteCode: String? = null,
+    @SerializedName("mode")
+    val mode: String? = null,
     @SerializedName("group")
     val group: GroupDto? = null,
     @SerializedName("error")
