@@ -58,6 +58,17 @@ const initDb = async () => {
         const schemaPath = path.join(__dirname, 'schema.sql');
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
         await exec(schemaSql);
+
+        // Safe column migrations for existing databases
+        const groupsColumns = await all("PRAGMA table_info(groups)");
+        const columnNames = groupsColumns.map(c => c.name);
+        if (!columnNames.includes('created_by')) {
+            await run("ALTER TABLE groups ADD COLUMN created_by TEXT");
+        }
+        if (!columnNames.includes('created_at')) {
+            await run("ALTER TABLE groups ADD COLUMN created_at INTEGER");
+        }
+
         console.log('Database schema initialized successfully');
     } catch (error) {
         console.error('Error initializing database schema:', error);

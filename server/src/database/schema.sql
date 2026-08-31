@@ -15,10 +15,13 @@ CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     invite_code TEXT UNIQUE,
+    created_by TEXT,
+    created_at INTEGER,
     server_id TEXT,
     updated_at INTEGER NOT NULL,
     is_synced INTEGER DEFAULT 0,
-    is_deleted INTEGER DEFAULT 0
+    is_deleted INTEGER DEFAULT 0,
+    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- 3. Group Members Table
