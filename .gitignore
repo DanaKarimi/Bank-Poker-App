@@ -39,3 +39,7 @@ server/node_modules/
 server/.env
 server/*.db
 server/*.sqlite
+
+# Web
+web/node_modules/
+web/dist/

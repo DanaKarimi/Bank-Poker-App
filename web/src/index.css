@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --felt-green: #0b4625;
+  --gold-accent: #d4af37;
+  --cream-text: #f5f5dc;
+}
+
+body {
+  background-color: var(--felt-green);
+  color: var(--cream-text);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+}
