@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowDownLeft, ArrowUpRight, DollarSign, AlertCircle, Layers } from 'lucide-react';
 
-const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit }) => {
+const RequestModal = ({
+  isOpen,
+  onClose,
+  type = 'buy-in',
+  tables = [],
+  initialTableId = '',
+  selectedTable = null,
+  onSubmit,
+}) => {
   const [amount, setAmount] = useState('');
   const [selectedTableId, setSelectedTableId] = useState('');
   const [customTableId, setCustomTableId] = useState('');
@@ -14,15 +22,21 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
     if (isOpen) {
       setAmount('');
       setError('');
-      if (tables && tables.length > 0) {
+      if (initialTableId) {
+        setSelectedTableId(initialTableId);
+      } else if (selectedTable?.id) {
+        setSelectedTableId(selectedTable.id);
+      } else if (tables && tables.length > 0) {
         setSelectedTableId(tables[0].id);
       } else {
         setSelectedTableId('');
       }
     }
-  }, [isOpen, tables]);
+  }, [isOpen, initialTableId, selectedTable, tables]);
 
   if (!isOpen) return null;
+
+  const currentTable = selectedTable || tables.find((t) => t.id === (selectedTableId || initialTableId));
 
   const quickAmounts = [100, 500, 1000, 5000];
 
@@ -42,7 +56,7 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
       return;
     }
 
-    const tableId = selectedTableId || customTableId;
+    const tableId = selectedTableId || initialTableId || customTableId;
     if (!tableId) {
       setError('Please select or specify a table.');
       return;
@@ -88,8 +102,8 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
             </h2>
             <p className="text-xs text-cream-text/70">
               {isBuyIn
-                ? 'Submit a request to buy chips at a table.'
-                : 'Submit a request to cash out your chips from a table.'}
+                ? 'Submit a request to buy chips for this table.'
+                : 'Submit a request to cash out chips from this table.'}
             </p>
           </div>
         </div>
@@ -103,13 +117,30 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Table Selection */}
+          {/* Table Display / Selection */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1.5 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-gold-accent" />
-              <span>Select Poker Table</span>
+              <span>Poker Table</span>
             </label>
-            {tables && tables.length > 0 ? (
+
+            {currentTable ? (
+              <div className="p-3 bg-felt-dark rounded-xl border border-gold-accent/40 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-cream-text text-sm">
+                    {currentTable.name || `Table ${currentTable.id}`}
+                  </div>
+                  {currentTable.chip_value && (
+                    <div className="text-[11px] text-cream-text/60">
+                      Chip value: ${currentTable.chip_value}
+                    </div>
+                  )}
+                </div>
+                <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                  {currentTable.status || 'ACTIVE'}
+                </span>
+              </div>
+            ) : tables && tables.length > 0 ? (
               <select
                 value={selectedTableId}
                 onChange={(e) => setSelectedTableId(e.target.value)}
@@ -133,7 +164,7 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
                   required
                 />
                 <p className="text-[11px] text-cream-text/50 mt-1">
-                  No active tables auto-detected. Please enter the table ID provided by your host.
+                  No active tables detected. Please enter the table ID provided by your host.
                 </p>
               </div>
             )}
@@ -157,6 +188,7 @@ const RequestModal = ({ isOpen, onClose, type = 'buy-in', tables = [], onSubmit 
               placeholder="e.g. 1000"
               className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono text-lg font-bold placeholder-cream-text/40 focus:outline-none focus:border-gold-accent transition"
               required
+              autoFocus
             />
 
             {/* Quick Chip Presets */}

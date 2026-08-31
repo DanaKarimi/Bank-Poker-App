@@ -13,6 +13,7 @@ import {
 } from '../api';
 import RequestCard from '../components/RequestCard';
 import RequestModal from '../components/RequestModal';
+import TableDetailModal from '../components/TableDetailModal';
 import {
   ArrowLeft,
   RefreshCw,
@@ -23,13 +24,12 @@ import {
   Send,
   Download,
   AlertCircle,
-  PlusCircle,
-  MinusCircle,
   Clock,
   CheckCircle,
   Wifi,
   Shield,
   Layers,
+  ChevronRight,
 } from 'lucide-react';
 
 const GroupStats = () => {
@@ -48,14 +48,17 @@ const GroupStats = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Modals
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Table Detail Modal & Request Modal States
+  const [selectedTableForDetail, setSelectedTableForDetail] = useState(null);
+  const [isTableDetailOpen, setIsTableDetailOpen] = useState(false);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [modalType, setModalType] = useState('buy-in');
+  const [activeTableForRequest, setActiveTableForRequest] = useState(null);
 
   const isOnline = group?.mode === 'ONLINE';
   const timerRef = useRef(null);
 
-  // 1. Initial fetch of group info if not in location.state
+  // 1. Fetch group info if not in location.state
   const fetchGroupInfo = async () => {
     try {
       const response = await getMyGroups();
@@ -118,13 +121,28 @@ const GroupStats = () => {
     };
   }, [groupId]);
 
-  // Request Submission
-  const handleOpenModal = (type) => {
-    setModalType(type);
-    setIsModalOpen(true);
-    setSuccessMessage('');
+  // Handle Opening Table Detail
+  const handleOpenTableDetail = (table) => {
+    setSelectedTableForDetail(table);
+    setIsTableDetailOpen(true);
   };
 
+  // Handle Request Initiated from Table View
+  const handleRequestBuyInFromTable = (table) => {
+    setActiveTableForRequest(table);
+    setModalType('buy-in');
+    setIsTableDetailOpen(false);
+    setIsRequestModalOpen(true);
+  };
+
+  const handleRequestExitFromTable = (table) => {
+    setActiveTableForRequest(table);
+    setModalType('exit');
+    setIsTableDetailOpen(false);
+    setIsRequestModalOpen(true);
+  };
+
+  // Request Submission
   const handleSubmitRequest = async (amount, tableId) => {
     if (modalType === 'buy-in') {
       await sendBuyInRequest(groupId, tableId, amount);
@@ -260,40 +278,8 @@ const GroupStats = () => {
               </div>
             </div>
 
-            {/* Offline vs Online Notice / Actions */}
-            {isOnline ? (
-              <div className="bg-felt-card/80 border border-gold-accent/40 rounded-2xl p-4 shadow flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3 text-sm text-cream-text/80">
-                  <div className="p-2 bg-emerald-950 text-emerald-400 border border-emerald-500/40 rounded-xl">
-                    <Wifi className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-cream-text">Online Request System Active</h3>
-                    <p className="text-xs text-cream-text/60">
-                      Send buy-in and exit requests directly to your table admin.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <button
-                    onClick={() => handleOpenModal('buy-in')}
-                    className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition active:scale-95 flex items-center justify-center gap-1.5"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    <span>Request Buy-In</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenModal('exit')}
-                    className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition active:scale-95 flex items-center justify-center gap-1.5"
-                  >
-                    <MinusCircle className="w-4 h-4" />
-                    <span>Request Exit</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
+            {/* Offline Group Notice */}
+            {!isOnline && (
               <div className="bg-felt-card/60 border border-dashed border-gold-accent/30 rounded-2xl p-4 text-center text-xs text-cream-text/70">
                 <span>♠ This is an offline group. Table entries and balances are managed directly by your admin.</span>
               </div>
@@ -418,6 +404,72 @@ const GroupStats = () => {
               </div>
             </div>
 
+            {/* Active Tables Section (Online Groups) */}
+            {isOnline && (
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-gold-accent flex items-center gap-2">
+                    <Layers className="w-5 h-5" />
+                    <span>Active Tables</span>
+                  </h3>
+                  <span className="text-xs font-semibold text-cream-text/60">
+                    {tables.length} {tables.length === 1 ? 'Table' : 'Tables'} Available
+                  </span>
+                </div>
+
+                {tables.length === 0 ? (
+                  <div className="bg-felt-card/50 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center text-cream-text/60">
+                    <p className="text-sm font-medium">No active tables in this group right now.</p>
+                    <p className="text-xs mt-1 text-cream-text/40">
+                      When your admin opens a table, it will appear here so you can request buy-ins.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {tables.map((table) => (
+                      <div
+                        key={table.id}
+                        onClick={() => handleOpenTableDetail(table)}
+                        className="bg-felt-card/90 border-2 border-gold-accent/50 hover:border-gold-accent rounded-2xl p-5 shadow-lg transition duration-200 cursor-pointer flex flex-col justify-between group"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h4 className="font-extrabold text-lg text-cream-text group-hover:text-gold-light transition line-clamp-1">
+                              ♣ {table.name || `Table ${table.id}`}
+                            </h4>
+                            <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                              {table.status || 'ACTIVE'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-xs text-cream-text/70 mb-4">
+                            {table.chip_value && (
+                              <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-gold-accent/20 font-mono">
+                                ${table.chip_value}/chip
+                              </span>
+                            )}
+                            {table.has_entry_fee && table.entry_fee > 0 && (
+                              <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-300 font-mono">
+                                Fee: ${table.entry_fee}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="w-full py-2 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/40 shadow flex items-center justify-center gap-1.5 transition"
+                        >
+                          <span>Open Table Actions</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Online Group Requests Section */}
             {isOnline && (
               <div className="pt-4">
@@ -433,7 +485,7 @@ const GroupStats = () => {
                   <div className="bg-felt-card/50 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center text-cream-text/60">
                     <p className="text-sm font-medium">No requests submitted yet.</p>
                     <p className="text-xs mt-1 text-cream-text/40">
-                      Use the "Request Buy-In" or "Request Exit" buttons above to initiate transactions.
+                      Select an active table above to request buy-in chips or exit payouts.
                     </p>
                   </div>
                 ) : (
@@ -454,12 +506,27 @@ const GroupStats = () => {
         ) : null}
       </main>
 
+      {/* Table Detail Modal (Initiates Buy-in or Exit for the selected table) */}
+      <TableDetailModal
+        isOpen={isTableDetailOpen}
+        onClose={() => setIsTableDetailOpen(false)}
+        table={selectedTableForDetail}
+        myRequests={allRequests}
+        onRequestBuyIn={handleRequestBuyInFromTable}
+        onRequestExit={handleRequestExitFromTable}
+      />
+
       {/* Request Modal */}
       <RequestModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isRequestModalOpen}
+        onClose={() => {
+          setIsRequestModalOpen(false);
+          setActiveTableForRequest(null);
+        }}
         type={modalType}
         tables={tables}
+        selectedTable={activeTableForRequest}
+        initialTableId={activeTableForRequest?.id}
         onSubmit={handleSubmitRequest}
       />
     </div>
