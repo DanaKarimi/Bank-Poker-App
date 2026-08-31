@@ -52,9 +52,16 @@ class PokerRepository(
 
     suspend fun getTableById(tableId: String): PokerTable? = pokerTableDao.getTableById(tableId)
 
-    suspend fun createTable(name: String, chipValue: Long?, groupId: String? = null, hasEntryFee: Boolean = false, entryFee: Long? = null): PokerTable {
+    suspend fun createTable(
+        name: String,
+        chipValue: Long?,
+        groupId: String? = null,
+        hasEntryFee: Boolean = false,
+        entryFee: Long? = null,
+        customId: String? = null
+    ): PokerTable {
         val table = PokerTable(
-            id = UUID.randomUUID().toString(),
+            id = customId ?: UUID.randomUUID().toString(),
             name = name,
             chipValue = chipValue,
             status = "ACTIVE",

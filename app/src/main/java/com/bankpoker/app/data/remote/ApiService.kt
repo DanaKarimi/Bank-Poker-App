@@ -2,6 +2,8 @@ package com.bankpoker.app.data.remote
 
 import com.bankpoker.app.data.remote.dto.CreateGroupRequest
 import com.bankpoker.app.data.remote.dto.CreateGroupResponse
+import com.bankpoker.app.data.remote.dto.CreateTableRequest
+import com.bankpoker.app.data.remote.dto.CreateTableResponse
 import com.bankpoker.app.data.remote.dto.HealthResponse
 import com.bankpoker.app.data.remote.dto.InviteCodeResponse
 import com.bankpoker.app.data.remote.dto.LoginRequest
@@ -37,6 +39,12 @@ interface ApiService {
         @Body request: CreateGroupRequest,
         @Header("Authorization") token: String = ""
     ): Response<CreateGroupResponse>
+
+    @POST("api/tables/create")
+    suspend fun createTable(
+        @Body request: CreateTableRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<CreateTableResponse>
 
     @GET("api/groups/{id}/invite-code")
     suspend fun getInviteCode(

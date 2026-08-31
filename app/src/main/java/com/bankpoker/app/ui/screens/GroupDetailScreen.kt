@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -117,9 +119,9 @@ fun GroupDetailScreen(
                             }
                         }) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.List,
+                                imageVector = Icons.Default.Notifications,
                                 contentDescription = "Pending Requests",
-                                tint = Gold
+                                tint = Color(0xFFFFB300)
                             )
                         }
                     }
@@ -171,9 +173,9 @@ fun GroupDetailScreen(
                                 },
                                 leadingIcon = {
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.List,
+                                        imageVector = Icons.Default.Notifications,
                                         contentDescription = null,
-                                        tint = Gold
+                                        tint = Color(0xFFFFB300)
                                     )
                                 }
                             )
@@ -311,8 +313,19 @@ fun GroupDetailScreen(
         CreateTableBottomSheet(
             onDismiss = { showCreateTableSheet = false },
             onCreateTable = { name, chipValue, hasEntryFee, entryFee ->
-                viewModel.createTable(name, chipValue, hasEntryFee, entryFee)
-                showCreateTableSheet = false
+                viewModel.createTable(
+                    name = name,
+                    chipValue = chipValue,
+                    hasEntryFee = hasEntryFee,
+                    entryFee = entryFee,
+                    onSuccess = {
+                        Toast.makeText(context, "Table created successfully!", Toast.LENGTH_SHORT).show()
+                        showCreateTableSheet = false
+                    },
+                    onError = { errorMsg ->
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
+                )
             }
         )
     }

@@ -380,4 +380,30 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * GET /api/groups/:id/tables
+ * (Requires Auth)
+ * Return all active tables for a specific group
+ */
+router.get('/:id/tables', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const tables = await all(
+            'SELECT * FROM tables WHERE group_id = ? AND is_deleted = 0 ORDER BY created_at DESC',
+            [groupId]
+        );
+
+        return res.status(200).json({ tables });
+    } catch (error) {
+        console.error('Error fetching group tables:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching group tables' });
+    }
+});
+
 module.exports = router;

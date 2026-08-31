@@ -150,8 +150,14 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: GroupDetailViewModel = viewModel(
-                factory = GroupDetailViewModelFactory(repository, groupId)
+                factory = GroupDetailViewModelFactory(repository, groupId, remoteRepository)
             )
             GroupDetailScreen(
                 viewModel = viewModel,

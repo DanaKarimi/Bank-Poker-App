@@ -5,6 +5,8 @@ import com.bankpoker.app.data.remote.ApiService
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.data.remote.dto.CreateGroupRequest
 import com.bankpoker.app.data.remote.dto.CreateGroupResponse
+import com.bankpoker.app.data.remote.dto.CreateTableRequest
+import com.bankpoker.app.data.remote.dto.CreateTableResponse
 import com.bankpoker.app.data.remote.dto.HealthResponse
 import com.bankpoker.app.data.remote.dto.InviteCodeResponse
 import com.bankpoker.app.data.remote.dto.LoginRequest
@@ -125,6 +127,38 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Create group failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Create a new remote table on the server (Admin only)
+     */
+    suspend fun createTable(
+        groupId: String,
+        name: String,
+        chipValue: Long? = null,
+        entryFee: Long? = null
+    ): Result<CreateTableResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.bankpoker.app.data.remote.dto.CreateTableRequest(
+                groupId = groupId,
+                name = name.trim(),
+                chipValue = chipValue,
+                entryFee = entryFee
+            )
+            val response = apiService.createTable(request, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Create table failed (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {

@@ -9,7 +9,9 @@ import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
+import com.bankpoker.app.data.remote.dto.CreateTableResponse
 import com.bankpoker.app.repository.PokerRepository
+import com.bankpoker.app.repository.RemoteRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +20,8 @@ import kotlinx.coroutines.launch
 
 class GroupDetailViewModel(
     private val repository: PokerRepository,
-    private val groupId: String
+    private val groupId: String,
+    private val remoteRepository: RemoteRepository? = null
 ) : ViewModel() {
 
     private val _group = MutableStateFlow<PlayerGroup?>(null)
@@ -30,6 +33,12 @@ class GroupDetailViewModel(
     val entryFeeDebtors: Flow<List<UnpaidEntryFeeInfo>> = repository.getUnpaidEntryFeeDebtorsByGroupId(groupId)
     val entryFeeHistory: Flow<List<EntryFeeHistoryInfo>> = repository.getEntryFeeHistoryByGroupId(groupId)
 
+    init {
+        viewModelScope.launch {
+            _group.value = repository.getGroupById(groupId)
+        }
+    }
+
     fun markEntryFeePaid(playerId: String) {
         viewModelScope.launch {
             repository.toggleEntryFee(playerId, true)
@@ -39,14 +48,6 @@ class GroupDetailViewModel(
     fun recordManualPayment(payerName: String, receiverName: String, amount: Long) {
         viewModelScope.launch {
             repository.recordManualPayment(groupId, payerName, receiverName, amount)
-        }
-    }
-
-
-
-    init {
-        viewModelScope.launch {
-            _group.value = repository.getGroupById(groupId)
         }
     }
 
@@ -65,16 +66,50 @@ class GroupDetailViewModel(
         }
     }
 
-
-    fun createTable(name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
+    fun createTable(
+        name: String,
+        chipValue: Long?,
+        hasEntryFee: Boolean,
+        entryFee: Long?,
+        onSuccess: ((PokerTable) -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
         viewModelScope.launch {
-            repository.createTable(
-                name = name,
-                chipValue = chipValue,
-                groupId = groupId,
-                hasEntryFee = hasEntryFee,
-                entryFee = entryFee
-            )
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                // Online group: API call -> Server success -> Room Insert
+                val result = remoteRepository.createTable(
+                    groupId = groupId,
+                    name = name.trim(),
+                    chipValue = chipValue,
+                    entryFee = if (hasEntryFee) entryFee else null
+                )
+                if (result.isSuccess) {
+                    val serverTableId = result.getOrNull()?.tableId
+                    val table = repository.createTable(
+                        name = name.trim(),
+                        chipValue = chipValue,
+                        groupId = groupId,
+                        hasEntryFee = hasEntryFee,
+                        entryFee = entryFee,
+                        customId = serverTableId
+                    )
+                    onSuccess?.invoke(table)
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "Failed to create online table on server."
+                    onError?.invoke(errorMsg)
+                }
+            } else {
+                // Offline group: Direct local creation in Room
+                val table = repository.createTable(
+                    name = name.trim(),
+                    chipValue = chipValue,
+                    groupId = groupId,
+                    hasEntryFee = hasEntryFee,
+                    entryFee = entryFee
+                )
+                onSuccess?.invoke(table)
+            }
         }
     }
 
@@ -103,12 +138,13 @@ class GroupDetailViewModel(
 
 class GroupDetailViewModelFactory(
     private val repository: PokerRepository,
-    private val groupId: String
+    private val groupId: String,
+    private val remoteRepository: RemoteRepository? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GroupDetailViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return GroupDetailViewModel(repository, groupId) as T
+            return GroupDetailViewModel(repository, groupId, remoteRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

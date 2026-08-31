@@ -53,13 +53,13 @@ export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${
 // Group and Table helpers
 export const getMyGroups = () => api.get('/api/groups/my-groups');
 export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
+export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);
 export const getGroupTables = async (groupId) => {
   try {
-    const response = await api.post('/api/sync/pull', { lastSyncTimestamp: 0 });
-    const tables = response.data?.tables || [];
-    return tables.filter((t) => t.group_id === groupId && !t.is_deleted && t.status === 'ACTIVE');
+    const response = await api.get(`/api/groups/${groupId}/tables`);
+    return response.data?.tables || [];
   } catch (err) {
-    console.error('Failed to pull tables:', err);
+    console.error('Failed to fetch group tables:', err);
     return [];
   }
 };

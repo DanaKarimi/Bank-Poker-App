@@ -1,8 +1,87 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { run, get } = require('../database/db');
+const { run, get, all } = require('../database/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+
+/**
+ * POST /api/tables/create
+ * (Requires Auth + role='ADMIN')
+ * Create a new table in a group
+ */
+router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { groupId, name, chipValue, entryFee } = req.body;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Table name is required' });
+        }
+
+        if (!groupId) {
+            return res.status(400).json({ error: 'groupId is required' });
+        }
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const tableId = crypto.randomUUID();
+        const now = Date.now();
+        const numChipValue = chipValue != null && !isNaN(Number(chipValue)) ? Number(chipValue) : null;
+        const numEntryFee = entryFee != null && !isNaN(Number(entryFee)) ? Number(entryFee) : null;
+        const hasEntryFee = numEntryFee != null && numEntryFee > 0 ? 1 : 0;
+
+        await run(
+            `INSERT INTO tables (id, group_id, name, chip_value, status, created_at, closed_at, has_entry_fee, entry_fee, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, 'ACTIVE', ?, NULL, ?, ?, ?, ?, 1, 0)`,
+            [tableId, groupId, name.trim(), numChipValue, now, hasEntryFee, numEntryFee, tableId, now]
+        );
+
+        return res.status(201).json({
+            message: 'Table created successfully',
+            tableId,
+            table: {
+                id: tableId,
+                groupId,
+                name: name.trim(),
+                chip_value: numChipValue,
+                has_entry_fee: hasEntryFee,
+                entry_fee: numEntryFee,
+                status: 'ACTIVE',
+                created_at: now
+            }
+        });
+    } catch (error) {
+        console.error('Error creating table:', error);
+        return res.status(500).json({ error: 'Internal server error while creating table' });
+    }
+});
+
+/**
+ * GET /api/tables
+ * Query param: groupId
+ * Returns all active tables for a group
+ */
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.query;
+        let query = 'SELECT * FROM tables WHERE is_deleted = 0';
+        const params = [];
+
+        if (groupId) {
+            query += ' AND group_id = ?';
+            params.push(groupId);
+        }
+
+        query += ' ORDER BY created_at DESC';
+        const tables = await all(query, params);
+        return res.status(200).json({ tables });
+    } catch (error) {
+        console.error('Error fetching tables:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching tables' });
+    }
+});
 
 /**
  * POST /api/tables/:id/buy-in-direct
