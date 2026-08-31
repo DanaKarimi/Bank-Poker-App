@@ -394,7 +394,7 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        const tables = await all(
+        const rawTables = await all(
             `SELECT t.*, (
                 SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
              ) as playerCount
@@ -403,6 +403,30 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
              ORDER BY t.created_at DESC`,
             [groupId]
         );
+
+        const tables = rawTables.map(t => {
+            const isClosed = t.status === 'CLOSED' || t.is_active === 0;
+            return {
+                id: t.id,
+                groupId: t.group_id,
+                group_id: t.group_id,
+                name: t.name,
+                chipValue: t.chip_value,
+                chip_value: t.chip_value,
+                status: isClosed ? 'CLOSED' : 'ACTIVE',
+                isActive: !isClosed,
+                is_active: isClosed ? 0 : 1,
+                hasEntryFee: Boolean(t.has_entry_fee),
+                has_entry_fee: t.has_entry_fee,
+                entryFee: t.entry_fee,
+                entry_fee: t.entry_fee,
+                createdAt: t.created_at,
+                created_at: t.created_at,
+                closedAt: t.closed_at,
+                closed_at: t.closed_at,
+                playerCount: Number(t.playerCount) || 0
+            };
+        });
 
         return res.status(200).json({ tables });
     } catch (error) {

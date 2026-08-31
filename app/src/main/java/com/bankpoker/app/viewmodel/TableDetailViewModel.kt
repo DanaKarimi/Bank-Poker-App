@@ -293,11 +293,34 @@ class TableDetailViewModel(
         }
     }
 
-    fun closeTable() {
+    /**
+     * Close Table (supports syncing status to server for online groups)
+     */
+    fun closeTable(onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.closeTableAndApplyToGroup(tableId)
-            onRefreshCounts?.invoke()
-            loadTableData()
+            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
+            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
+
+            if (isOnlineTable && remoteRepository != null) {
+                Log.d("TableDetail", "Closing online table on server: $tableId")
+                val result = remoteRepository.closeTable(tableId)
+                if (result.isSuccess) {
+                    Log.d("TableDetail", "Server close success. Updating local Room table.")
+                    repository.closeTableAndApplyToGroup(tableId)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } else {
+                    val error = result.exceptionOrNull()?.message ?: "Failed to close table on server"
+                    Log.e("TableDetail", "Server close failed: $error")
+                    onResult?.invoke(false, error)
+                }
+            } else {
+                repository.closeTableAndApplyToGroup(tableId)
+                loadTableData()
+                onRefreshCounts?.invoke()
+                onResult?.invoke(true, null)
+            }
         }
     }
 

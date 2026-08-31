@@ -131,4 +131,16 @@ interface ApiService {
         @Body request: com.bankpoker.app.data.remote.dto.DirectExitRequest,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.DirectExitResponse>
+
+    @POST("api/tables/{tableId}/close")
+    suspend fun closeTable(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/tables/{tableId}/status")
+    suspend fun getTableStatus(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
 }

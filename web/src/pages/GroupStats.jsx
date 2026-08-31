@@ -1,19 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getGroupStats,
   getMyRequests,
   getGroupTables,
   getMyGroups,
-  sendBuyInRequest,
-  sendExitRequest,
-  confirmBuyInReceipt,
-  confirmExitReceipt,
 } from '../api';
+import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
-import RequestModal from '../components/RequestModal';
-import TableDetailModal from '../components/TableDetailModal';
 import {
   ArrowLeft,
   RefreshCw,
@@ -21,24 +16,20 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
-  Send,
-  Download,
-  AlertCircle,
   Clock,
-  CheckCircle,
   Wifi,
-  Shield,
   Layers,
-  ChevronRight,
+  Shield,
+  Plus,
 } from 'lucide-react';
 
 const GroupStats = () => {
   const { id: groupId } = useParams();
-  const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Group metadata
-  const [group, setGroup] = useState(location.state?.group || null);
+  // Group metadata & Data
+  const [group, setGroup] = useState(null);
   const [stats, setStats] = useState(null);
   const [tables, setTables] = useState([]);
   const [requests, setRequests] = useState({ joinRequests: [], buyInRequests: [], exitRequests: [] });
@@ -46,19 +37,10 @@ const GroupStats = () => {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-
-  // Table Detail Modal & Request Modal States
-  const [selectedTableForDetail, setSelectedTableForDetail] = useState(null);
-  const [isTableDetailOpen, setIsTableDetailOpen] = useState(false);
-  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const [modalType, setModalType] = useState('buy-in');
-  const [activeTableForRequest, setActiveTableForRequest] = useState(null);
 
   const isOnline = group?.mode === 'ONLINE';
-  const timerRef = useRef(null);
 
-  // 1. Fetch group info if not in location.state
+  // 1. Fetch group info
   const fetchGroupInfo = async () => {
     try {
       const response = await getMyGroups();
@@ -78,461 +60,208 @@ const GroupStats = () => {
       setLoading(true);
       setError('');
     }
+
     try {
-      // Parallel fetch
-      const [statsRes, requestsRes, tablesList] = await Promise.all([
+      const [statsRes, tablesData, requestsRes] = await Promise.allSettled([
         getGroupStats(groupId),
-        getMyRequests(groupId),
         getGroupTables(groupId),
+        getMyRequests(groupId),
       ]);
 
-      setStats(statsRes.data);
-      setRequests(requestsRes.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
-      setTables(tablesList || []);
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value.data?.stats || null);
+        if (statsRes.value.data?.group) {
+          setGroup(statsRes.value.data.group);
+        }
+      }
+
+      if (tablesData.status === 'fulfilled') {
+        setTables(tablesData.value || []);
+      }
+
+      if (requestsRes.status === 'fulfilled') {
+        setRequests(requestsRes.value.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
+      }
     } catch (err) {
-      console.error('Failed to fetch data:', err);
-      if (!isBackground) {
-        setError(err.response?.data?.error || 'Unable to load group stats. Please check connection.');
-      }
+      console.error('Error fetching group data:', err);
+      if (!isBackground) setError('Failed to load group details.');
     } finally {
-      if (!isBackground) {
-        setLoading(false);
-      }
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!group) {
-      fetchGroupInfo();
-    }
-    if (groupId) {
-      fetchData(false);
+    fetchGroupInfo();
+    fetchData();
 
-      // Set up 10-second polling for live status updates & pending requests
-      timerRef.current = setInterval(() => {
-        fetchData(true);
-      }, 10000);
-    }
+    // Auto-poll every 12 seconds
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 12000);
 
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
+    return () => clearInterval(interval);
   }, [groupId]);
 
-  // Handle Opening Table Detail
-  const handleOpenTableDetail = (table) => {
-    setSelectedTableForDetail(table);
-    setIsTableDetailOpen(true);
+  const handleTableClick = (table) => {
+    navigate(`/group/${groupId}/table/${table.id}`);
   };
 
-  // Handle Request Initiated from Table View
-  const handleRequestBuyInFromTable = (table) => {
-    setActiveTableForRequest(table);
-    setModalType('buy-in');
-    setIsTableDetailOpen(false);
-    setIsRequestModalOpen(true);
-  };
-
-  const handleRequestExitFromTable = (table) => {
-    setActiveTableForRequest(table);
-    setModalType('exit');
-    setIsTableDetailOpen(false);
-    setIsRequestModalOpen(true);
-  };
-
-  // Request Submission
-  const handleSubmitRequest = async (amount, tableId) => {
-    if (modalType === 'buy-in') {
-      await sendBuyInRequest(groupId, tableId, amount);
-      setSuccessMessage(`Buy-in request for ${amount.toLocaleString()} chips submitted successfully!`);
-    } else {
-      await sendExitRequest(groupId, tableId, amount);
-      setSuccessMessage(`Exit cashout request for ${amount.toLocaleString()} chips submitted successfully!`);
-    }
-    // Refresh requests list immediately
-    fetchData(true);
-
-    setTimeout(() => {
-      setSuccessMessage('');
-    }, 4000);
-  };
-
-  // Request Confirmation (Player confirming receipt)
-  const handleConfirmReceipt = async (request, type) => {
-    try {
-      if (type === 'buy-in') {
-        await confirmBuyInReceipt(request.id);
-        setSuccessMessage('Buy-in receipt confirmed! Chips added to your session.');
-      } else {
-        await confirmExitReceipt(request.id);
-        setSuccessMessage('Exit payout receipt confirmed! Your cashout is recorded.');
-      }
-      fetchData(true);
-      setTimeout(() => {
-        setSuccessMessage('');
-      }, 4000);
-    } catch (err) {
-      console.error('Failed to confirm receipt:', err);
-      setError(err.response?.data?.error || 'Failed to confirm receipt.');
-      setTimeout(() => {
-        setError('');
-      }, 4000);
-    }
-  };
-
-  const isPositiveBalance = (stats?.currentBalance || 0) > 0;
-  const isNegativeBalance = (stats?.currentBalance || 0) < 0;
-
-  const allRequests = [
-    ...(requests.buyInRequests || []).map((r) => ({ ...r, _type: 'buy-in' })),
-    ...(requests.exitRequests || []).map((r) => ({ ...r, _type: 'exit' })),
-    ...(requests.joinRequests || []).map((r) => ({ ...r, _type: 'join' })),
-  ].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  const balance = stats?.balance ?? 0;
+  const isPositive = balance >= 0;
+  const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
+  const closedTablesCount = tables.filter((t) => t.status === 'CLOSED' || t.isActive === false).length;
 
   return (
-    <div className="min-h-screen bg-felt-green text-cream-text flex flex-col">
-      {/* Top Header */}
-      <header className="bg-felt-dark/95 border-b border-gold-accent/40 sticky top-0 z-30 shadow-lg backdrop-blur-md">
-        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
+      <div className="w-full max-w-4xl space-y-6">
+        {/* Navigation & Header */}
+        <div className="flex items-center justify-between">
           <Link
             to="/dashboard"
-            className="inline-flex items-center gap-2 text-gold-accent hover:text-gold-light font-bold text-sm transition"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Dashboard</span>
+            <span>Back to Dashboard</span>
           </Link>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => fetchData(false)}
-              disabled={loading}
-              title="Refresh group stats & requests"
-              className="p-2 bg-felt-card hover:bg-felt-card/80 text-gold-accent rounded-xl border border-gold-accent/40 transition active:scale-95 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <span className="text-xl text-gold-accent select-none">♠</span>
+          <button
+            onClick={() => fetchData()}
+            className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition"
+            title="Refresh Group Data"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Group Hero Card */}
+        <div className="bg-felt-card border-2 border-gold-accent rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-2xl font-black tracking-tight text-cream-text">
+                  {group?.name || 'Poker Club'}
+                </h1>
+                {isOnline && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
+                    <Wifi className="w-3 h-3" />
+                    <span>ONLINE</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-cream-text/60 mt-0.5">
+                Club Tables & Overall Group Performance
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-2 bg-felt-dark rounded-xl border border-gold-accent/30 text-center text-xs">
+                <div className="text-[10px] text-cream-text/50 uppercase">Active Tables</div>
+                <div className="font-bold text-gold-accent">{activeTablesCount}</div>
+              </div>
+              <div className="px-3 py-2 bg-felt-dark rounded-xl border border-gold-accent/30 text-center text-xs">
+                <div className="text-[10px] text-cream-text/50 uppercase">Total Tables</div>
+                <div className="font-bold text-cream-text">{tables.length}</div>
+              </div>
+            </div>
           </div>
         </div>
-      </header>
 
-      {/* Main Content Area */}
-      <main className="max-w-4xl w-full mx-auto px-4 py-8 flex-1">
-        {/* Success Alert Banner */}
-        {successMessage && (
-          <div className="mb-6 p-4 bg-emerald-950/90 border border-emerald-500 rounded-xl flex items-center gap-3 text-emerald-200 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
-            <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />
-            <span className="font-medium text-sm">{successMessage}</span>
-          </div>
-        )}
-
-        {/* Error Notification */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-950/90 border border-red-500 rounded-xl flex items-center gap-3 text-red-200 shadow-lg">
-            <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-            <span className="font-medium text-sm">{error}</span>
-          </div>
-        )}
-
-        {loading && !stats ? (
-          <div className="flex flex-col items-center justify-center py-24">
-            <div className="w-12 h-12 border-4 border-gold-accent border-t-transparent rounded-full animate-spin"></div>
-            <p className="mt-4 text-gold-accent font-semibold tracking-wide">
-              Loading group information & ledger...
-            </p>
-          </div>
-        ) : stats ? (
-          <div className="space-y-6">
-            {/* Header Title & Mode Card */}
-            <div className="bg-felt-card/90 border border-gold-accent/50 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border ${
-                      isOnline
-                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
-                        : 'bg-felt-dark text-cream-text/60 border-gold-accent/20'
-                    }`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-cream-text/40'
-                      }`}
-                    />
-                    <span>{group?.mode || 'OFFLINE'} GROUP</span>
-                  </span>
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-cream-text tracking-wide">
-                  {stats.groupName || group?.name || 'Poker Group'}
-                </h1>
-              </div>
-
-              <div className="bg-felt-dark px-4 py-2 rounded-xl border border-gold-accent/30 self-start sm:self-auto flex items-center gap-2">
-                <Shield className="w-4 h-4 text-gold-accent" />
-                <div className="text-xs">
-                  <span className="text-cream-text/60">Player: </span>
-                  <span className="font-bold text-gold-accent">{stats.username || user?.username}</span>
-                </div>
+        {/* Overall Group Personal Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Balance</div>
+              <div
+                className={`text-xl font-extrabold font-mono mt-0.5 ${
+                  isPositive ? 'text-emerald-400' : 'text-red-400'
+                }`}
+              >
+                {isPositive ? `+$${balance.toLocaleString()}` : `-$${Math.abs(balance).toLocaleString()}`}
               </div>
             </div>
+            <div
+              className={`p-3 rounded-xl ${
+                isPositive ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'
+              } border border-gold-accent/20`}
+            >
+              <Trophy className="w-5 h-5" />
+            </div>
+          </div>
 
-            {/* Offline Group Notice */}
-            {!isOnline && (
-              <div className="bg-felt-card/60 border border-dashed border-gold-accent/30 rounded-2xl p-4 text-center text-xs text-cream-text/70">
-                <span>♠ This is an offline group. Table entries and balances are managed directly by your admin.</span>
-              </div>
-            )}
-
-            {/* Primary Balance Hero Card */}
-            <div className="bg-felt-card border-2 border-gold-accent rounded-3xl p-8 shadow-2xl relative overflow-hidden text-center">
-              {/* Background accents */}
-              <div className="absolute top-2 right-4 text-8xl text-gold-accent/5 select-none pointer-events-none">♠</div>
-              <div className="absolute bottom-2 left-4 text-8xl text-gold-accent/5 select-none pointer-events-none">♦</div>
-
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-felt-dark/80 border border-gold-accent/40 text-gold-accent text-xs font-bold uppercase tracking-wider mb-3">
-                  <Trophy className="w-3.5 h-3.5 text-gold-accent" />
-                  <span>Net Ledger Balance</span>
-                </div>
-
-                <div className="my-2">
-                  <span
-                    className={`text-5xl sm:text-6xl font-black tracking-tight font-mono ${
-                      isPositiveBalance
-                        ? 'text-green-400'
-                        : isNegativeBalance
-                        ? 'text-red-400'
-                        : 'text-gold-accent'
-                    }`}
-                  >
-                    {stats.currentBalance > 0 ? `+${stats.currentBalance}` : `${stats.currentBalance}`}
-                  </span>
-                </div>
-
-                <p className="text-xs sm:text-sm text-cream-text/70 max-w-md mx-auto mt-2">
-                  {isPositiveBalance
-                    ? 'You are currently owed money from the group.'
-                    : isNegativeBalance
-                    ? 'You currently owe money to the group.'
-                    : 'Your balance in this group is fully settled.'}
-                </p>
+          <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Buy-Ins</div>
+              <div className="text-xl font-extrabold font-mono text-emerald-400 mt-0.5">
+                ${(stats?.totalBuyIns || 0).toLocaleString()}
               </div>
             </div>
+            <div className="p-3 bg-felt-dark text-emerald-400 rounded-xl border border-gold-accent/20">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+          </div>
 
-            {/* Stats Breakdown Grid */}
+          <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Exits</div>
+              <div className="text-xl font-extrabold font-mono text-amber-400 mt-0.5">
+                ${(stats?.totalExits || 0).toLocaleString()}
+              </div>
+            </div>
+            <div className="p-3 bg-felt-dark text-amber-400 rounded-xl border border-gold-accent/20">
+              <TrendingDown className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Section: Tables in Group */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
+              <Layers className="w-4 h-4" />
+              <span>Poker Tables & Rooms ({tables.length})</span>
+            </h2>
+            <span className="text-xs text-cream-text/50">
+              Click any table to view ledger or buy-in
+            </span>
+          </div>
+
+          {loading && tables.length === 0 ? (
+            <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+              Loading active tables...
+            </div>
+          ) : tables.length === 0 ? (
+            <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+              No poker tables have been created in this group yet.
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Total Buy-Ins */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Total Buy-Ins</span>
-                  <TrendingDown className="w-4 h-4 text-red-400" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-cream-text">
-                  {stats.totalBuyIns}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Total chips bought across tables</p>
-              </div>
-
-              {/* Total Exits */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Total Exits</span>
-                  <TrendingUp className="w-4 h-4 text-green-400" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-cream-text">
-                  {stats.totalExits}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Total chips cashed out</p>
-              </div>
-
-              {/* Net Game Result */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Game Net Result</span>
-                  <DollarSign className="w-4 h-4 text-gold-accent" />
-                </div>
-                <div
-                  className={`text-2xl font-bold font-mono ${
-                    stats.netGameBalance > 0
-                      ? 'text-green-400'
-                      : stats.netGameBalance < 0
-                      ? 'text-red-400'
-                      : 'text-cream-text'
-                  }`}
-                >
-                  {stats.netGameBalance > 0 ? `+${stats.netGameBalance}` : stats.netGameBalance}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Exits minus Buy-ins</p>
-              </div>
-
-              {/* Payments Sent */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Payments Sent</span>
-                  <Send className="w-4 h-4 text-gold-accent" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-cream-text">
-                  {stats.paymentsSent}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Settlements you paid out</p>
-              </div>
-
-              {/* Payments Received */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Payments Received</span>
-                  <Download className="w-4 h-4 text-gold-accent" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-cream-text">
-                  {stats.paymentsReceived}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Settlements received from others</p>
-              </div>
-
-              {/* Tables Played */}
-              <div className="bg-felt-card/80 border border-gold-accent/30 rounded-2xl p-5 shadow">
-                <div className="flex items-center justify-between text-cream-text/70 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Tables Played</span>
-                  <span className="text-gold-accent text-sm font-bold">♠</span>
-                </div>
-                <div className="text-2xl font-bold font-mono text-cream-text">
-                  {stats.tablesPlayed}
-                </div>
-                <p className="text-xs text-cream-text/50 mt-1">Recorded sessions in this group</p>
-              </div>
+              {tables.map((table) => (
+                <TableCard
+                  key={table.id}
+                  table={table}
+                  onClick={() => handleTableClick(table)}
+                />
+              ))}
             </div>
+          )}
+        </div>
 
-            {/* Active Tables Section (Online Groups) */}
-            {isOnline && (
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-gold-accent flex items-center gap-2">
-                    <Layers className="w-5 h-5" />
-                    <span>Active Tables</span>
-                  </h3>
-                  <span className="text-xs font-semibold text-cream-text/60">
-                    {tables.length} {tables.length === 1 ? 'Table' : 'Tables'} Available
-                  </span>
-                </div>
+        {/* Section: My Join Requests */}
+        {(requests.joinRequests || []).length > 0 && (
+          <div className="space-y-3 pt-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span>My Table Join Requests ({(requests.joinRequests || []).length})</span>
+            </h2>
 
-                {tables.length === 0 ? (
-                  <div className="bg-felt-card/50 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center text-cream-text/60">
-                    <p className="text-sm font-medium">No active tables in this group right now.</p>
-                    <p className="text-xs mt-1 text-cream-text/40">
-                      When your admin opens a table, it will appear here so you can request buy-ins.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {tables.map((table) => (
-                      <div
-                        key={table.id}
-                        onClick={() => handleOpenTableDetail(table)}
-                        className="bg-felt-card/90 border-2 border-gold-accent/50 hover:border-gold-accent rounded-2xl p-5 shadow-lg transition duration-200 cursor-pointer flex flex-col justify-between group"
-                      >
-                        <div>
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <h4 className="font-extrabold text-lg text-cream-text group-hover:text-gold-light transition line-clamp-1">
-                              ♣ {table.name || `Table ${table.id}`}
-                            </h4>
-                            <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                              {table.status || 'ACTIVE'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-cream-text/70 mb-4">
-                            {table.chip_value && (
-                              <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-gold-accent/20 font-mono">
-                                ${table.chip_value}/chip
-                              </span>
-                            )}
-                            {table.has_entry_fee && table.entry_fee > 0 && (
-                              <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-300 font-mono">
-                                Fee: ${table.entry_fee}
-                              </span>
-                            )}
-                            <span className="bg-felt-dark px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-300 font-semibold">
-                              {table.playerCount || 0} {table.playerCount === 1 ? 'Player' : 'Players'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="w-full py-2 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/40 shadow flex items-center justify-center gap-1.5 transition"
-                        >
-                          <span>Open Table Actions</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Online Group Requests Section */}
-            {isOnline && (
-              <div className="pt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-gold-accent flex items-center gap-2">
-                    <Clock className="w-5 h-5" />
-                    <span>My Table Requests</span>
-                  </h3>
-                  <span className="text-xs text-cream-text/60">Auto-refreshing every 10s</span>
-                </div>
-
-                {allRequests.length === 0 ? (
-                  <div className="bg-felt-card/50 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center text-cream-text/60">
-                    <p className="text-sm font-medium">No requests submitted yet.</p>
-                    <p className="text-xs mt-1 text-cream-text/40">
-                      Select an active table above to join and request buy-in chips or exit payouts.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {allRequests.map((req) => (
-                      <RequestCard
-                        key={req.id}
-                        request={req}
-                        type={req._type}
-                        onConfirm={(r) => handleConfirmReceipt(r, req._type)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {requests.joinRequests.map((req) => (
+                <RequestCard key={req.id} request={req} type="join" />
+              ))}
+            </div>
           </div>
-        ) : null}
-      </main>
-
-      {/* Table Detail Modal (Initiates Join, Buy-in or Exit for the selected table) */}
-      <TableDetailModal
-        isOpen={isTableDetailOpen}
-        onClose={() => setIsTableDetailOpen(false)}
-        table={selectedTableForDetail}
-        myRequests={requests}
-        onRequestBuyIn={handleRequestBuyInFromTable}
-        onRequestExit={handleRequestExitFromTable}
-        onJoinSuccess={() => fetchData(true)}
-      />
-
-      {/* Request Modal */}
-      <RequestModal
-        isOpen={isRequestModalOpen}
-        onClose={() => {
-          setIsRequestModalOpen(false);
-          setActiveTableForRequest(null);
-        }}
-        type={modalType}
-        tables={tables}
-        selectedTable={activeTableForRequest}
-        initialTableId={activeTableForRequest?.id}
-        onSubmit={handleSubmitRequest}
-      />
+        )}
+      </div>
     </div>
   );
 };

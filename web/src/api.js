@@ -64,6 +64,9 @@ export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${
 export const getMyGroups = () => api.get('/api/groups/my-groups');
 export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
 export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);
+export const getTableDetail = (tableId) => api.get(`/api/tables/${tableId}`);
+export const getTableStatus = (tableId) => api.get(`/api/tables/${tableId}/status`);
+export const closeTable = (tableId) => api.post(`/api/tables/${tableId}/close`);
 export const getPlayers = (tableId) => api.get(`/api/tables/${tableId}/players`);
 export const getTableActivity = (tableId) => api.get(`/api/tables/${tableId}/activity`);
 export const directBuyIn = (tableId, data) => api.post(`/api/tables/${tableId}/buy-in-direct`, data);

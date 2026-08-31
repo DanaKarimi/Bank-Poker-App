@@ -496,6 +496,26 @@ class RemoteRepository(
         }
     }
 
+    /**
+     * Close an online table on server
+     */
+    suspend fun closeTable(tableId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.closeTable(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to close table (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {

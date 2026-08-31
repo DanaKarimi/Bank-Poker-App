@@ -322,7 +322,13 @@ fun TableDetailScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.closeTable()
+                        viewModel.closeTable { success, errorMsg ->
+                            if (success) {
+                                Toast.makeText(context, "Table closed successfully", Toast.LENGTH_SHORT).show()
+                            } else if (errorMsg != null) {
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        }
                         showCloseTableDialog = false
                     },
                     colors = ButtonDefaults.textButtonColors(

@@ -84,6 +84,12 @@ const initDb = async () => {
             await run("ALTER TABLE players ADD COLUMN user_id TEXT");
         }
 
+        const tablesColumns = await all("PRAGMA table_info(tables)");
+        const tableColNames = tablesColumns.map(c => c.name);
+        if (!tableColNames.includes('is_active')) {
+            await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
+        }
+
         console.log('Database schema initialized successfully');
     } catch (error) {
         console.error('Error initializing database schema:', error);

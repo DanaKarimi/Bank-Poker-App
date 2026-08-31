@@ -59,33 +59,114 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 /**
- * GET /api/tables
- * Query param: groupId
- * Returns all active tables for a group including playerCount
+ * GET /api/tables/:id/status
+ * (Requires Auth)
+ * Return table status
  */
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/:id/status', authenticateToken, async (req, res) => {
     try {
-        const { groupId } = req.query;
-        let query = `
-            SELECT t.*, (
-                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
-            ) as playerCount
-            FROM tables t
-            WHERE t.is_deleted = 0
-        `;
-        const params = [];
-
-        if (groupId) {
-            query += ' AND t.group_id = ?';
-            params.push(groupId);
+        const tableId = req.params.id;
+        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
         }
 
-        query += ' ORDER BY t.created_at DESC';
-        const tables = await all(query, params);
-        return res.status(200).json({ tables });
+        const isClosed = table.status === 'CLOSED' || table.is_active === 0;
+        return res.status(200).json({
+            tableId,
+            status: isClosed ? 'CLOSED' : 'ACTIVE',
+            isActive: !isClosed,
+            closedAt: table.closed_at
+        });
     } catch (error) {
-        console.error('Error fetching tables:', error);
-        return res.status(500).json({ error: 'Internal server error while fetching tables' });
+        console.error('Error fetching table status:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching table status' });
+    }
+});
+
+/**
+ * POST /api/tables/:id/close
+ * (Requires Auth + role='ADMIN')
+ * Closes an active table
+ */
+router.post('/:id/close', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const tableId = req.params.id;
+        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+
+        const now = Date.now();
+        await run(
+            `UPDATE tables 
+             SET status = 'CLOSED', is_active = 0, closed_at = ?, updated_at = ?, is_synced = 1 
+             WHERE id = ?`,
+            [now, now, tableId]
+        );
+
+        console.log(`[Tables] Closed table: ${tableId} (${table.name}) at timestamp ${now}`);
+
+        return res.status(200).json({
+            message: 'Table closed',
+            tableId,
+            status: 'CLOSED',
+            isActive: false,
+            closedAt: now
+        });
+    } catch (error) {
+        console.error('Error closing table:', error);
+        return res.status(500).json({ error: 'Internal server error while closing table' });
+    }
+});
+
+/**
+ * GET /api/tables/:id
+ * (Requires Auth)
+ * Return full details of a specific table
+ */
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const tableId = req.params.id;
+        const table = await get(
+            `SELECT t.*, (
+                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
+             ) as playerCount
+             FROM tables t
+             WHERE t.id = ? AND t.is_deleted = 0`,
+            [tableId]
+        );
+
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+
+        const isClosed = table.status === 'CLOSED' || table.is_active === 0;
+        const formattedTable = {
+            id: table.id,
+            groupId: table.group_id,
+            group_id: table.group_id,
+            name: table.name,
+            chipValue: table.chip_value,
+            chip_value: table.chip_value,
+            status: isClosed ? 'CLOSED' : 'ACTIVE',
+            isActive: !isClosed,
+            is_active: isClosed ? 0 : 1,
+            hasEntryFee: Boolean(table.has_entry_fee),
+            has_entry_fee: table.has_entry_fee,
+            entryFee: table.entry_fee,
+            entry_fee: table.entry_fee,
+            createdAt: table.created_at,
+            created_at: table.created_at,
+            closedAt: table.closed_at,
+            closed_at: table.closed_at,
+            playerCount: Number(table.playerCount) || 0
+        };
+
+        return res.status(200).json({ table: formattedTable });
+    } catch (error) {
+        console.error('Error fetching table detail:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching table detail' });
     }
 });
 

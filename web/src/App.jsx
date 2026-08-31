@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupStats from './pages/GroupStats';
+import TableDetail from './pages/TableDetail';
 
 function App() {
   return (
@@ -24,12 +25,22 @@ function App() {
             }
           />
 
-          {/* Protected Group Stats Route */}
+          {/* Protected Group Stats & Tables Route */}
           <Route
             path="/group/:id"
             element={
               <ProtectedRoute>
                 <GroupStats />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Specific Table Detail Route */}
+          <Route
+            path="/group/:groupId/table/:tableId"
+            element={
+              <ProtectedRoute>
+                <TableDetail />
               </ProtectedRoute>
             }
           />
