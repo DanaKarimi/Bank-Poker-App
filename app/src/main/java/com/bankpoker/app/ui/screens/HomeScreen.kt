@@ -30,7 +30,8 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     repository: PokerRepository,
     onQuickTableClick: () -> Unit,
-    onGroupsClick: () -> Unit
+    onGroupsClick: () -> Unit,
+    onServerTestClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -96,6 +97,13 @@ fun HomeScreen(
                             onDismissRequest = { showMenu = false },
                             modifier = Modifier.background(FeltCard)
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Server Test", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    onServerTestClick()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Export Backup", color = Cream) },
                                 onClick = {

@@ -23,5 +23,6 @@ sealed class Screen(val route: String) {
             return "player_profile/$encoded"
         }
     }
+    object ServerTest : Screen("server_test")
 }
 
