@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class TableDetailViewModel(
     private val repository: PokerRepository,
@@ -95,11 +96,14 @@ class TableDetailViewModel(
                     Log.w("TableDetail", "Failed to fetch players: ${playersResult.exceptionOrNull()?.message}")
                 }
 
-                // 2. Fetch and sync Buy-Ins
-                val buyInsResult = remoteRepository.getTableBuyIns(tableId)
-                if (buyInsResult.isSuccess) {
-                    val remoteBuyIns = buyInsResult.getOrNull() ?: emptyList()
-                    Log.d("TableDetail", "Fetched ${remoteBuyIns.size} buy-ins from server")
+                // 2. Fetch and sync Activity (all Buy-Ins & Exits)
+                val activityResult = remoteRepository.getTableActivity(tableId)
+                if (activityResult.isSuccess) {
+                    val activity = activityResult.getOrNull()
+                    val remoteBuyIns = activity?.buyIns ?: emptyList()
+                    val remoteExits = activity?.exits ?: emptyList()
+
+                    Log.d("TableDetail", "Fetched ${remoteBuyIns.size} buy-ins and ${remoteExits.size} exits from server")
 
                     val roomBuyIns = remoteBuyIns.map { dto ->
                         BuyIn(
@@ -114,13 +118,6 @@ class TableDetailViewModel(
                     if (roomBuyIns.isNotEmpty()) {
                         repository.insertOrUpdateBuyIns(roomBuyIns)
                     }
-                }
-
-                // 3. Fetch and sync Exits
-                val exitsResult = remoteRepository.getTableExits(tableId)
-                if (exitsResult.isSuccess) {
-                    val remoteExits = exitsResult.getOrNull() ?: emptyList()
-                    Log.d("TableDetail", "Fetched ${remoteExits.size} exits from server")
 
                     val roomExits = remoteExits.map { dto ->
                         ExitRecord(
@@ -134,6 +131,43 @@ class TableDetailViewModel(
                     }
                     if (roomExits.isNotEmpty()) {
                         repository.insertOrUpdateExitRecords(roomExits)
+                    }
+                } else {
+                    // Fallback to separate endpoints if needed
+                    val buyInsResult = remoteRepository.getTableBuyIns(tableId)
+                    if (buyInsResult.isSuccess) {
+                        val remoteBuyIns = buyInsResult.getOrNull() ?: emptyList()
+                        val roomBuyIns = remoteBuyIns.map { dto ->
+                            BuyIn(
+                                id = dto.id,
+                                tableId = tableId,
+                                playerId = dto.resolvedPlayerId,
+                                amount = dto.amount,
+                                note = dto.note ?: "Online Buy-In",
+                                createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
+                            )
+                        }
+                        if (roomBuyIns.isNotEmpty()) {
+                            repository.insertOrUpdateBuyIns(roomBuyIns)
+                        }
+                    }
+
+                    val exitsResult = remoteRepository.getTableExits(tableId)
+                    if (exitsResult.isSuccess) {
+                        val remoteExits = exitsResult.getOrNull() ?: emptyList()
+                        val roomExits = remoteExits.map { dto ->
+                            ExitRecord(
+                                id = dto.id,
+                                tableId = tableId,
+                                playerId = dto.resolvedPlayerId,
+                                amount = dto.amount,
+                                note = dto.note ?: "Online Exit",
+                                createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
+                            )
+                        }
+                        if (roomExits.isNotEmpty()) {
+                            repository.insertOrUpdateExitRecords(roomExits)
+                        }
                     }
                 }
 
@@ -156,19 +190,106 @@ class TableDetailViewModel(
         }
     }
 
-    fun addBuyIn(playerId: String, amount: Long, note: String?) {
+    /**
+     * Add Buy-In (supports direct server synchronization for online tables)
+     */
+    fun addBuyIn(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.addBuyIn(tableId, playerId, amount, note)
-            onRefreshCounts?.invoke()
-            loadTableData()
+            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
+            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
+
+            if (isOnlineTable && remoteRepository != null) {
+                Log.d("TableDetail", "Performing direct online buy-in for player: $playerId, amount: $amount")
+                val player = repository.getPlayerById(playerId)
+                val remoteResult = remoteRepository.directBuyIn(
+                    tableId = tableId,
+                    playerId = playerId,
+                    username = player?.name,
+                    amount = amount,
+                    note = note
+                )
+
+                if (remoteResult.isSuccess) {
+                    val directRes = remoteResult.getOrNull()
+                    val buyInId = directRes?.buyInId ?: UUID.randomUUID().toString()
+                    Log.d("TableDetail", "Direct online buy-in success: $buyInId. Saving to Room.")
+
+                    val buyIn = BuyIn(
+                        id = buyInId,
+                        tableId = tableId,
+                        playerId = playerId,
+                        amount = amount,
+                        note = note ?: "Direct Buy-In",
+                        createdAt = System.currentTimeMillis()
+                    )
+                    repository.insertOrUpdateBuyIns(listOf(buyIn))
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } else {
+                    val error = remoteResult.exceptionOrNull()?.message ?: "Direct buy-in failed"
+                    Log.e("TableDetail", "Direct online buy-in failed: $error")
+                    onResult?.invoke(false, error)
+                }
+            } else {
+                // Offline mode: save directly to local Room
+                repository.addBuyIn(tableId, playerId, amount, note)
+                loadTableData()
+                onRefreshCounts?.invoke()
+                onResult?.invoke(true, null)
+            }
         }
     }
 
-    fun addExitRecord(playerId: String, amount: Long, note: String?) {
+    /**
+     * Add Exit (supports direct server synchronization for online tables)
+     */
+    fun addExitRecord(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.addExitRecord(tableId, playerId, amount, note)
-            onRefreshCounts?.invoke()
-            loadTableData()
+            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
+            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
+
+            if (isOnlineTable && remoteRepository != null) {
+                Log.d("TableDetail", "Performing direct online exit for player: $playerId, amount: $amount")
+                val player = repository.getPlayerById(playerId)
+                val remoteResult = remoteRepository.directExit(
+                    tableId = tableId,
+                    playerId = playerId,
+                    username = player?.name,
+                    amount = amount,
+                    note = note
+                )
+
+                if (remoteResult.isSuccess) {
+                    val directRes = remoteResult.getOrNull()
+                    val exitId = directRes?.exitId ?: UUID.randomUUID().toString()
+                    Log.d("TableDetail", "Direct online exit success: $exitId. Saving to Room.")
+
+                    val exitRecord = ExitRecord(
+                        id = exitId,
+                        tableId = tableId,
+                        playerId = playerId,
+                        amount = amount,
+                        note = note ?: "Direct Exit",
+                        createdAt = System.currentTimeMillis()
+                    )
+                    repository.insertOrUpdateExitRecords(listOf(exitRecord))
+                    repository.updatePlayerStatus(playerId, "EXITED")
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } else {
+                    val error = remoteResult.exceptionOrNull()?.message ?: "Direct exit failed"
+                    Log.e("TableDetail", "Direct online exit failed: $error")
+                    onResult?.invoke(false, error)
+                }
+            } else {
+                // Offline mode: save directly to local Room
+                repository.addExitRecord(tableId, playerId, amount, note)
+                loadTableData()
+                onRefreshCounts?.invoke()
+                onResult?.invoke(true, null)
+            }
         }
     }
 

@@ -240,14 +240,93 @@ router.get('/:id/exits', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/tables/:id/activity
+ * (Requires Auth)
+ * Returns all table transactions (both direct and request-based Buy-Ins and Exits)
+ */
+router.get('/:id/activity', authenticateToken, async (req, res) => {
+    try {
+        const tableId = req.params.id;
+
+        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+
+        const rawBuyIns = await all(
+            `SELECT b.id, b.table_id, b.player_id, b.amount, b.note, b.created_at,
+                    COALESCE(u.username, p.name) as playerName, b.created_at as timestamp
+             FROM buy_ins b
+             JOIN players p ON b.player_id = p.id
+             LEFT JOIN users u ON p.user_id = u.id
+             WHERE b.table_id = ? AND b.is_deleted = 0
+             ORDER BY b.created_at DESC`,
+            [tableId]
+        );
+
+        const rawExits = await all(
+            `SELECT e.id, e.table_id, e.player_id, e.amount, e.note, e.created_at,
+                    COALESCE(u.username, p.name) as playerName, e.created_at as timestamp
+             FROM exit_records e
+             JOIN players p ON e.player_id = p.id
+             LEFT JOIN users u ON p.user_id = u.id
+             WHERE e.table_id = ? AND e.is_deleted = 0
+             ORDER BY e.created_at DESC`,
+            [tableId]
+        );
+
+        const buyIns = rawBuyIns.map(b => ({
+            id: b.id,
+            tableId: b.table_id,
+            table_id: b.table_id,
+            playerId: b.player_id,
+            player_id: b.player_id,
+            amount: Number(b.amount) || 0,
+            note: b.note,
+            createdAt: b.created_at,
+            created_at: b.created_at,
+            timestamp: b.created_at,
+            playerName: b.playerName,
+            type: 'buy-in'
+        }));
+
+        const exits = rawExits.map(e => ({
+            id: e.id,
+            tableId: e.table_id,
+            table_id: e.table_id,
+            playerId: e.player_id,
+            player_id: e.player_id,
+            amount: Number(e.amount) || 0,
+            note: e.note,
+            createdAt: e.created_at,
+            created_at: e.created_at,
+            timestamp: e.created_at,
+            playerName: e.playerName,
+            type: 'exit'
+        }));
+
+        console.log(`[Tables] Fetched activity for table ${tableId}: ${buyIns.length} buy-ins, ${exits.length} exits`);
+
+        return res.status(200).json({
+            tableId,
+            buyIns,
+            exits
+        });
+    } catch (error) {
+        console.error('Error fetching table activity:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching table activity' });
+    }
+});
+
+/**
  * POST /api/tables/:id/buy-in-direct
  * (Requires Auth + role='ADMIN')
- * Directly create a BuyIn record for a user
+ * Directly create a BuyIn record for a player in a table
  */
 router.post('/:id/buy-in-direct', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { userId, username, amount } = req.body;
+        const { userId, playerId, username, amount, note } = req.body;
 
         if (amount == null) {
             return res.status(400).json({ error: 'amount is required' });
@@ -263,47 +342,53 @@ router.post('/:id/buy-in-direct', authenticateToken, requireAdmin, async (req, r
             return res.status(404).json({ error: 'Table not found' });
         }
 
-        let targetUsername = username;
-        if (userId) {
-            const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-            targetUsername = user.username;
+        // Find Player record
+        let player = null;
+        if (playerId) {
+            player = await get(
+                'SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0',
+                [playerId, tableId]
+            );
         }
 
-        if (!targetUsername || !targetUsername.trim()) {
-            return res.status(400).json({ error: 'userId or username is required' });
+        if (!player && userId) {
+            player = await get(
+                'SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0',
+                [userId, tableId]
+            );
+        }
+
+        if (!player && username) {
+            player = await get(
+                'SELECT * FROM players WHERE name = ? AND table_id = ? AND is_deleted = 0',
+                [username.trim(), tableId]
+            );
+        }
+
+        if (!player) {
+            return res.status(404).json({ error: 'Player not in this table' });
         }
 
         const now = Date.now();
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [tableId, targetUsername.trim()]
-        );
 
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                [playerId, tableId, targetUsername.trim(), now, playerId, now]
-            );
-            player = { id: playerId };
-        } else if (player.status === 'EXITED') {
+        // Reactivate player if exited
+        if (player.status === 'EXITED') {
             await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
         }
 
         const buyInId = crypto.randomUUID();
         await run(
             `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Direct Admin Buy-In', ?, ?, ?, 1, 0)`,
-            [buyInId, tableId, player.id, numAmount, now, buyInId, now]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [buyInId, tableId, player.id, numAmount, note || 'Direct Admin Buy-In', now, buyInId, now]
         );
 
+        console.log(`[Direct] Recorded buy-in: ${buyInId} for player: ${player.name} (${player.id}), amount: ${numAmount}, table: ${tableId}`);
+
         return res.status(201).json({
-            message: 'Buy-in recorded directly',
-            buyInId
+            message: 'Buy-in recorded',
+            buyInId,
+            amount: numAmount
         });
     } catch (error) {
         console.error('Error recording direct buy-in:', error);
@@ -314,12 +399,12 @@ router.post('/:id/buy-in-direct', authenticateToken, requireAdmin, async (req, r
 /**
  * POST /api/tables/:id/exit-direct
  * (Requires Auth + role='ADMIN')
- * Directly create an Exit record for a user
+ * Directly create an Exit record for a player in a table
  */
 router.post('/:id/exit-direct', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { userId, username, amount } = req.body;
+        const { userId, playerId, username, amount, note } = req.body;
 
         if (amount == null) {
             return res.status(400).json({ error: 'amount is required' });
@@ -335,47 +420,51 @@ router.post('/:id/exit-direct', authenticateToken, requireAdmin, async (req, res
             return res.status(404).json({ error: 'Table not found' });
         }
 
-        let targetUsername = username;
-        if (userId) {
-            const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-            targetUsername = user.username;
+        // Find Player record
+        let player = null;
+        if (playerId) {
+            player = await get(
+                'SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0',
+                [playerId, tableId]
+            );
         }
 
-        if (!targetUsername || !targetUsername.trim()) {
-            return res.status(400).json({ error: 'userId or username is required' });
+        if (!player && userId) {
+            player = await get(
+                'SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0',
+                [userId, tableId]
+            );
+        }
+
+        if (!player && username) {
+            player = await get(
+                'SELECT * FROM players WHERE name = ? AND table_id = ? AND is_deleted = 0',
+                [username.trim(), tableId]
+            );
+        }
+
+        if (!player) {
+            return res.status(404).json({ error: 'Player not in this table' });
         }
 
         const now = Date.now();
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND name = ? AND is_deleted = 0',
-            [tableId, targetUsername.trim()]
-        );
 
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
-                [playerId, tableId, targetUsername.trim(), now, playerId, now]
-            );
-            player = { id: playerId };
-        } else {
-            await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
-        }
+        // Mark player as EXITED
+        await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
 
         const exitId = crypto.randomUUID();
         await run(
             `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Direct Admin Exit', ?, ?, ?, 1, 0)`,
-            [exitId, tableId, player.id, numAmount, now, exitId, now]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [exitId, tableId, player.id, numAmount, note || 'Direct Admin Exit', now, exitId, now]
         );
 
+        console.log(`[Direct] Recorded exit: ${exitId} for player: ${player.name} (${player.id}), amount: ${numAmount}, table: ${tableId}`);
+
         return res.status(201).json({
-            message: 'Exit recorded directly',
-            exitId
+            message: 'Exit recorded',
+            exitId,
+            amount: numAmount
         });
     } catch (error) {
         console.error('Error recording direct exit:', error);

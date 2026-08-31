@@ -15,6 +15,11 @@ import com.bankpoker.app.data.remote.dto.MessageResponse
 import com.bankpoker.app.data.remote.dto.PendingRequestsResponse
 import com.bankpoker.app.data.remote.dto.RegisterRequest
 import com.bankpoker.app.data.remote.dto.RegisterResponse
+import com.bankpoker.app.data.remote.dto.DirectBuyInRequest
+import com.bankpoker.app.data.remote.dto.DirectBuyInResponse
+import com.bankpoker.app.data.remote.dto.DirectExitRequest
+import com.bankpoker.app.data.remote.dto.DirectExitResponse
+import com.bankpoker.app.data.remote.dto.TableActivityResponse
 import com.bankpoker.app.data.remote.dto.TableBuyInDto
 import com.bankpoker.app.data.remote.dto.TableExitDto
 import com.bankpoker.app.data.remote.dto.TablePlayerDto
@@ -394,6 +399,98 @@ class RemoteRepository(
             }
         } catch (e: IOException) {
             Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch all table activity (both Direct and Request Buy-Ins and Exits)
+     */
+    suspend fun getTableActivity(tableId: String): Result<TableActivityResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTableActivity(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch table activity (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Direct Buy-In recorded by Admin (without player request)
+     */
+    suspend fun directBuyIn(
+        tableId: String,
+        playerId: String? = null,
+        userId: String? = null,
+        username: String? = null,
+        amount: Long,
+        note: String? = null
+    ): Result<DirectBuyInResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = DirectBuyInRequest(
+                userId = userId,
+                playerId = playerId,
+                username = username,
+                amount = amount,
+                note = note
+            )
+            val response = apiService.directBuyIn(tableId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: if (response.code() == 404) "Player not in this table"
+                    else if (response.code() == 401 || response.code() == 403) "Session expired, please login"
+                    else "Failed to record direct buy-in (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Direct Exit recorded by Admin (without player request)
+     */
+    suspend fun directExit(
+        tableId: String,
+        playerId: String? = null,
+        userId: String? = null,
+        username: String? = null,
+        amount: Long,
+        note: String? = null
+    ): Result<DirectExitResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = DirectExitRequest(
+                userId = userId,
+                playerId = playerId,
+                username = username,
+                amount = amount,
+                note = note
+            )
+            val response = apiService.directExit(tableId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: if (response.code() == 404) "Player not in this table"
+                    else if (response.code() == 401 || response.code() == 403) "Session expired, please login"
+                    else "Failed to record direct exit (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
         } catch (e: Exception) {
             Result.failure(e)
         }

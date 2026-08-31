@@ -274,8 +274,12 @@ fun TableDetailScreen(
             },
             onConfirm = { amount, note ->
                 val playerId = currentPlayer.id
-                coroutineScope.launch {
-                    viewModel.addBuyIn(playerId, amount, note)
+                viewModel.addBuyIn(playerId, amount, note) { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(context, "Buy-in recorded successfully", Toast.LENGTH_SHORT).show()
+                    } else if (errorMsg != null) {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
                 showBuyInDialog = false
                 selectedPlayerForBuyIn = null
@@ -295,8 +299,12 @@ fun TableDetailScreen(
             },
             onConfirm = { amount, note ->
                 val playerId = currentPlayer.id
-                coroutineScope.launch {
-                    viewModel.addExitRecord(playerId, amount, note)
+                viewModel.addExitRecord(playerId, amount, note) { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(context, "Exit recorded successfully", Toast.LENGTH_SHORT).show()
+                    } else if (errorMsg != null) {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
                 showExitDialog = false
                 selectedPlayerForExit = null

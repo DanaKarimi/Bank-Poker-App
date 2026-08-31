@@ -111,4 +111,24 @@ interface ApiService {
         @Path("tableId") tableId: String,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.TableExitsResponse>
+
+    @GET("api/tables/{tableId}/activity")
+    suspend fun getTableActivity(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.TableActivityResponse>
+
+    @POST("api/tables/{tableId}/buy-in-direct")
+    suspend fun directBuyIn(
+        @Path("tableId") tableId: String,
+        @Body request: com.bankpoker.app.data.remote.dto.DirectBuyInRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.DirectBuyInResponse>
+
+    @POST("api/tables/{tableId}/exit-direct")
+    suspend fun directExit(
+        @Path("tableId") tableId: String,
+        @Body request: com.bankpoker.app.data.remote.dto.DirectExitRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.DirectExitResponse>
 }
