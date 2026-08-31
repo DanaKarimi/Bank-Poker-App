@@ -1,6 +1,8 @@
 package com.bankpoker.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -8,7 +10,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.bankpoker.app.data.local.BankPokerDatabase
+import com.bankpoker.app.data.remote.ApiClient
+import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.PokerRepository
+import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.screens.HomeScreen
 import com.bankpoker.app.ui.screens.TableDetailScreen
 import com.bankpoker.app.ui.screens.TablesScreen
@@ -118,8 +123,14 @@ fun AppNavigation(
         }
 
         composable(Screen.Groups.route) {
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: GroupsViewModel = viewModel(
-                factory = GroupsViewModelFactory(repository)
+                factory = GroupsViewModelFactory(repository, remoteRepository)
             )
             GroupsScreen(
                 viewModel = viewModel,
@@ -229,6 +240,7 @@ fun AppNavigation(
 
         composable(Screen.CreateGroup.route) {
             CreateGroupScreen(
+                pokerRepository = repository,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

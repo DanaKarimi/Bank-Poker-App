@@ -7,5 +7,8 @@ import androidx.room.PrimaryKey
 data class PlayerGroup(
     @PrimaryKey val id: String,
     val name: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val mode: String = "OFFLINE",
+    val serverId: String? = null,
+    val inviteCode: String? = null
 )

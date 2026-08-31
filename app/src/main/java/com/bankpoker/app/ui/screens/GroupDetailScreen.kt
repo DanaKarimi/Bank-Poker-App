@@ -15,9 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -103,14 +103,14 @@ fun GroupDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Gold
                         )
                     }
                 },
                 actions = {
-                    if (onNavigateToRequests != null) {
+                    if (onNavigateToRequests != null && group?.mode == "ONLINE") {
                         IconButton(onClick = {
                             group?.let { g ->
                                 onNavigateToRequests(g.id, g.name)
@@ -162,7 +162,7 @@ fun GroupDetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(FeltCard)
                     ) {
-                        if (onNavigateToRequests != null) {
+                        if (onNavigateToRequests != null && group?.mode == "ONLINE") {
                             DropdownMenuItem(
                                 text = { Text("Pending Requests", color = Cream) },
                                 onClick = {

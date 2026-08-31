@@ -1,6 +1,8 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,8 +14,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,9 +25,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.ui.components.GoldGradientButton
 import com.bankpoker.app.ui.components.SectionHeader
@@ -49,27 +59,15 @@ fun GroupsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Groups", 
-                            color = Cream, 
+                            text = "GROUPS",
+                            color = Cream,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.5.sp
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onCreateServerGroupClick,
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Create Server Group",
-                            tint = Gold
                         )
                     }
                 },
@@ -86,7 +84,7 @@ fun GroupsScreen(
                 contentColor = Color.Black
             ) {
                 Icon(
-                    Icons.Default.Add, 
+                    Icons.Default.Add,
                     contentDescription = "Create Group",
                     modifier = Modifier.size(28.dp)
                 )
@@ -194,7 +192,7 @@ fun GroupsScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(filteredGroups) { group ->
+                        items(filteredGroups, key = { it.id }) { group ->
                             GroupCard(
                                 group = group,
                                 onClick = { onGroupClick(group.id) }
@@ -209,9 +207,8 @@ fun GroupsScreen(
     if (showCreateGroupSheet) {
         CreateGroupBottomSheet(
             onDismiss = { showCreateGroupSheet = false },
-            onCreateGroup = { name ->
-                viewModel.createGroup(name)
-                showCreateGroupSheet = false
+            onCreate = { name, mode, onSuccess, onError ->
+                viewModel.createGroup(name, mode, onSuccess, onError)
             }
         )
     }
@@ -222,13 +219,15 @@ fun GroupCard(
     group: PlayerGroup,
     onClick: () -> Unit
 ) {
+    val isOnline = group.mode == "ONLINE"
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .border(
                 width = 1.5.dp,
-                color = Gold.copy(alpha = 0.75f),
+                color = if (isOnline) Gold else Gold.copy(alpha = 0.75f),
                 shape = RoundedCornerShape(20.dp)
             )
             .animateContentSize(),
@@ -257,7 +256,7 @@ fun GroupCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "👥",
+                    text = if (isOnline) "🌐" else "👥",
                     fontSize = 24.sp
                 )
             }
@@ -269,21 +268,22 @@ fun GroupCard(
                 style = MaterialTheme.typography.titleMedium,
                 color = Cream,
                 fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 maxLines = 2
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Surface(
-                color = Gold.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(6.dp)
+                color = if (isOnline) WinGreen.copy(alpha = 0.2f) else Gold.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(1.dp, if (isOnline) WinGreen.copy(alpha = 0.5f) else Gold.copy(alpha = 0.3f))
             ) {
                 Text(
-                    text = "POKER CIRCLE",
+                    text = if (isOnline) "ONLINE GROUP" else "OFFLINE GROUP",
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Gold,
+                    color = if (isOnline) WinGreen else Gold,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 9.sp,
                     letterSpacing = 1.sp
@@ -297,11 +297,20 @@ fun GroupCard(
 @Composable
 fun CreateGroupBottomSheet(
     onDismiss: () -> Unit,
-    onCreateGroup: (String) -> Unit
+    onCreate: (name: String, mode: String, onSuccess: (PlayerGroup) -> Unit, onError: (String) -> Unit) -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var groupName by remember { mutableStateOf("") }
+    var selectedMode by remember { mutableStateOf("OFFLINE") } // "OFFLINE" or "ONLINE"
+    var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var createdInviteCode by remember { mutableStateOf<String?>(null) }
+    var createdGroupName by remember { mutableStateOf<String?>(null) }
+    var showInviteDialog by remember { mutableStateOf(false) }
+    var isCopied by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -332,7 +341,7 @@ fun CreateGroupBottomSheet(
 
             Card(
                 modifier = Modifier
-                    .width(180.dp)
+                    .width(190.dp)
                     .border(
                         width = 1.5.dp,
                         color = Gold.copy(alpha = 0.8f),
@@ -360,7 +369,10 @@ fun CreateGroupBottomSheet(
                             .border(1.dp, Gold.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "👥", fontSize = 20.sp)
+                        Text(
+                            text = if (selectedMode == "ONLINE") "🌐" else "👥",
+                            fontSize = 20.sp
+                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -368,14 +380,22 @@ fun CreateGroupBottomSheet(
                         style = MaterialTheme.typography.titleSmall,
                         color = if (groupName.isBlank()) Cream.copy(alpha = 0.4f) else Cream,
                         fontWeight = FontWeight.Bold,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                         maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (selectedMode == "ONLINE") "ONLINE" else "OFFLINE",
+                        color = if (selectedMode == "ONLINE") WinGreen else Gold,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // Group Name Input
             OutlinedTextField(
                 value = groupName,
                 onValueChange = {
@@ -399,8 +419,96 @@ fun CreateGroupBottomSheet(
                 )
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Online / Offline Mode Toggle directly in dialog
+            Text(
+                text = "GROUP TYPE",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold,
+                letterSpacing = 1.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // OFFLINE Option
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedMode = "OFFLINE" }
+                        .border(
+                            width = if (selectedMode == "OFFLINE") 2.dp else 1.dp,
+                            color = if (selectedMode == "OFFLINE") Gold else Gold.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedMode == "OFFLINE") Color(0xFF041C0E) else FeltBackground
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "🎲 Offline (Local)",
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedMode == "OFFLINE") Gold else Cream.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Admin manages all tables",
+                            fontSize = 10.sp,
+                            color = Cream.copy(alpha = 0.5f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // ONLINE Option
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedMode = "ONLINE" }
+                        .border(
+                            width = if (selectedMode == "ONLINE") 2.dp else 1.dp,
+                            color = if (selectedMode == "ONLINE") Gold else Gold.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedMode == "ONLINE") Color(0xFF041C0E) else FeltBackground
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "🌐 Online (Server Sync)",
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedMode == "ONLINE") Gold else Cream.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Live requests + invite code",
+                            fontSize = 10.sp,
+                            color = Cream.copy(alpha = 0.5f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
             if (error != null) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = error!!,
                     color = LoseRed,
@@ -412,17 +520,150 @@ fun CreateGroupBottomSheet(
             Spacer(modifier = Modifier.height(24.dp))
 
             GoldGradientButton(
-                text = "CREATE GROUP",
+                text = if (isSubmitting) "CREATING..." else "CREATE GROUP",
                 onClick = {
                     val trimmed = groupName.trim()
                     if (trimmed.isBlank()) {
                         error = "Group name is required"
                         return@GoldGradientButton
                     }
-                    onCreateGroup(trimmed)
+                    isSubmitting = true
+                    error = null
+
+                    onCreate(
+                        trimmed,
+                        selectedMode,
+                        { createdGroup ->
+                            isSubmitting = false
+                            if (selectedMode == "ONLINE" && createdGroup.inviteCode != null) {
+                                createdInviteCode = createdGroup.inviteCode
+                                createdGroupName = createdGroup.name
+                                showInviteDialog = true
+                            } else {
+                                Toast.makeText(context, "Group created successfully!", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        },
+                        { errorMsg ->
+                            isSubmitting = false
+                            error = errorMsg
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                        }
+                    )
                 }
             )
         }
     }
-}
 
+    // Success Invite Code Dialog for Online Groups
+    if (showInviteDialog && createdInviteCode != null) {
+        Dialog(onDismissRequest = {
+            showInviteDialog = false
+            onDismiss()
+        }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, Gold, RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltCard),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "♠ ONLINE GROUP CREATED ♠",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
+
+                    Text(
+                        text = createdGroupName ?: "Your Group",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Cream,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = "Share this invite code with players so they can join and send requests via Web or App:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Invite Code Display Box
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF041C0E), RoundedCornerShape(16.dp))
+                            .border(1.5.dp, Gold, RoundedCornerShape(16.dp))
+                            .padding(vertical = 18.dp, horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = createdInviteCode!!,
+                            color = Gold,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 8.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(createdInviteCode!!))
+                                isCopied = true
+                                Toast.makeText(context, "Invite code copied!", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Gold,
+                                containerColor = FeltCard
+                            ),
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                                brush = Brush.linearGradient(listOf(Gold, Gold.copy(alpha = 0.6f)))
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Gold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isCopied) "Copied" else "Copy Code", fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                showInviteDialog = false
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Done", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

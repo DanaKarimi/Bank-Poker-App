@@ -1,6 +1,7 @@
 package com.bankpoker.app.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.TokenManager
+import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.components.GoldGradientButton
 import com.bankpoker.app.ui.theme.*
@@ -37,6 +39,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupScreen(
+    pokerRepository: PokerRepository? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -66,26 +69,49 @@ fun CreateGroupScreen(
             return
         }
 
-        if (!hasToken) {
-            errorMessage = "Authentication required. Please log in as an Admin via Server Test first."
-            return
-        }
-
         isLoading = true
         errorMessage = null
 
         coroutineScope.launch {
-            val result = remoteRepository.createGroup(groupName.trim(), selectedMode)
-            isLoading = false
+            if (selectedMode == "ONLINE") {
+                if (!hasToken) {
+                    isLoading = false
+                    errorMessage = "Authentication required. Please log in as an Admin via Server Test first."
+                    return@launch
+                }
 
-            if (result.isSuccess) {
-                val data = result.getOrNull()
-                createdInviteCode = data?.inviteCode
-                createdGroupName = groupName.trim()
-                createdMode = selectedMode
-                showSuccessDialog = true
+                val result = remoteRepository.createGroup(groupName.trim(), "ONLINE")
+                isLoading = false
+
+                if (result.isSuccess) {
+                    val data = result.getOrNull()
+                    createdInviteCode = data?.inviteCode
+                    createdGroupName = groupName.trim()
+                    createdMode = selectedMode
+
+                    // Insert immediately into local Room database
+                    pokerRepository?.createGroup(
+                        name = groupName.trim(),
+                        mode = "ONLINE",
+                        serverId = data?.groupId,
+                        inviteCode = data?.inviteCode,
+                        customId = data?.groupId
+                    )
+
+                    showSuccessDialog = true
+                } else {
+                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to create group on server."
+                }
             } else {
-                errorMessage = result.exceptionOrNull()?.message ?: "Failed to create group."
+                // Offline group creation locally in Room
+                pokerRepository?.createGroup(
+                    name = groupName.trim(),
+                    mode = "OFFLINE"
+                )
+                isLoading = false
+                createdGroupName = groupName.trim()
+                createdMode = "OFFLINE"
+                showSuccessDialog = true
             }
         }
     }
@@ -186,7 +212,7 @@ fun CreateGroupScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = "Choose whether this group is run entirely Offline by the admin, or Online with live player requests.",
+                            text = "Choose whether this group is run Offline on this device, or Online with server sync & player requests.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Cream.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center
@@ -209,7 +235,7 @@ fun CreateGroupScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "GROUP NAME",
+                            text = "GROUP DETAILS",
                             style = MaterialTheme.typography.labelLarge,
                             color = Gold,
                             letterSpacing = 1.sp,
@@ -238,7 +264,7 @@ fun CreateGroupScreen(
 
                         // Mode Selection (Offline vs Online)
                         Text(
-                            text = "GROUP MODE",
+                            text = "GROUP TYPE",
                             style = MaterialTheme.typography.labelLarge,
                             color = Gold,
                             letterSpacing = 1.sp,
@@ -269,14 +295,14 @@ fun CreateGroupScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = "🎲 OFFLINE",
+                                        text = "🎲 Offline (Local)",
                                         fontWeight = FontWeight.Bold,
                                         color = if (selectedMode == "OFFLINE") Gold else Cream.copy(alpha = 0.8f),
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Admin manages all tables & chip counts directly.",
+                                        text = "Admin manages all tables directly on device.",
                                         fontSize = 11.sp,
                                         color = Cream.copy(alpha = 0.6f),
                                         textAlign = TextAlign.Center
@@ -304,14 +330,14 @@ fun CreateGroupScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = "🌐 ONLINE",
+                                        text = "🌐 Online (Sync)",
                                         fontWeight = FontWeight.Bold,
                                         color = if (selectedMode == "ONLINE") Gold else Cream.copy(alpha = 0.8f),
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Players join with code & send live buy-in requests.",
+                                        text = "Live requests + invite code for players.",
                                         fontSize = 11.sp,
                                         color = Cream.copy(alpha = 0.6f),
                                         textAlign = TextAlign.Center
@@ -431,9 +457,7 @@ fun CreateGroupScreen(
                                     contentColor = Gold,
                                     containerColor = FeltCard
                                 ),
-                                border = ButtonDefaults.outlinedButtonBorder.copy(
-                                    brush = Brush.linearGradient(listOf(Gold, Gold.copy(alpha = 0.6f)))
-                                ),
+                                border = BorderStroke(1.dp, Gold),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(

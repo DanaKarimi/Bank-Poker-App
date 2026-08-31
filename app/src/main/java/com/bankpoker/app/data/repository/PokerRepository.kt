@@ -226,11 +226,20 @@ class PokerRepository(
 
     suspend fun getGroupById(groupId: String): PlayerGroup? = playerGroupDao.getGroupById(groupId)
 
-    suspend fun createGroup(name: String): PlayerGroup {
+    suspend fun createGroup(
+        name: String,
+        mode: String = "OFFLINE",
+        serverId: String? = null,
+        inviteCode: String? = null,
+        customId: String? = null
+    ): PlayerGroup {
         val group = PlayerGroup(
-            id = UUID.randomUUID().toString(),
+            id = customId ?: serverId ?: UUID.randomUUID().toString(),
             name = name,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            mode = mode,
+            serverId = serverId,
+            inviteCode = inviteCode
         )
         playerGroupDao.insertGroup(group)
         return group
