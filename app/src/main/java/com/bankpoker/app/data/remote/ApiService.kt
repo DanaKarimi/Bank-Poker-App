@@ -93,4 +93,22 @@ interface ApiService {
         @Path("id") requestId: String,
         @Header("Authorization") token: String = ""
     ): Response<MessageResponse>
+
+    @GET("api/tables/{tableId}/players")
+    suspend fun getTablePlayers(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.TablePlayersResponse>
+
+    @GET("api/tables/{tableId}/buy-ins")
+    suspend fun getTableBuyIns(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.TableBuyInsResponse>
+
+    @GET("api/tables/{tableId}/exits")
+    suspend fun getTableExits(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.TableExitsResponse>
 }

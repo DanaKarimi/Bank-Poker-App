@@ -110,6 +110,18 @@ class PokerRepository(
 
     suspend fun getAllSavedPlayerNames(): List<String> = playerDao.getAllPlayerNames()
 
+    suspend fun insertOrUpdatePlayers(players: List<Player>) {
+        playerDao.insertPlayers(players)
+    }
+
+    suspend fun insertOrUpdateBuyIns(buyIns: List<BuyIn>) {
+        buyInDao.insertBuyIns(buyIns)
+    }
+
+    suspend fun insertOrUpdateExitRecords(exitRecords: List<ExitRecord>) {
+        exitRecordDao.insertExitRecords(exitRecords)
+    }
+
     // Buy-in operations
     fun getBuyInsByTableId(tableId: String): Flow<List<BuyIn>> = buyInDao.getBuyInsByTableId(tableId)
 

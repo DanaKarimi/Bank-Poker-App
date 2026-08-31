@@ -121,6 +121,8 @@ router.post('/join/:id/approve', authenticateToken, requireAdmin, async (req, re
 
         const now = Date.now();
 
+        console.log(`[Requests] Approving join request: ${requestId} for user: ${request.user_id}`);
+
         // Update join request status
         await run(
             'UPDATE join_requests SET status = "APPROVED", updated_at = ? WHERE id = ?',
@@ -137,6 +139,8 @@ router.post('/join/:id/approve', authenticateToken, requireAdmin, async (req, re
 
         // If join request was for a table, CREATE Player record in database
         if (request.table_id) {
+            console.log(`[Requests] Creating player record for table: ${request.table_id}, user: ${request.user_id}, name: ${targetUser.username}`);
+
             let player = await get(
                 'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
                 [request.table_id, request.user_id, targetUser.username]
@@ -149,18 +153,21 @@ router.post('/join/:id/approve', authenticateToken, requireAdmin, async (req, re
                      VALUES (?, ?, ?, ?, 'ACTIVE', ?, 0, ?, ?, 1, 0)`,
                     [playerId, request.table_id, request.user_id, targetUser.username, now, playerId, now]
                 );
+                console.log(`[Requests] Inserted new player ${playerId} into table ${request.table_id}`);
             } else {
                 playerId = player.id;
                 await run(
                     'UPDATE players SET status = "ACTIVE", user_id = ?, updated_at = ? WHERE id = ?',
                     [request.user_id, now, player.id]
                 );
+                console.log(`[Requests] Activated existing player ${playerId} in table ${request.table_id}`);
             }
         }
 
         return res.status(200).json({
-            message: 'Join request approved successfully',
-            playerId
+            message: 'Player added to table',
+            playerId,
+            requestId
         });
     } catch (error) {
         console.error('Error approving join request:', error);
@@ -350,6 +357,8 @@ router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
         }
 
         const now = Date.now();
+        console.log(`[Requests] Confirming buy-in request: ${requestId} for user: ${userId} (${username})`);
+
         await run(
             'UPDATE buy_in_requests SET status = "CONFIRMED", updated_at = ? WHERE id = ?',
             [now, requestId]
@@ -369,9 +378,13 @@ router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
                 [playerId, request.table_id, userId, username, now, playerId, now]
             );
             player = { id: playerId };
+            console.log(`[Requests] Created fallback player record: ${playerId}`);
         } else if (player.status === 'EXITED') {
             await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
+            console.log(`[Requests] Reactivated player: ${player.id}`);
         }
+
+        console.log(`[Requests] Creating BuyIn record for player: ${player.id}, table: ${request.table_id}, amount: ${request.amount}`);
 
         // Insert actual BuyIn record
         const buyInId = crypto.randomUUID();
@@ -381,8 +394,10 @@ router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
             [buyInId, request.table_id, player.id, request.amount, now, buyInId, now]
         );
 
+        console.log(`[Requests] Successfully created BuyIn record: ${buyInId}`);
+
         return res.status(200).json({
-            message: 'Buy-in confirmed and recorded successfully',
+            message: 'Buy-in recorded',
             buyInId
         });
     } catch (error) {

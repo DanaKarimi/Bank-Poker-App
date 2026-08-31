@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -137,6 +139,27 @@ fun TableDetailScreen(
                     }
                 },
                 actions = {
+                    val isRefreshing by viewModel.isRefreshing.collectAsState()
+
+                    IconButton(
+                        onClick = {
+                            viewModel.refreshTableFromServer { success, errorMsg ->
+                                if (success) {
+                                    Toast.makeText(context, "Table synced from server", Toast.LENGTH_SHORT).show()
+                                } else if (errorMsg != null) {
+                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        enabled = !isRefreshing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh from Server",
+                            tint = Gold
+                        )
+                    }
+
                     if (onNavigateToRequests != null && uiState.table?.groupId != null) {
                         IconButton(onClick = {
                             uiState.table?.let { t ->

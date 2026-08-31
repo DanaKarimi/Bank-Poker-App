@@ -15,6 +15,9 @@ import com.bankpoker.app.data.remote.dto.MessageResponse
 import com.bankpoker.app.data.remote.dto.PendingRequestsResponse
 import com.bankpoker.app.data.remote.dto.RegisterRequest
 import com.bankpoker.app.data.remote.dto.RegisterResponse
+import com.bankpoker.app.data.remote.dto.TableBuyInDto
+import com.bankpoker.app.data.remote.dto.TableExitDto
+import com.bankpoker.app.data.remote.dto.TablePlayerDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -327,6 +330,66 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to reject exit request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch players for a table from backend
+     */
+    suspend fun getTablePlayers(tableId: String): Result<List<TablePlayerDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTablePlayers(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.players)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch table players (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch buy-ins for a table from backend
+     */
+    suspend fun getTableBuyIns(tableId: String): Result<List<TableBuyInDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTableBuyIns(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.buyIns)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch table buy-ins (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch exits for a table from backend
+     */
+    suspend fun getTableExits(tableId: String): Result<List<TableExitDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTableExits(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.exits)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch table exits (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {

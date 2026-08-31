@@ -55,7 +55,12 @@ const TableDetailModal = ({
 
   // Check if current user is an active player at this table
   const isPlayerAtTable = players.some(
-    (p) => (p.user_id === user?.id || p.name === user?.username) && p.status === 'ACTIVE'
+    (p) =>
+      (p.user_id === user?.id ||
+        p.userId === user?.id ||
+        p.name?.toLowerCase() === user?.username?.toLowerCase() ||
+        p.username?.toLowerCase() === user?.username?.toLowerCase()) &&
+      p.status === 'ACTIVE'
   );
 
   // Check if user has a pending join request for this table

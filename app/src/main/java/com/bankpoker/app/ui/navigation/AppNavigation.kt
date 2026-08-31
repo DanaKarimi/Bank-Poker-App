@@ -108,8 +108,14 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val tableId = backStackEntry.arguments?.getString("tableId") ?: return@composable
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: TableDetailViewModel = viewModel(
-                factory = TableDetailViewModelFactory(repository, tableId)
+                factory = TableDetailViewModelFactory(repository, tableId, remoteRepository)
             )
             TableDetailScreen(
                 viewModel = viewModel,

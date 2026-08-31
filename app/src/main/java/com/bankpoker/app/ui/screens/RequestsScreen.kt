@@ -28,9 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
+import com.bankpoker.app.data.local.BankPokerDatabase
+import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.data.remote.dto.RequestDto
+import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.delay
@@ -52,6 +56,21 @@ fun RequestsScreen(
     val remoteRepository = remember {
         val service = ApiClient.getApiService(tokenManager)
         RemoteRepository(service, tokenManager)
+    }
+    val pokerRepository = remember {
+        val db = BankPokerDatabase.getDatabase(context)
+        PokerRepository(
+            pokerTableDao = db.pokerTableDao(),
+            playerDao = db.playerDao(),
+            buyInDao = db.buyInDao(),
+            exitRecordDao = db.exitRecordDao(),
+            playerGroupDao = db.playerGroupDao(),
+            groupBalanceDao = db.groupBalanceDao(),
+            paymentDao = db.paymentDao(),
+            settlementRecordDao = db.settlementRecordDao(),
+            entryFeeRecordDao = db.entryFeeRecordDao(),
+            database = db
+        )
     }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) } // 0: Join, 1: Buy-In, 2: Exit
@@ -111,10 +130,57 @@ fun RequestsScreen(
             actionInProgressId = null
 
             if (result.isSuccess) {
-                Toast.makeText(context, "Request approved!", Toast.LENGTH_SHORT).show()
+                when (type) {
+                    "join" -> {
+                        Log.d("Requests", "Approved join request: ${request.id}")
+                        Toast.makeText(context, "Player added to table!", Toast.LENGTH_SHORT).show()
+
+                        // Auto-sync table players into Room database immediately
+                        val tableId = request.tableId
+                        if (!tableId.isNullOrBlank()) {
+                            try {
+                                val playersResult = remoteRepository.getTablePlayers(tableId)
+                                if (playersResult.isSuccess) {
+                                    val remotePlayers = playersResult.getOrNull() ?: emptyList()
+                                    Log.d("TableDetail", "Fetched ${remotePlayers.size} players from server")
+
+                                    val roomPlayers = remotePlayers.map { dto ->
+                                        val player = Player(
+                                            id = dto.id,
+                                            tableId = tableId,
+                                            name = dto.name,
+                                            status = if (dto.status.equals("EXITED", ignoreCase = true)) "EXITED" else "PLAYING",
+                                            createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis(),
+                                            entryFeePaid = dto.entryFeePaid || dto.entryFeePaidInt > 0
+                                        )
+                                        Log.d("Room", "Inserted player: ${player.name} (id: ${player.id})")
+                                        player
+                                    }
+                                    if (roomPlayers.isNotEmpty()) {
+                                        pokerRepository.insertOrUpdatePlayers(roomPlayers)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Requests", "Failed to auto-sync players to Room", e)
+                            }
+                        }
+                    }
+                    "buy-in" -> {
+                        Log.d("Requests", "Approved buy-in request: ${request.id}")
+                        Toast.makeText(context, "Buy-in approved! Waiting for player to confirm receipt.", Toast.LENGTH_SHORT).show()
+                    }
+                    "exit" -> {
+                        Log.d("Requests", "Approved exit request: ${request.id}")
+                        Toast.makeText(context, "Exit approved! Waiting for player to confirm receipt.", Toast.LENGTH_SHORT).show()
+                    }
+                    else -> {
+                        Toast.makeText(context, "Request approved!", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 loadPendingRequests(showLoader = false)
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Approval failed."
+                Log.e("Requests", "Approval failed for ${request.id}: $err")
                 Toast.makeText(context, err, Toast.LENGTH_LONG).show()
             }
         }
@@ -132,10 +198,12 @@ fun RequestsScreen(
             actionInProgressId = null
 
             if (result.isSuccess) {
+                Log.d("Requests", "Rejected ${type} request: ${request.id}")
                 Toast.makeText(context, "Request rejected", Toast.LENGTH_SHORT).show()
                 loadPendingRequests(showLoader = false)
             } else {
                 val err = result.exceptionOrNull()?.message ?: "Rejection failed."
+                Log.e("Requests", "Rejection failed for ${request.id}: $err")
                 Toast.makeText(context, err, Toast.LENGTH_LONG).show()
             }
         }
