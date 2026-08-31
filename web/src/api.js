@@ -24,17 +24,44 @@ api.interceptors.request.use(
   }
 );
 
-// Interceptor to handle global response errors (e.g. 401 Unauthorized)
+// Interceptor to handle global response errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      // Optional: If token expired, clear local storage
-      // localStorage.removeItem('token');
-      // localStorage.removeItem('user');
-    }
     return Promise.reject(error);
   }
 );
+
+// --- Request System APIs ---
+
+// Join requests
+export const sendJoinRequest = (groupId) => api.post('/api/requests/join', { groupId });
+export const getMyRequests = (groupId) => api.get('/api/requests/my', { params: { groupId } });
+
+// Buy-in requests
+export const sendBuyInRequest = (groupId, tableId, amount) =>
+  api.post('/api/requests/buy-in', { groupId, tableId, amount: Number(amount) });
+
+// Exit requests
+export const sendExitRequest = (groupId, tableId, amount) =>
+  api.post('/api/requests/exit', { groupId, tableId, amount: Number(amount) });
+
+// Confirm receipt
+export const confirmBuyInReceipt = (requestId) => api.post(`/api/requests/buy-in/${requestId}/confirm`);
+export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${requestId}/confirm`);
+
+// Group and Table helpers
+export const getMyGroups = () => api.get('/api/groups/my-groups');
+export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
+export const getGroupTables = async (groupId) => {
+  try {
+    const response = await api.post('/api/sync/pull', { lastSyncTimestamp: 0 });
+    const tables = response.data?.tables || [];
+    return tables.filter((t) => t.group_id === groupId && !t.is_deleted && t.status === 'ACTIVE');
+  } catch (err) {
+    console.error('Failed to pull tables:', err);
+    return [];
+  }
+};
 
 export default api;

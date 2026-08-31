@@ -175,6 +175,21 @@ const Dashboard = () => {
                         {group.name}
                       </h3>
                     </div>
+
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
+                        group.mode === 'ONLINE'
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                          : 'bg-felt-dark text-cream-text/60 border-gold-accent/20'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          group.mode === 'ONLINE' ? 'bg-emerald-400 animate-pulse' : 'bg-cream-text/40'
+                        }`}
+                      />
+                      <span>{group.mode || 'OFFLINE'}</span>
+                    </span>
                   </div>
 
                   {group.invite_code && (
@@ -189,9 +204,10 @@ const Dashboard = () => {
                 <div className="pt-4 border-t border-gold-accent/20 mt-4">
                   <Link
                     to={`/group/${group.id}`}
+                    state={{ group }}
                     className="w-full py-2.5 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/50 shadow flex items-center justify-center gap-1.5 transition active:scale-95"
                   >
-                    <span>View Stats</span>
+                    <span>{group.mode === 'ONLINE' ? 'Enter Table & Requests' : 'View Stats'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </Link>
                 </div>
