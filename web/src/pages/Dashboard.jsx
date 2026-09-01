@@ -50,14 +50,33 @@ const Dashboard = () => {
       const response = await api.post('/api/groups/join', {
         invite_code: inviteCode.trim(),
       });
+      const joinedGroup = response.data?.group;
+      const groupId = joinedGroup?.id;
+
       setJoinSuccess(response.data.message || 'Joined group successfully!');
       setInviteCode('');
-      // Refresh groups list
-      await fetchGroups();
-      setTimeout(() => {
+      
+      setTimeout(async () => {
         setIsJoinModalOpen(false);
         setJoinSuccess('');
-      }, 1200);
+
+        if (groupId) {
+          try {
+            const rosterRes = await api.get(`/api/groups/${groupId}/players-list`);
+            const players = rosterRes.data?.players || [];
+            const hasUnclaimed = players.some((p) => !p.isClaimed);
+            if (hasUnclaimed || players.length > 0) {
+              navigate(`/group/${groupId}/claim`);
+              return;
+            }
+          } catch (rosterErr) {
+            console.log('Roster check skipped:', rosterErr);
+          }
+          navigate(`/group/${groupId}`);
+        } else {
+          await fetchGroups();
+        }
+      }, 800);
     } catch (err) {
       console.error('Join group error:', err);
       setJoinError(err.response?.data?.error || 'Failed to join group. Check the invite code.');

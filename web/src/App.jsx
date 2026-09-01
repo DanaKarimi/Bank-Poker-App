@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupStats from './pages/GroupStats';
 import TableDetail from './pages/TableDetail';
+import ClaimPlayer from './pages/ClaimPlayer';
 
 function App() {
   return (
@@ -21,6 +22,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Claim Player Identity Route */}
+          <Route
+            path="/group/:groupId/claim"
+            element={
+              <ProtectedRoute>
+                <ClaimPlayer />
               </ProtectedRoute>
             }
           />
