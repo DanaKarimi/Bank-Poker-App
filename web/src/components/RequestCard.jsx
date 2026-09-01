@@ -35,7 +35,7 @@ const RequestCard = ({ request, type, onConfirm }) => {
         );
       case 'APPROVED':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-950/80 text-blue-300 border border-blue-500/50 shadow-sm">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 shadow-sm">
             <CheckCircle2 className="w-3 h-3" />
             <span>Approved</span>
           </span>
@@ -138,23 +138,6 @@ const RequestCard = ({ request, type, onConfirm }) => {
           <span className="text-xs font-mono text-cream-text/75">{formattedDate}</span>
         </div>
       </div>
-
-      {/* Action button if status is APPROVED */}
-      {request.status === 'APPROVED' && (
-        <div className="pt-2 border-t border-blue-500/20">
-          <div className="bg-blue-950/40 p-2 rounded-lg border border-blue-500/30 mb-2 text-xs text-blue-200">
-            Approved by Admin! Tap confirm once you have received your physical chips/payout.
-          </div>
-          <button
-            onClick={handleConfirm}
-            disabled={isConfirming}
-            className="w-full py-2 bg-gradient-to-r from-green-600 via-emerald-500 to-green-600 hover:from-green-500 hover:to-emerald-400 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            <Check className="w-4 h-4" />
-            <span>{isConfirming ? 'Confirming...' : 'Confirm Receipt'}</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 };

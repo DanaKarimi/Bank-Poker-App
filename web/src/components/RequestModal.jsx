@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowDownLeft, ArrowUpRight, DollarSign, AlertCircle, Layers } from 'lucide-react';
+import SmartAmountInput from './SmartAmountInput';
 
 const RequestModal = ({
   isOpen,
@@ -46,12 +47,11 @@ const RequestModal = ({
     setError('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleAmountSubmit = async (submitAmount) => {
     setError('');
 
-    const numAmount = Number(amount);
-    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+    const numAmount = Number(submitAmount);
+    if (!submitAmount || isNaN(numAmount) || numAmount <= 0) {
       setError('Please enter a valid positive amount.');
       return;
     }
@@ -116,7 +116,7 @@ const RequestModal = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           {/* Table Display / Selection */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1.5 flex items-center gap-1.5">
@@ -170,64 +170,14 @@ const RequestModal = ({
             )}
           </div>
 
-          {/* Amount Input */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1.5 flex items-center gap-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-gold-accent" />
-              <span>{isBuyIn ? 'Buy-In Chip Amount' : 'Exit Chip Amount'}</span>
-            </label>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={amount}
-              onChange={(e) => {
-                setAmount(e.target.value);
-                setError('');
-              }}
-              placeholder="e.g. 1000"
-              className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono text-lg font-bold placeholder-cream-text/40 focus:outline-none focus:border-gold-accent transition"
-              required
-              autoFocus
-            />
-
-            {/* Quick Chip Presets */}
-            <div className="grid grid-cols-4 gap-2 mt-2.5">
-              {quickAmounts.map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => handleAddAmount(val)}
-                  className="py-1.5 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent border border-gold-accent/40 rounded-lg text-xs font-bold font-mono transition active:scale-95"
-                >
-                  +{val >= 1000 ? `${val / 1000}k` : val}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gold-accent/20">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 bg-felt-dark hover:bg-felt-dark/80 text-cream-text/80 rounded-xl text-sm font-semibold transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`px-5 py-2.5 font-bold uppercase tracking-wider text-sm rounded-xl shadow transition disabled:opacity-50 ${
-                isBuyIn
-                  ? 'bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black hover:opacity-95'
-                  : 'bg-gradient-to-r from-amber-500 via-yellow-600 to-amber-500 text-black hover:opacity-95'
-              }`}
-            >
-              {isSubmitting ? 'Submitting...' : isBuyIn ? 'Submit Buy-In' : 'Submit Exit'}
-            </button>
-          </div>
-        </form>
+          {/* Smart Amount Input */}
+          <SmartAmountInput 
+            chipValue={currentTable?.chip_value || currentTable?.chipValue} 
+            onSubmit={(amount) => handleAmountSubmit(amount)} 
+            onCancel={onClose}
+            isSubmitting={isSubmitting} 
+          />
+        </div>
       </div>
     </div>
   );

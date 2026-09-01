@@ -23,6 +23,9 @@ router.post('/join', authenticateToken, async (req, res) => {
             if (!table) {
                 return res.status(404).json({ error: 'Table not found' });
             }
+            if (table.status === 'CLOSED' || table.is_active === 0) {
+                return res.status(400).json({ error: 'Table is closed' });
+            }
             groupId = table.group_id;
         }
 
@@ -235,6 +238,9 @@ router.post('/buy-in', authenticateToken, async (req, res) => {
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed' });
+        }
 
         // Verify player has joined table (or has active player record)
         const player = await get(
@@ -271,7 +277,7 @@ router.post('/buy-in', authenticateToken, async (req, res) => {
 /**
  * POST /api/requests/buy-in/:id/approve
  * (Requires Auth + role='ADMIN')
- * Admin approves a buy-in request (status -> APPROVED)
+ * Admin approves a buy-in request and immediately creates a BuyIn record
  */
 router.post('/buy-in/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -286,13 +292,48 @@ router.post('/buy-in/:id/approve', authenticateToken, requireAdmin, async (req, 
             return res.status(400).json({ error: `Buy-in request is already ${request.status}` });
         }
 
+        const targetUser = await get('SELECT * FROM users WHERE id = ?', [request.user_id]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'Requesting user not found' });
+        }
+
         const now = Date.now();
         await run(
             'UPDATE buy_in_requests SET status = "APPROVED", updated_at = ? WHERE id = ?',
             [now, requestId]
         );
 
-        return res.status(200).json({ message: 'Buy-in request approved successfully' });
+        // Find or create Player record in table
+        let player = await get(
+            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
+            [request.table_id, request.user_id, targetUser.username]
+        );
+
+        if (!player) {
+            const playerId = crypto.randomUUID();
+            await run(
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
+                [playerId, request.table_id, request.user_id, targetUser.username, now, playerId, now]
+            );
+            player = { id: playerId };
+            console.log(`[Requests] Created fallback player record: ${playerId}`);
+        } else if (player.status === 'EXITED') {
+            await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
+            console.log(`[Requests] Reactivated player: ${player.id}`);
+        }
+
+        console.log(`[Requests] Creating BuyIn record for player: ${player.id}, table: ${request.table_id}, amount: ${request.amount}`);
+
+        // Insert actual BuyIn record
+        const buyInId = crypto.randomUUID();
+        await run(
+            `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, 'Online Buy-In Request', ?, ?, ?, 1, 0)`,
+            [buyInId, request.table_id, player.id, request.amount, now, buyInId, now]
+        );
+
+        return res.status(200).json({ message: 'Buy-in request approved and recorded successfully', buyInId });
     } catch (error) {
         console.error('Error approving buy-in request:', error);
         return res.status(500).json({ error: 'Internal server error while approving buy-in request' });
@@ -331,82 +372,6 @@ router.post('/buy-in/:id/reject', authenticateToken, requireAdmin, async (req, r
 });
 
 /**
- * POST /api/requests/buy-in/:id/confirm
- * (Requires Auth)
- * Player confirms receipt of chips; creates actual BuyIn record in database
- */
-router.post('/buy-in/:id/confirm', authenticateToken, async (req, res) => {
-    try {
-        const requestId = req.params.id;
-        const userId = req.user.id;
-        const username = req.user.username;
-
-        const request = await get('SELECT * FROM buy_in_requests WHERE id = ?', [requestId]);
-        if (!request) {
-            return res.status(404).json({ error: 'Buy-in request not found' });
-        }
-
-        if (request.user_id !== userId) {
-            return res.status(403).json({ error: 'Forbidden: You can only confirm your own requests' });
-        }
-
-        if (request.status !== 'APPROVED') {
-            return res.status(400).json({
-                error: `Cannot confirm buy-in request with status '${request.status}'. Must be 'APPROVED'.`
-            });
-        }
-
-        const now = Date.now();
-        console.log(`[Requests] Confirming buy-in request: ${requestId} for user: ${userId} (${username})`);
-
-        await run(
-            'UPDATE buy_in_requests SET status = "CONFIRMED", updated_at = ? WHERE id = ?',
-            [now, requestId]
-        );
-
-        // Find or create Player record in table
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
-            [request.table_id, userId, username]
-        );
-
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                [playerId, request.table_id, userId, username, now, playerId, now]
-            );
-            player = { id: playerId };
-            console.log(`[Requests] Created fallback player record: ${playerId}`);
-        } else if (player.status === 'EXITED') {
-            await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
-            console.log(`[Requests] Reactivated player: ${player.id}`);
-        }
-
-        console.log(`[Requests] Creating BuyIn record for player: ${player.id}, table: ${request.table_id}, amount: ${request.amount}`);
-
-        // Insert actual BuyIn record
-        const buyInId = crypto.randomUUID();
-        await run(
-            `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Online Buy-In Request', ?, ?, ?, 1, 0)`,
-            [buyInId, request.table_id, player.id, request.amount, now, buyInId, now]
-        );
-
-        console.log(`[Requests] Successfully created BuyIn record: ${buyInId}`);
-
-        return res.status(200).json({
-            message: 'Buy-in recorded',
-            buyInId
-        });
-    } catch (error) {
-        console.error('Error confirming buy-in request:', error);
-        return res.status(500).json({ error: 'Internal server error while confirming buy-in request' });
-    }
-});
-
-/**
  * POST /api/requests/exit
  * (Requires Auth)
  * Player submits an exit/cashout request for a table
@@ -434,6 +399,9 @@ router.post('/exit', authenticateToken, async (req, res) => {
         const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
+        }
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed' });
         }
 
         // Verify player exists in table
@@ -471,7 +439,7 @@ router.post('/exit', authenticateToken, async (req, res) => {
 /**
  * POST /api/requests/exit/:id/approve
  * (Requires Auth + role='ADMIN')
- * Admin approves an exit request (status -> APPROVED)
+ * Admin approves an exit request and immediately creates an Exit record
  */
 router.post('/exit/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -486,13 +454,44 @@ router.post('/exit/:id/approve', authenticateToken, requireAdmin, async (req, re
             return res.status(400).json({ error: `Exit request is already ${request.status}` });
         }
 
+        const targetUser = await get('SELECT * FROM users WHERE id = ?', [request.user_id]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'Requesting user not found' });
+        }
+
         const now = Date.now();
         await run(
             'UPDATE exit_requests SET status = "APPROVED", updated_at = ? WHERE id = ?',
             [now, requestId]
         );
 
-        return res.status(200).json({ message: 'Exit request approved successfully' });
+        // Find or create Player record in table
+        let player = await get(
+            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
+            [request.table_id, request.user_id, targetUser.username]
+        );
+
+        if (!player) {
+            const playerId = crypto.randomUUID();
+            await run(
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
+                [playerId, request.table_id, request.user_id, targetUser.username, now, playerId, now]
+            );
+            player = { id: playerId };
+        } else {
+            await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
+        }
+
+        // Insert actual Exit record
+        const exitId = crypto.randomUUID();
+        await run(
+            `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, 'Online Exit Request', ?, ?, ?, 1, 0)`,
+            [exitId, request.table_id, player.id, request.amount, now, exitId, now]
+        );
+
+        return res.status(200).json({ message: 'Exit request approved and recorded successfully', exitId });
     } catch (error) {
         console.error('Error approving exit request:', error);
         return res.status(500).json({ error: 'Internal server error while approving exit request' });
@@ -527,74 +526,6 @@ router.post('/exit/:id/reject', authenticateToken, requireAdmin, async (req, res
     } catch (error) {
         console.error('Error rejecting exit request:', error);
         return res.status(500).json({ error: 'Internal server error while rejecting exit request' });
-    }
-});
-
-/**
- * POST /api/requests/exit/:id/confirm
- * (Requires Auth)
- * Player confirms payout receipt; creates actual Exit record in database
- */
-router.post('/exit/:id/confirm', authenticateToken, async (req, res) => {
-    try {
-        const requestId = req.params.id;
-        const userId = req.user.id;
-        const username = req.user.username;
-
-        const request = await get('SELECT * FROM exit_requests WHERE id = ?', [requestId]);
-        if (!request) {
-            return res.status(404).json({ error: 'Exit request not found' });
-        }
-
-        if (request.user_id !== userId) {
-            return res.status(403).json({ error: 'Forbidden: You can only confirm your own requests' });
-        }
-
-        if (request.status !== 'APPROVED') {
-            return res.status(400).json({
-                error: `Cannot confirm exit request with status '${request.status}'. Must be 'APPROVED'.`
-            });
-        }
-
-        const now = Date.now();
-        await run(
-            'UPDATE exit_requests SET status = "CONFIRMED", updated_at = ? WHERE id = ?',
-            [now, requestId]
-        );
-
-        // Find or create Player record in table
-        let player = await get(
-            'SELECT * FROM players WHERE table_id = ? AND (user_id = ? OR name = ?) AND is_deleted = 0',
-            [request.table_id, userId, username]
-        );
-
-        if (!player) {
-            const playerId = crypto.randomUUID();
-            await run(
-                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
-                [playerId, request.table_id, userId, username, now, playerId, now]
-            );
-            player = { id: playerId };
-        } else {
-            await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
-        }
-
-        // Insert actual Exit record
-        const exitId = crypto.randomUUID();
-        await run(
-            `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, 'Online Exit Request', ?, ?, ?, 1, 0)`,
-            [exitId, request.table_id, player.id, request.amount, now, exitId, now]
-        );
-
-        return res.status(200).json({
-            message: 'Exit confirmed and recorded successfully',
-            exitId
-        });
-    } catch (error) {
-        console.error('Error confirming exit request:', error);
-        return res.status(500).json({ error: 'Internal server error while confirming exit request' });
     }
 });
 
