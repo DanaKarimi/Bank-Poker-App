@@ -307,6 +307,8 @@ class GroupDetailViewModel(
                         serverId = resp.groupId,
                         inviteCode = resp.inviteCode
                     )
+                    // Fire-and-forget sync invite code to guarantee server matches local
+                    syncInviteCodeToServer(resp.inviteCode)
                     onSuccess(resp.inviteCode)
                 } else {
                     val err = result.exceptionOrNull()?.message ?: "Conversion failed. Data remains local."
@@ -316,6 +318,19 @@ class GroupDetailViewModel(
                 onError(e.message ?: "Failed to convert group to online. Data remains local.")
             } finally {
                 _isConverting.value = false
+            }
+        }
+    }
+
+    fun syncInviteCodeToServer(inviteCode: String) {
+        if (remoteRepository == null || inviteCode.isBlank()) return
+        val currentGroup = _group.value
+        val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+        viewModelScope.launch {
+            try {
+                remoteRepository.syncInviteCode(serverGroupId, inviteCode)
+            } catch (e: Exception) {
+                android.util.Log.e("GroupDetailViewModel", "Error syncing invite code to server", e)
             }
         }
     }

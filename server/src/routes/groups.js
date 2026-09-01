@@ -100,14 +100,18 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
             idMapping[group.id] = newGroupId;
         }
 
-        // Generate unique 6-character invite code
-        let inviteCode = generateInviteCode();
-        let attempts = 0;
-        while (attempts < 10) {
-            const existing = await get('SELECT id FROM groups WHERE invite_code = ?', [inviteCode]);
-            if (!existing) break;
+        // Use provided invite code or generate unique 6-character invite code
+        const localCode = (group.inviteCode || group.invite_code || '').trim().toUpperCase();
+        let inviteCode = localCode;
+        if (!inviteCode) {
             inviteCode = generateInviteCode();
-            attempts++;
+            let attempts = 0;
+            while (attempts < 10) {
+                const existing = await get('SELECT id FROM groups WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(?))', [inviteCode]);
+                if (!existing) break;
+                inviteCode = generateInviteCode();
+                attempts++;
+            }
         }
 
         // 1. Insert Group with mode = ONLINE
@@ -116,6 +120,8 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
              VALUES (?, ?, ?, 'ONLINE', ?, ?, ?, ?, 1, 0)`,
             [newGroupId, group.name.trim(), inviteCode, createdBy, group.createdAt || group.created_at || now, newGroupId, now]
         );
+
+        console.log("Imported group:", newGroupId, "name:", group.name.trim(), "invite code:", inviteCode);
 
         // 2. Add creator to group_members
         await run(
@@ -336,6 +342,44 @@ router.get('/:id/invite-code', authenticateToken, requireAdmin, async (req, res)
 });
 
 /**
+ * POST /api/groups/:id/invite-code
+ * (Requires Auth + role='ADMIN')
+ * Sync/update the invite code for a group (self-heal)
+ */
+router.post('/:id/invite-code', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const { inviteCode } = req.body;
+
+        if (!inviteCode || !inviteCode.trim()) {
+            return res.status(400).json({ error: 'inviteCode is required' });
+        }
+
+        const cleanCode = inviteCode.trim().toUpperCase();
+        const now = Date.now();
+
+        // Update group by id or server_id
+        const result = await run(
+            `UPDATE groups
+             SET invite_code = ?, mode = 'ONLINE', updated_at = ?
+             WHERE (id = ? OR server_id = ?) AND is_deleted = 0`,
+            [cleanCode, now, groupId, groupId]
+        );
+
+        console.log("Synced invite code for group:", groupId, "to:", cleanCode, "changes:", result.changes);
+
+        return res.status(200).json({
+            message: 'Invite code synced',
+            groupId,
+            inviteCode: cleanCode
+        });
+    } catch (error) {
+        console.error('Error syncing invite code:', error);
+        return res.status(500).json({ error: 'Internal server error while syncing invite code' });
+    }
+});
+
+/**
  * GET /api/groups/:id/members
  * (Requires Auth + role='ADMIN')
  * Return list of users who joined this group
@@ -381,14 +425,15 @@ router.post('/join', authenticateToken, async (req, res) => {
     try {
         const { invite_code } = req.body;
 
-        if (!invite_code) {
-            return res.status(400).json({ error: 'invite_code is required' });
-        }
+        const cleanCode = (invite_code || '').trim().toUpperCase();
+        console.log("Join attempt with code:", cleanCode);
 
         const group = await get(
-            'SELECT * FROM groups WHERE invite_code = ? AND is_deleted = 0',
-            [invite_code.trim().toUpperCase()]
+            'SELECT * FROM groups WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(?)) AND is_deleted = 0',
+            [cleanCode]
         );
+
+        console.log("Join attempt with code:", cleanCode, "found group:", group ? group.id : null);
 
         if (!group) {
             return res.status(404).json({ error: 'Group not found with that invite code' });

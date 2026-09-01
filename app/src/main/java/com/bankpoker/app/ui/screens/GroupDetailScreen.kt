@@ -101,6 +101,13 @@ fun GroupDetailScreen(
         }
     }
 
+    LaunchedEffect(group?.id, group?.mode, group?.inviteCode) {
+        val currentGroup = group
+        if (currentGroup?.mode == "ONLINE" && !currentGroup.inviteCode.isNullOrBlank()) {
+            viewModel.syncInviteCodeToServer(currentGroup.inviteCode)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

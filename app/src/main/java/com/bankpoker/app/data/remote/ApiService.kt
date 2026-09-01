@@ -163,4 +163,11 @@ interface ApiService {
         @Body request: com.google.gson.JsonObject,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.ImportGroupResponse>
+
+    @POST("api/groups/{groupId}/invite-code")
+    suspend fun syncInviteCode(
+        @Path("groupId") groupId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 }

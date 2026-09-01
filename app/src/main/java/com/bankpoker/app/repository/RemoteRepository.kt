@@ -598,6 +598,30 @@ class RemoteRepository(
         }
     }
 
+    /**
+     * Sync/Push invite code to server for an online group (self-heal)
+     */
+    suspend fun syncInviteCode(
+        groupId: String,
+        inviteCode: String
+    ): Result<com.bankpoker.app.data.remote.dto.MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = JsonObject().apply {
+                addProperty("inviteCode", inviteCode.trim().toUpperCase())
+            }
+            val response = apiService.syncInviteCode(groupId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to sync invite code (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {
