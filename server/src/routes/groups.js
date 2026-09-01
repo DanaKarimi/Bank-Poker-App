@@ -627,7 +627,9 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
         const totalPayments = paymentsSent + paymentsReceived;
         const netGameBalance = totalExits - totalBuyIns;
         const currentBalance = netGameBalance + paymentsSent - paymentsReceived;
-        const balance = (totalBuyIns - totalExits) + (paymentsReceived - paymentsSent);
+        const myBalance = currentBalance;
+        const myBuyIns = totalBuyIns;
+        const myExits = totalExits;
 
         // 6. Recent Transactions
         const recentBuyIns = await all(
@@ -674,16 +676,16 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
             groupId: group.id,
             groupName: group.name,
             username,
-            balance,
+            balance: myBalance,
+            myBalance,
+            myBuyIns,
+            myExits,
             currentBalance,
             netGameBalance,
-            totalBuyIns: totalGroupBuyIns,
-            totalExits: totalGroupExits,
-            totalGroupBuyIns,
-            totalGroupExits,
-            totalGroupBalance,
-            userTotalBuyIns: totalBuyIns,
-            userTotalExits: totalExits,
+            totalBuyIns: myBuyIns,
+            totalExits: myExits,
+            userTotalBuyIns: myBuyIns,
+            userTotalExits: myExits,
             totalPayments,
             paymentsSent,
             paymentsReceived,

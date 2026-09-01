@@ -93,7 +93,7 @@ const GroupStats = () => {
       ]);
 
       if (statsRes.status === 'fulfilled') {
-        setStats(statsRes.value.data?.stats || null);
+        setStats(statsRes.value.data?.stats || statsRes.value.data || null);
         if (statsRes.value.data?.group) {
           setGroup(statsRes.value.data.group);
         }
@@ -142,10 +142,10 @@ const GroupStats = () => {
     navigate(`/group/${groupId}/table/${table.id}`);
   };
 
-  const totalGroupBuyIns = groupStatsDetails?.totalGroupBuyIns ?? stats?.totalGroupBuyIns ?? stats?.totalBuyIns ?? 0;
-  const totalGroupExits = groupStatsDetails?.totalGroupExits ?? stats?.totalGroupExits ?? stats?.totalExits ?? 0;
-  const totalGroupBalance = groupStatsDetails?.totalGroupBalance ?? stats?.totalGroupBalance ?? (totalGroupBuyIns - totalGroupExits);
-  const isPositive = totalGroupBalance >= 0;
+  const myBalance = stats?.myBalance ?? stats?.balance ?? stats?.currentBalance ?? 0;
+  const myBuyIns = stats?.myBuyIns ?? stats?.userTotalBuyIns ?? stats?.totalBuyIns ?? 0;
+  const myExits = stats?.myExits ?? stats?.userTotalExits ?? stats?.totalExits ?? 0;
+  const isPositive = myBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
   const closedTablesCount = tables.filter((t) => t.status === 'CLOSED' || t.isActive === false).length;
 
@@ -198,7 +198,7 @@ const GroupStats = () => {
                 )}
               </div>
               <p className="text-xs text-cream-text/60 mt-0.5">
-                Club Tables & Overall Group Performance
+                Club Tables & Personal Performance
               </p>
             </div>
 
@@ -215,17 +215,17 @@ const GroupStats = () => {
           </div>
         </div>
 
-        {/* Overall Group Personal Stats */}
+        {/* Personal Stats Cards (Logged-in Player's Own Stats) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
             <div>
-              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Balance</div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">MY BALANCE</div>
               <div
                 className={`text-xl font-extrabold font-mono mt-0.5 ${
                   isPositive ? 'text-emerald-400' : 'text-red-400'
                 }`}
               >
-                {isPositive ? `+$${totalGroupBalance.toLocaleString()}` : `-$${Math.abs(totalGroupBalance).toLocaleString()}`}
+                {isPositive ? `+$${myBalance.toLocaleString()}` : `-$${Math.abs(myBalance).toLocaleString()}`}
               </div>
             </div>
             <div
@@ -239,9 +239,9 @@ const GroupStats = () => {
 
           <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
             <div>
-              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Buy-Ins</div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">MY BUY-INS</div>
               <div className="text-xl font-extrabold font-mono text-emerald-400 mt-0.5">
-                ${totalGroupBuyIns.toLocaleString()}
+                ${myBuyIns.toLocaleString()}
               </div>
             </div>
             <div className="p-3 bg-felt-dark text-emerald-400 rounded-xl border border-gold-accent/20">
@@ -251,9 +251,9 @@ const GroupStats = () => {
 
           <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-4 shadow-lg flex items-center justify-between">
             <div>
-              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Exits</div>
+              <div className="text-[11px] text-cream-text/60 uppercase font-semibold">MY EXITS</div>
               <div className="text-xl font-extrabold font-mono text-amber-400 mt-0.5">
-                ${totalGroupExits.toLocaleString()}
+                ${myExits.toLocaleString()}
               </div>
             </div>
             <div className="p-3 bg-felt-dark text-amber-400 rounded-xl border border-gold-accent/20">
