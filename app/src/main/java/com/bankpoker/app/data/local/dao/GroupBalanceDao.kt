@@ -9,6 +9,9 @@ interface GroupBalanceDao {
     @Query("SELECT * FROM group_balances WHERE groupId = :groupId ORDER BY balance ASC")
     fun getBalancesByGroupId(groupId: String): Flow<List<GroupBalance>>
 
+    @Query("SELECT * FROM group_balances WHERE groupId = :groupId ORDER BY balance ASC")
+    suspend fun getBalancesByGroupIdOnce(groupId: String): List<GroupBalance>
+
     @Query("SELECT * FROM group_balances WHERE groupId = :groupId AND playerName = :name")
     suspend fun getBalance(groupId: String, name: String): GroupBalance?
 

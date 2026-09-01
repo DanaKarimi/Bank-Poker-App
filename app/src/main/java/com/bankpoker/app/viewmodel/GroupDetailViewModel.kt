@@ -51,6 +51,7 @@ class GroupDetailViewModel(
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
                 remoteRepository.recordPayment(groupId, payerName, receiverName, amount)
+                syncSettlementToServer()
             }
         }
     }
@@ -139,6 +140,23 @@ class GroupDetailViewModel(
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
                 remoteRepository.recordPayment(groupId, fromPlayer, toPlayer, amount)
+                syncSettlementToServer()
+            }
+        }
+    }
+
+    fun syncSettlementToServer() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                if (currentGroup?.mode == "ONLINE") {
+                    val currentBalances = repository.getBalancesByGroupIdOnce(groupId)
+                    val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(currentBalances)
+                    remoteRepository.syncSettlement(groupId, settlements)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GroupDetailViewModel", "Failed to sync settlement to server", e)
             }
         }
     }

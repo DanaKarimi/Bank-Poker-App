@@ -142,8 +142,10 @@ const GroupStats = () => {
     navigate(`/group/${groupId}/table/${table.id}`);
   };
 
-  const balance = stats?.balance ?? 0;
-  const isPositive = balance >= 0;
+  const totalGroupBuyIns = groupStatsDetails?.totalGroupBuyIns ?? stats?.totalGroupBuyIns ?? stats?.totalBuyIns ?? 0;
+  const totalGroupExits = groupStatsDetails?.totalGroupExits ?? stats?.totalGroupExits ?? stats?.totalExits ?? 0;
+  const totalGroupBalance = groupStatsDetails?.totalGroupBalance ?? stats?.totalGroupBalance ?? (totalGroupBuyIns - totalGroupExits);
+  const isPositive = totalGroupBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
   const closedTablesCount = tables.filter((t) => t.status === 'CLOSED' || t.isActive === false).length;
 
@@ -223,7 +225,7 @@ const GroupStats = () => {
                   isPositive ? 'text-emerald-400' : 'text-red-400'
                 }`}
               >
-                {isPositive ? `+$${balance.toLocaleString()}` : `-$${Math.abs(balance).toLocaleString()}`}
+                {isPositive ? `+$${totalGroupBalance.toLocaleString()}` : `-$${Math.abs(totalGroupBalance).toLocaleString()}`}
               </div>
             </div>
             <div
@@ -239,7 +241,7 @@ const GroupStats = () => {
             <div>
               <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Buy-Ins</div>
               <div className="text-xl font-extrabold font-mono text-emerald-400 mt-0.5">
-                ${(stats?.totalBuyIns || 0).toLocaleString()}
+                ${totalGroupBuyIns.toLocaleString()}
               </div>
             </div>
             <div className="p-3 bg-felt-dark text-emerald-400 rounded-xl border border-gold-accent/20">
@@ -251,7 +253,7 @@ const GroupStats = () => {
             <div>
               <div className="text-[11px] text-cream-text/60 uppercase font-semibold">Total Group Exits</div>
               <div className="text-xl font-extrabold font-mono text-amber-400 mt-0.5">
-                ${(stats?.totalExits || 0).toLocaleString()}
+                ${totalGroupExits.toLocaleString()}
               </div>
             </div>
             <div className="p-3 bg-felt-dark text-amber-400 rounded-xl border border-gold-accent/20">

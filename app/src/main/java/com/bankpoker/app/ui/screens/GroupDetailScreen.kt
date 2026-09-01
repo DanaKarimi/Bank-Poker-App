@@ -94,10 +94,9 @@ fun GroupDetailScreen(
     val isConverting by viewModel.isConverting.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
-    LaunchedEffect(balances, group?.mode) {
-        if (group?.mode == "ONLINE" && balances.isNotEmpty()) {
-            val currentSettlements = calculateGroupSettlement(balances)
-            viewModel.syncSettlementPlan(currentSettlements)
+    LaunchedEffect(selectedTab, balances, group?.mode) {
+        if (group?.mode == "ONLINE") {
+            viewModel.syncSettlementToServer()
         }
     }
 

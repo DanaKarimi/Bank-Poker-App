@@ -346,6 +346,17 @@ class TableDetailViewModel(
                     repository.closeTableAndApplyToGroup(tableId)
                     loadTableData()
                     onRefreshCounts?.invoke()
+                    val table = repository.getTableById(tableId)
+                    val gId = table?.groupId
+                    if (gId != null && remoteRepository != null) {
+                        try {
+                            val balances = repository.getBalancesByGroupIdOnce(gId)
+                            val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(balances)
+                            remoteRepository.syncSettlement(gId, settlements)
+                        } catch (e: Exception) {
+                            Log.e("TableDetail", "Failed to sync settlement after closeTable", e)
+                        }
+                    }
                     onResult?.invoke(true, null)
                 } else {
                     val error = result?.exceptionOrNull()?.message ?: "Failed to close table on server"

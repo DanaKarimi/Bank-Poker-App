@@ -527,14 +527,20 @@ class RemoteRepository(
             val jsonArray = com.google.gson.JsonArray()
             settlements.forEach { s ->
                 val obj = JsonObject().apply {
+                    addProperty("debtorName", s.fromPlayer)
+                    addProperty("creditorName", s.toPlayer)
+                    addProperty("payerName", s.fromPlayer)
+                    addProperty("receiverName", s.toPlayer)
                     addProperty("fromPlayer", s.fromPlayer)
                     addProperty("toPlayer", s.toPlayer)
                     addProperty("amount", s.amount)
                     addProperty("isPaid", false)
+                    addProperty("paid", false)
                 }
                 jsonArray.add(obj)
             }
             val root = JsonObject().apply {
+                add("settlement", jsonArray)
                 add("settlements", jsonArray)
             }
             val response = apiService.syncSettlement(groupId, root, getAuthHeader())

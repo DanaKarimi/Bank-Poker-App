@@ -528,6 +528,7 @@ router.get('/my-groups', authenticateToken, async (req, res) => {
  */
 router.get('/:id/my-stats', authenticateToken, async (req, res) => {
     try {
+        const groupId = req.params.id;
         const userId = req.user.id;
         const username = req.user.username;
 
@@ -539,6 +540,28 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
+
+        // Calculate Overall Group Totals across all tables in this group
+        const groupBuyInsRow = await get(
+            `SELECT COALESCE(SUM(b.amount), 0) as total
+             FROM buy_ins b
+             JOIN players p ON b.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId]
+        );
+        const totalGroupBuyIns = groupBuyInsRow ? Number(groupBuyInsRow.total) : 0;
+
+        const groupExitsRow = await get(
+            `SELECT COALESCE(SUM(e.amount), 0) as total
+             FROM exit_records e
+             JOIN players p ON e.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId]
+        );
+        const totalGroupExits = groupExitsRow ? Number(groupExitsRow.total) : 0;
+        const totalGroupBalance = totalGroupBuyIns - totalGroupExits;
 
         // Get all player names associated with this user in this group
         const linkedNames = await all(
@@ -654,8 +677,13 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
             balance,
             currentBalance,
             netGameBalance,
-            totalBuyIns,
-            totalExits,
+            totalBuyIns: totalGroupBuyIns,
+            totalExits: totalGroupExits,
+            totalGroupBuyIns,
+            totalGroupExits,
+            totalGroupBalance,
+            userTotalBuyIns: totalBuyIns,
+            userTotalExits: totalExits,
             totalPayments,
             paymentsSent,
             paymentsReceived,
@@ -841,7 +869,7 @@ router.get('/:id/balances', authenticateToken, async (req, res) => {
 /**
  * GET /api/groups/:id/settlement-plan
  * (Requires Auth)
- * Return the settlement plan (who pays whom)
+ * Return the settlement plan (who pays whom) synced from Android
  */
 router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
     try {
@@ -853,63 +881,24 @@ router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
         }
 
         const records = await all(
-            `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp DESC`,
+            `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
             [groupId]
         );
 
-        let settlement = [];
-        if (records && records.length > 0) {
-            settlement = records.map(r => ({
-                id: r.id,
-                payerName: r.payer_name,
-                fromPlayer: r.payer_name,
-                receiverName: r.receiver_name,
-                toPlayer: r.receiver_name,
-                amount: Number(r.amount) || 0,
-                initialAmount: Number(r.initial_amount || r.amount) || 0,
-                isPaid: Boolean(r.paid),
-                paid: Boolean(r.paid),
-                timestamp: r.timestamp
-            }));
-        } else {
-            // Dynamically calculate greedy settlement from current group balances
-            const balances = await calculateGroupBalances(groupId);
-            const debtors = [];
-            const creditors = [];
-            for (const b of balances) {
-                if (b.balance < 0) debtors.push({ name: b.username, amount: -b.balance });
-                if (b.balance > 0) creditors.push({ name: b.username, amount: b.balance });
-            }
-
-            let i = 0;
-            let j = 0;
-            while (i < debtors.length && j < creditors.length) {
-                const debtor = debtors[i];
-                const creditor = creditors[j];
-                const amount = Math.min(debtor.amount, creditor.amount);
-
-                if (amount > 0) {
-                    settlement.push({
-                        id: `${debtor.name}-${creditor.name}-${amount}`,
-                        payerName: debtor.name,
-                        fromPlayer: debtor.name,
-                        receiverName: creditor.name,
-                        toPlayer: creditor.name,
-                        amount: amount,
-                        initialAmount: amount,
-                        isPaid: false,
-                        paid: false,
-                        timestamp: Date.now()
-                    });
-                }
-
-                debtor.amount -= amount;
-                creditor.amount -= amount;
-
-                if (debtor.amount <= 0) i++;
-                if (creditor.amount <= 0) j++;
-            }
-        }
+        const settlement = (records || []).map(r => ({
+            id: r.id,
+            debtorName: r.payer_name,
+            creditorName: r.receiver_name,
+            payerName: r.payer_name,
+            fromPlayer: r.payer_name,
+            receiverName: r.receiver_name,
+            toPlayer: r.receiver_name,
+            amount: Number(r.amount) || 0,
+            initialAmount: Number(r.initial_amount || r.amount) || 0,
+            isPaid: Boolean(r.paid),
+            paid: Boolean(r.paid),
+            timestamp: r.timestamp
+        }));
 
         return res.status(200).json({ settlement });
     } catch (error) {
@@ -921,12 +910,12 @@ router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
 /**
  * POST /api/groups/:id/settlement
  * (Requires Auth)
- * Sync/save settlement plan from Android app
+ * Sync/save settlement snapshot from Android app (idempotent full replace)
  */
 router.post('/:id/settlement', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
-        const { settlements } = req.body;
+        const settlements = req.body.settlement || req.body.settlements || [];
 
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
         if (!group) {
@@ -934,7 +923,7 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
         }
 
         if (!Array.isArray(settlements)) {
-            return res.status(400).json({ error: 'settlements array is required' });
+            return res.status(400).json({ error: 'settlement array is required' });
         }
 
         const now = Date.now();
@@ -942,11 +931,11 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
 
         for (const s of settlements) {
             const settlementId = s.id || crypto.randomUUID();
-            const payerName = s.payerName || s.fromPlayer || '';
-            const receiverName = s.receiverName || s.toPlayer || '';
+            const payerName = (s.debtorName || s.payerName || s.fromPlayer || '').trim();
+            const receiverName = (s.creditorName || s.receiverName || s.toPlayer || '').trim();
             const amount = Number(s.amount) || 0;
             const initialAmount = Number(s.initialAmount || s.amount) || 0;
-            const isPaid = s.isPaid || s.paid ? 1 : 0;
+            const isPaid = (s.isPaid === true || s.paid === true || s.paid === 1 || s.isPaid === 1) ? 1 : 0;
 
             if (payerName && receiverName && amount > 0) {
                 await run(
@@ -970,6 +959,7 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
             }
         }
 
+        console.log(`Synced ${settlements.length} settlements for group ${groupId}`);
         return res.status(200).json({ message: 'Settlement plan synced successfully' });
     } catch (error) {
         console.error('Error syncing settlement plan:', error);
@@ -1048,6 +1038,28 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
         );
         const closedTables = closedTablesCountRow ? Number(closedTablesCountRow.closed_total) : 0;
 
+        // Calculate Overall Group Totals across all tables in this group
+        const groupBuyInsRow = await get(
+            `SELECT COALESCE(SUM(b.amount), 0) as total
+             FROM buy_ins b
+             JOIN players p ON b.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId]
+        );
+        const totalGroupBuyIns = groupBuyInsRow ? Number(groupBuyInsRow.total) : 0;
+
+        const groupExitsRow = await get(
+            `SELECT COALESCE(SUM(e.amount), 0) as total
+             FROM exit_records e
+             JOIN players p ON e.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId]
+        );
+        const totalGroupExits = groupExitsRow ? Number(groupExitsRow.total) : 0;
+        const totalGroupBalance = totalGroupBuyIns - totalGroupExits;
+
         const balances = await calculateGroupBalances(groupId);
         const totalPlayers = balances.length;
 
@@ -1061,6 +1073,12 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
             totalTables,
             closedTables,
             totalPlayers,
+            totalGroupBuyIns,
+            totalGroupExits,
+            totalGroupBalance,
+            totalBuyIns: totalGroupBuyIns,
+            totalExits: totalGroupExits,
+            totalBalance: totalGroupBalance,
             biggestWinner,
             biggestDebtor
         });
