@@ -435,4 +435,351 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Helper to calculate all player balances in a group
+ */
+async function calculateGroupBalances(groupId) {
+    const playerRows = await all(
+        `SELECT DISTINCT p.name, p.user_id, u.username
+         FROM players p
+         JOIN tables t ON p.table_id = t.id
+         LEFT JOIN users u ON p.user_id = u.id
+         WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0`,
+        [groupId]
+    );
+
+    const paymentPlayerRows = await all(
+        `SELECT DISTINCT from_player as name FROM payments WHERE group_id = ? AND is_deleted = 0
+         UNION
+         SELECT DISTINCT to_player as name FROM payments WHERE group_id = ? AND is_deleted = 0`,
+        [groupId, groupId]
+    );
+
+    const playerMap = new Map();
+    for (const r of playerRows) {
+        if (!playerMap.has(r.name)) {
+            playerMap.set(r.name, {
+                userId: r.user_id || null,
+                username: r.name
+            });
+        }
+    }
+    for (const r of paymentPlayerRows) {
+        if (!playerMap.has(r.name)) {
+            playerMap.set(r.name, {
+                userId: null,
+                username: r.name
+            });
+        }
+    }
+
+    const balances = [];
+    for (const [name, info] of playerMap.entries()) {
+        const buyInsRow = await get(
+            `SELECT COALESCE(SUM(b.amount), 0) as total_buy_ins
+             FROM buy_ins b
+             JOIN players p ON b.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND p.name = ? AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId, name]
+        );
+        const totalBuyIns = buyInsRow ? Number(buyInsRow.total_buy_ins) : 0;
+
+        const exitsRow = await get(
+            `SELECT COALESCE(SUM(e.amount), 0) as total_exits
+             FROM exit_records e
+             JOIN players p ON e.player_id = p.id
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND p.name = ? AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId, name]
+        );
+        const totalExits = exitsRow ? Number(exitsRow.total_exits) : 0;
+
+        const sentRow = await get(
+            `SELECT COALESCE(SUM(amount), 0) as sent
+             FROM payments
+             WHERE group_id = ? AND from_player = ? AND is_deleted = 0`,
+            [groupId, name]
+        );
+        const paymentsSent = sentRow ? Number(sentRow.sent) : 0;
+
+        const recRow = await get(
+            `SELECT COALESCE(SUM(amount), 0) as received
+             FROM payments
+             WHERE group_id = ? AND to_player = ? AND is_deleted = 0`,
+            [groupId, name]
+        );
+        const paymentsReceived = recRow ? Number(recRow.received) : 0;
+
+        const balance = (totalExits - totalBuyIns) + (paymentsSent - paymentsReceived);
+
+        balances.push({
+            userId: info.userId,
+            username: info.username,
+            totalBuyIns,
+            totalExits,
+            paymentsSent,
+            paymentsReceived,
+            balance
+        });
+    }
+
+    balances.sort((a, b) => b.balance - a.balance);
+    return balances;
+}
+
+/**
+ * GET /api/groups/:id/balances
+ * (Requires Auth)
+ * Return calculated balances for all players in this group
+ */
+router.get('/:id/balances', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const balances = await calculateGroupBalances(groupId);
+        return res.status(200).json({ balances });
+    } catch (error) {
+        console.error('Error fetching group balances:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching group balances' });
+    }
+});
+
+/**
+ * GET /api/groups/:id/settlement-plan
+ * (Requires Auth)
+ * Return the settlement plan (who pays whom)
+ */
+router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const records = await all(
+            `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp DESC`,
+            [groupId]
+        );
+
+        let settlement = [];
+        if (records && records.length > 0) {
+            settlement = records.map(r => ({
+                id: r.id,
+                payerName: r.payer_name,
+                fromPlayer: r.payer_name,
+                receiverName: r.receiver_name,
+                toPlayer: r.receiver_name,
+                amount: Number(r.amount) || 0,
+                initialAmount: Number(r.initial_amount || r.amount) || 0,
+                isPaid: Boolean(r.paid),
+                paid: Boolean(r.paid),
+                timestamp: r.timestamp
+            }));
+        } else {
+            // Dynamically calculate greedy settlement from current group balances
+            const balances = await calculateGroupBalances(groupId);
+            const debtors = [];
+            const creditors = [];
+            for (const b of balances) {
+                if (b.balance < 0) debtors.push({ name: b.username, amount: -b.balance });
+                if (b.balance > 0) creditors.push({ name: b.username, amount: b.balance });
+            }
+
+            let i = 0;
+            let j = 0;
+            while (i < debtors.length && j < creditors.length) {
+                const debtor = debtors[i];
+                const creditor = creditors[j];
+                const amount = Math.min(debtor.amount, creditor.amount);
+
+                if (amount > 0) {
+                    settlement.push({
+                        id: `${debtor.name}-${creditor.name}-${amount}`,
+                        payerName: debtor.name,
+                        fromPlayer: debtor.name,
+                        receiverName: creditor.name,
+                        toPlayer: creditor.name,
+                        amount: amount,
+                        initialAmount: amount,
+                        isPaid: false,
+                        paid: false,
+                        timestamp: Date.now()
+                    });
+                }
+
+                debtor.amount -= amount;
+                creditor.amount -= amount;
+
+                if (debtor.amount <= 0) i++;
+                if (creditor.amount <= 0) j++;
+            }
+        }
+
+        return res.status(200).json({ settlement });
+    } catch (error) {
+        console.error('Error fetching settlement plan:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching settlement plan' });
+    }
+});
+
+/**
+ * POST /api/groups/:id/settlement
+ * (Requires Auth)
+ * Sync/save settlement plan from Android app
+ */
+router.post('/:id/settlement', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const { settlements } = req.body;
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        if (!Array.isArray(settlements)) {
+            return res.status(400).json({ error: 'settlements array is required' });
+        }
+
+        const now = Date.now();
+        await run('DELETE FROM settlement_records WHERE group_id = ?', [groupId]);
+
+        for (const s of settlements) {
+            const settlementId = s.id || crypto.randomUUID();
+            const payerName = s.payerName || s.fromPlayer || '';
+            const receiverName = s.receiverName || s.toPlayer || '';
+            const amount = Number(s.amount) || 0;
+            const initialAmount = Number(s.initialAmount || s.amount) || 0;
+            const isPaid = s.isPaid || s.paid ? 1 : 0;
+
+            if (payerName && receiverName && amount > 0) {
+                await run(
+                    `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        settlementId,
+                        groupId,
+                        s.tableId || groupId,
+                        s.tableName || 'Group Settlement',
+                        payerName,
+                        receiverName,
+                        amount,
+                        initialAmount,
+                        isPaid,
+                        s.timestamp || now,
+                        settlementId,
+                        now
+                    ]
+                );
+            }
+        }
+
+        return res.status(200).json({ message: 'Settlement plan synced successfully' });
+    } catch (error) {
+        console.error('Error syncing settlement plan:', error);
+        return res.status(500).json({ error: 'Internal server error while syncing settlement plan' });
+    }
+});
+
+/**
+ * POST /api/groups/:id/payments
+ * (Requires Auth)
+ * Record a payment between two players in a group
+ */
+router.post('/:id/payments', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const { fromPlayer, toPlayer, amount } = req.body;
+
+        if (!fromPlayer || !toPlayer || amount == null || Number(amount) <= 0) {
+            return res.status(400).json({ error: 'fromPlayer, toPlayer, and positive amount are required' });
+        }
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const paymentId = crypto.randomUUID();
+        const now = Date.now();
+        const numAmount = Number(amount);
+
+        await run(
+            `INSERT INTO payments (id, group_id, from_player, to_player, amount, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [paymentId, groupId, fromPlayer.trim(), toPlayer.trim(), numAmount, now, paymentId, now]
+        );
+
+        await run(
+            `UPDATE settlement_records 
+             SET paid = 1, updated_at = ?
+             WHERE group_id = ? AND payer_name = ? AND receiver_name = ? AND paid = 0`,
+            [now, groupId, fromPlayer.trim(), toPlayer.trim()]
+        );
+
+        return res.status(201).json({ message: 'Payment recorded successfully', paymentId });
+    } catch (error) {
+        console.error('Error recording payment:', error);
+        return res.status(500).json({ error: 'Internal server error while recording payment' });
+    }
+});
+
+/**
+ * GET /api/groups/:id/stats
+ * (Requires Auth)
+ * Return group statistics: tables count, closed tables count, players count, biggest winner, biggest debtor
+ */
+router.get('/:id/stats', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const tablesCountRow = await get(
+            'SELECT COUNT(*) as total FROM tables WHERE group_id = ? AND is_deleted = 0',
+            [groupId]
+        );
+        const totalTables = tablesCountRow ? Number(tablesCountRow.total) : 0;
+
+        const closedTablesCountRow = await get(
+            `SELECT COUNT(*) as closed_total 
+             FROM tables 
+             WHERE group_id = ? AND is_deleted = 0 AND (status = 'CLOSED' OR is_active = 0)`,
+            [groupId]
+        );
+        const closedTables = closedTablesCountRow ? Number(closedTablesCountRow.closed_total) : 0;
+
+        const balances = await calculateGroupBalances(groupId);
+        const totalPlayers = balances.length;
+
+        const winners = balances.filter(b => b.balance > 0);
+        const biggestWinner = winners.length > 0 ? { name: winners[0].username, balance: winners[0].balance } : null;
+
+        const debtors = balances.filter(b => b.balance < 0).sort((a, b) => a.balance - b.balance);
+        const biggestDebtor = debtors.length > 0 ? { name: debtors[0].username, balance: debtors[0].balance } : null;
+
+        return res.status(200).json({
+            totalTables,
+            closedTables,
+            totalPlayers,
+            biggestWinner,
+            biggestDebtor
+        });
+    } catch (error) {
+        console.error('Error fetching group stats:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching group stats' });
+    }
+});
+
 module.exports = router;

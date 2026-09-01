@@ -48,6 +48,10 @@ class GroupDetailViewModel(
     fun recordManualPayment(payerName: String, receiverName: String, amount: Long) {
         viewModelScope.launch {
             repository.recordManualPayment(groupId, payerName, receiverName, amount)
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                remoteRepository.recordPayment(groupId, payerName, receiverName, amount)
+            }
         }
     }
 
@@ -132,6 +136,19 @@ class GroupDetailViewModel(
     fun recordPayment(fromPlayer: String, toPlayer: String, amount: Long) {
         viewModelScope.launch {
             repository.recordPayment(groupId, fromPlayer, toPlayer, amount)
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                remoteRepository.recordPayment(groupId, fromPlayer, toPlayer, amount)
+            }
+        }
+    }
+
+    fun syncSettlementPlan(settlements: List<com.bankpoker.app.ui.screens.Settlement>) {
+        viewModelScope.launch {
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                remoteRepository.syncSettlement(groupId, settlements)
+            }
         }
     }
 }

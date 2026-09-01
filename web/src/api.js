@@ -63,6 +63,9 @@ export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${
 // Group and Table helpers
 export const getMyGroups = () => api.get('/api/groups/my-groups');
 export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
+export const getGroupBalances = (groupId) => api.get(`/api/groups/${groupId}/balances`);
+export const getGroupSettlementPlan = (groupId) => api.get(`/api/groups/${groupId}/settlement-plan`);
+export const getGroupStatsDetails = (groupId) => api.get(`/api/groups/${groupId}/stats`);
 export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);
 export const getTableDetail = (tableId) => api.get(`/api/tables/${tableId}`);
 export const getTableStatus = (tableId) => api.get(`/api/tables/${tableId}/status`);

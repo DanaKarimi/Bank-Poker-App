@@ -6,9 +6,14 @@ import {
   getMyRequests,
   getGroupTables,
   getMyGroups,
+  getGroupBalances,
+  getGroupSettlementPlan,
+  getGroupStatsDetails,
 } from '../api';
 import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
+import BalancesTab from '../components/BalancesTab';
+import StatsTab from '../components/StatsTab';
 import {
   ArrowLeft,
   RefreshCw,
@@ -21,6 +26,8 @@ import {
   Layers,
   Shield,
   Plus,
+  Users,
+  BarChart3,
 } from 'lucide-react';
 
 const GroupStats = () => {
@@ -33,6 +40,12 @@ const GroupStats = () => {
   const [stats, setStats] = useState(null);
   const [tables, setTables] = useState([]);
   const [requests, setRequests] = useState({ joinRequests: [], buyInRequests: [], exitRequests: [] });
+  const [balances, setBalances] = useState([]);
+  const [settlementPlan, setSettlementPlan] = useState([]);
+  const [groupStatsDetails, setGroupStatsDetails] = useState(null);
+
+  // Tab State: 'tables' | 'balances' | 'stats'
+  const [activeTab, setActiveTab] = useState('tables');
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -62,10 +75,20 @@ const GroupStats = () => {
     }
 
     try {
-      const [statsRes, tablesData, requestsRes] = await Promise.allSettled([
+      const [
+        statsRes,
+        tablesData,
+        requestsRes,
+        balancesRes,
+        settlementRes,
+        groupStatsRes,
+      ] = await Promise.allSettled([
         getGroupStats(groupId),
         getGroupTables(groupId),
         getMyRequests(groupId),
+        getGroupBalances(groupId),
+        getGroupSettlementPlan(groupId),
+        getGroupStatsDetails(groupId),
       ]);
 
       if (statsRes.status === 'fulfilled') {
@@ -81,6 +104,18 @@ const GroupStats = () => {
 
       if (requestsRes.status === 'fulfilled') {
         setRequests(requestsRes.value.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
+      }
+
+      if (balancesRes.status === 'fulfilled') {
+        setBalances(balancesRes.value.data?.balances || []);
+      }
+
+      if (settlementRes.status === 'fulfilled') {
+        setSettlementPlan(settlementRes.value.data?.settlement || []);
+      }
+
+      if (groupStatsRes.status === 'fulfilled') {
+        setGroupStatsDetails(groupStatsRes.value.data || null);
       }
     } catch (err) {
       console.error('Error fetching group data:', err);
@@ -213,53 +248,112 @@ const GroupStats = () => {
           </div>
         </div>
 
-        {/* Section: Tables in Group */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
-              <Layers className="w-4 h-4" />
-              <span>Poker Tables & Rooms ({tables.length})</span>
-            </h2>
-            <span className="text-xs text-cream-text/50">
-              Click any table to view ledger or buy-in
-            </span>
-          </div>
+        {/* Navigation Tabs (Like Android App) */}
+        <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-3">
+          <button
+            onClick={() => setActiveTab('tables')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'tables'
+                ? 'bg-gold-accent text-black shadow-md'
+                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Tables ({tables.length})</span>
+          </button>
 
-          {loading && tables.length === 0 ? (
-            <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-              Loading active tables...
-            </div>
-          ) : tables.length === 0 ? (
-            <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-              No poker tables have been created in this group yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tables.map((table) => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  onClick={() => handleTableClick(table)}
-                />
-              ))}
-            </div>
-          )}
+          <button
+            onClick={() => setActiveTab('balances')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'balances'
+                ? 'bg-gold-accent text-black shadow-md'
+                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Balances ({balances.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'stats'
+                ? 'bg-gold-accent text-black shadow-md'
+                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Stats & Settlement</span>
+          </button>
         </div>
 
-        {/* Section: My Join Requests */}
-        {(requests.joinRequests || []).length > 0 && (
-          <div className="space-y-3 pt-2">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              <span>My Table Join Requests ({(requests.joinRequests || []).length})</span>
-            </h2>
+        {/* TAB 1: TABLES */}
+        {activeTab === 'tables' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Section: Tables in Group */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  <span>Poker Tables & Rooms ({tables.length})</span>
+                </h2>
+                <span className="text-xs text-cream-text/50">
+                  Click any table to view ledger or buy-in
+                </span>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {requests.joinRequests.map((req) => (
-                <RequestCard key={req.id} request={req} type="join" />
-              ))}
+              {loading && tables.length === 0 ? (
+                <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+                  Loading active tables...
+                </div>
+              ) : tables.length === 0 ? (
+                <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+                  No poker tables have been created in this group yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tables.map((table) => (
+                    <TableCard
+                      key={table.id}
+                      table={table}
+                      onClick={() => handleTableClick(table)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Section: My Join Requests */}
+            {(requests.joinRequests || []).length > 0 && (
+              <div className="space-y-3 pt-2">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-gold-accent flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>My Table Join Requests ({(requests.joinRequests || []).length})</span>
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {requests.joinRequests.map((req) => (
+                    <RequestCard key={req.id} request={req} type="join" />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* TAB 2: BALANCES */}
+        {activeTab === 'balances' && (
+          <BalancesTab balances={balances} loading={loading} />
+        )}
+
+        {/* TAB 3: STATS & SETTLEMENT */}
+        {activeTab === 'stats' && (
+          <StatsTab
+            stats={groupStatsDetails}
+            settlement={settlementPlan}
+            balances={balances}
+            loading={loading}
+          />
         )}
       </div>
     </div>

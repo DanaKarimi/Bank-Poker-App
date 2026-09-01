@@ -516,6 +516,68 @@ class RemoteRepository(
         }
     }
 
+    /**
+     * Sync calculated settlement plan to server for an online group
+     */
+    suspend fun syncSettlement(
+        groupId: String,
+        settlements: List<com.bankpoker.app.ui.screens.Settlement>
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val jsonArray = com.google.gson.JsonArray()
+            settlements.forEach { s ->
+                val obj = JsonObject().apply {
+                    addProperty("fromPlayer", s.fromPlayer)
+                    addProperty("toPlayer", s.toPlayer)
+                    addProperty("amount", s.amount)
+                    addProperty("isPaid", false)
+                }
+                jsonArray.add(obj)
+            }
+            val root = JsonObject().apply {
+                add("settlements", jsonArray)
+            }
+            val response = apiService.syncSettlement(groupId, root, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to sync settlement plan (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Record payment on server for an online group
+     */
+    suspend fun recordPayment(
+        groupId: String,
+        fromPlayer: String,
+        toPlayer: String,
+        amount: Long
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = JsonObject().apply {
+                addProperty("fromPlayer", fromPlayer)
+                addProperty("toPlayer", toPlayer)
+                addProperty("amount", amount)
+            }
+            val response = apiService.recordGroupPayment(groupId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to record payment (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {

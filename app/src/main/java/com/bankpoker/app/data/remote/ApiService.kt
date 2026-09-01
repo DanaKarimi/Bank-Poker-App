@@ -143,4 +143,18 @@ interface ApiService {
         @Path("tableId") tableId: String,
         @Header("Authorization") token: String = ""
     ): Response<com.google.gson.JsonObject>
+
+    @POST("api/groups/{groupId}/settlement")
+    suspend fun syncSettlement(
+        @Path("groupId") groupId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @POST("api/groups/{groupId}/payments")
+    suspend fun recordGroupPayment(
+        @Path("groupId") groupId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 }

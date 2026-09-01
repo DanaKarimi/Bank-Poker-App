@@ -87,6 +87,13 @@ fun GroupDetailScreen(
     var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     val coroutineScope = rememberCoroutineScope()
 
+    LaunchedEffect(balances, group?.mode) {
+        if (group?.mode == "ONLINE" && balances.isNotEmpty()) {
+            val currentSettlements = calculateGroupSettlement(balances)
+            viewModel.syncSettlementPlan(currentSettlements)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
