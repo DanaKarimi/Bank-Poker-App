@@ -271,7 +271,7 @@ const TableDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
+    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-32">
       <div className="w-full max-w-4xl space-y-6">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between">
@@ -415,50 +415,48 @@ const TableDetail = () => {
           </div>
         )}
 
-        {/* Action Controls for Table */}
+        {/* Action Controls for Table (Fixed Bottom) */}
         {!isClosed && (
-          <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-5 shadow-lg">
-            {!isPlayerSeated ? (
-              <div className="text-center py-2 space-y-3">
-                <p className="text-xs text-cream-text/80">
-                  You are not currently seated at this table. Send a join request to take a seat.
-                </p>
-
-                {pendingJoinReq ? (
-                  <div className="py-3 px-4 bg-amber-950/80 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-bold flex items-center justify-center gap-2">
-                    <Clock className="w-4 h-4 animate-spin" />
-                    <span>Join Request Pending Host Approval</span>
-                  </div>
-                ) : (
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-felt-dark/90 backdrop-blur-md border-t border-gold-accent/30 z-40 pb-safe shadow-[0_-10px_30px_-10px_rgba(0,0,0,0.5)]">
+            <div className="max-w-4xl mx-auto">
+              {!isPlayerSeated ? (
+                <div className="text-center space-y-2">
+                  {pendingJoinReq ? (
+                    <div className="py-3 px-4 bg-amber-950/80 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-bold flex items-center justify-center gap-2">
+                      <Clock className="w-4 h-4 animate-spin" />
+                      <span>Join Request Pending Host Approval</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleJoinTable}
+                      disabled={isJoining}
+                      className="w-full max-w-sm mx-auto py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg hover:opacity-95 transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>{isJoining ? 'Submitting Join Request...' : 'Request to Join Table'}</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
-                    onClick={handleJoinTable}
-                    disabled={isJoining}
-                    className="w-full max-w-sm mx-auto py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg hover:opacity-95 transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                    onClick={handleOpenBuyInModal}
+                    className="py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>{isJoining ? 'Submitting Join Request...' : 'Request to Join Table'}</span>
+                    <PlusCircle className="w-5 h-5" />
+                    <span>Request Buy-In (Chips)</span>
                   </button>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={handleOpenBuyInModal}
-                  className="py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <PlusCircle className="w-5 h-5" />
-                  <span>Request Buy-In (Chips)</span>
-                </button>
 
-                <button
-                  onClick={handleOpenExitModal}
-                  className="py-3.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <MinusCircle className="w-5 h-5" />
-                  <span>Request Exit / Cashout</span>
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={handleOpenExitModal}
+                    className="py-3.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <MinusCircle className="w-5 h-5" />
+                    <span>Request Exit / Cashout</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
