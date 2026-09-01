@@ -331,7 +331,7 @@ fun GroupDetailScreen(
     }
 
     if (showEditDialog) {
-        EditGroupNameDialog(
+        EditGroupNameBottomSheet(
             currentName = group?.name ?: "",
             onDismiss = { showEditDialog = false },
             onConfirm = { newName ->
@@ -342,7 +342,8 @@ fun GroupDetailScreen(
     }
 
     if (showDeleteDialog) {
-        DeleteGroupDialog(
+        DeleteGroupBottomSheet(
+            groupName = group?.name ?: "Group",
             tablesCount = tables.size,
             playersCount = balances.size,
             onDismiss = { showDeleteDialog = false },
@@ -1517,8 +1518,9 @@ fun CreateTableBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditGroupNameDialog(
+fun EditGroupNameBottomSheet(
     currentName: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
@@ -1526,94 +1528,205 @@ fun EditGroupNameDialog(
     var name by remember { mutableStateOf(currentName) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = FeltCard,
-        title = { Text("Edit Group Name", color = Gold, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        if (error != null) error = null
-                    },
-                    label = { Text("Group Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold,
-                        focusedTextColor = Cream,
-                        unfocusedTextColor = Cream
-                    )
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "EDIT GROUP NAME", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    if (error != null) error = null
+                },
+                label = { Text("Group Name", color = Gold) },
+                singleLine = true,
+                isError = error != null,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedLabelColor = Gold,
+                    cursorColor = Gold,
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
                 )
-                if (error != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (name.isBlank()) {
+                            error = "Group name cannot be empty"
+                            return@Button
+                        }
+                        onConfirm(name.trim())
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (name.isBlank()) {
-                        error = "Group name cannot be empty"
-                        return@TextButton
-                    }
-                    onConfirm(name.trim())
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-            ) {
-                Text("Save", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
-            }
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeleteGroupDialog(
+fun DeleteGroupBottomSheet(
+    groupName: String,
     tablesCount: Int,
     playersCount: Int,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = FeltCard,
-        title = { Text("Delete Group?", color = LoseRed, fontWeight = FontWeight.Bold) },
-        text = {
-            Text(
-                text = "This permanently deletes the group with its $tablesCount tables and $playersCount players. Cannot be undone.",
-                color = Cream,
-                style = MaterialTheme.typography.bodyMedium
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
             )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                colors = ButtonDefaults.textButtonColors(contentColor = LoseRed)
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Delete", fontWeight = FontWeight.Bold, color = LoseRed)
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE GROUP?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to permanently delete \"$groupName\" with its $tablesCount tables and $playersCount players?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "This action cannot be undone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
 fun buildGroupShareResultsText(
