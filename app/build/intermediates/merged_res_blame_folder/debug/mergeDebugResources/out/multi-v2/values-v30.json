@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.bankpoker.app-mergeDebugResources-49:/values-v30/values-v30.xml",
+            "outputFile": "com.bankpoker.app-mergeDebugResources-2:/values-v30/values-v30.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\USER\\.gradle\\caches\\8.9\\transforms\\44b4c9081c0f3a701c4a919b2ec43ebc\\transformed\\material3-release\\res\\values-v30\\values-v30.xml",
+                    "source": "D:\\Android\\.gradle\\caches\\8.9\\transforms\\44b4c9081c0f3a701c4a919b2ec43ebc\\transformed\\material3-release\\res\\values-v30\\values-v30.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

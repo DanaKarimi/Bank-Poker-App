@@ -141,36 +141,38 @@ fun TableDetailScreen(
                 actions = {
                     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
-                    IconButton(
-                        onClick = {
-                            viewModel.refreshTableFromServer { success, errorMsg ->
-                                if (success) {
-                                    Toast.makeText(context, "Table synced from server", Toast.LENGTH_SHORT).show()
-                                } else if (errorMsg != null) {
-                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                    if (uiState.isOnline) {
+                        IconButton(
+                            onClick = {
+                                viewModel.refreshTableFromServer { success, errorMsg ->
+                                    if (success) {
+                                        Toast.makeText(context, "Table synced from server", Toast.LENGTH_SHORT).show()
+                                    } else if (errorMsg != null) {
+                                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            }
-                        },
-                        enabled = !isRefreshing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh from Server",
-                            tint = Gold
-                        )
-                    }
-
-                    if (onNavigateToRequests != null && uiState.table?.groupId != null) {
-                        IconButton(onClick = {
-                            uiState.table?.let { t ->
-                                onNavigateToRequests(t.groupId ?: "", t.name)
-                            }
-                        }) {
+                            },
+                            enabled = !isRefreshing
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "Pending Requests",
-                                tint = Color(0xFFFFB300)
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh from Server",
+                                tint = Gold
                             )
+                        }
+
+                        if (onNavigateToRequests != null && uiState.table?.groupId != null) {
+                            IconButton(onClick = {
+                                uiState.table?.let { t ->
+                                    onNavigateToRequests(t.groupId ?: "", t.name)
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Pending Requests",
+                                    tint = Color(0xFFFFB300)
+                                )
+                            }
                         }
                     }
 

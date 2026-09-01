@@ -1,9 +1,15 @@
 R_DEF: Internal format may change without notice
 local
+color splash_background
+drawable ic_chip_background
+drawable ic_chip_foreground
+drawable ic_chip_full
 drawable ic_launcher_background
 drawable ic_launcher_foreground
+drawable ic_launcher_legacy
 mipmap ic_launcher
 mipmap ic_launcher_round
 string app_name
+style Theme.BankPoker.SplashScreen
 xml backup_rules
 xml data_extraction_rules

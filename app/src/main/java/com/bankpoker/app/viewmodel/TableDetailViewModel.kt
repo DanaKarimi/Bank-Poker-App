@@ -41,16 +41,43 @@ class TableDetailViewModel(
 
     init {
         loadTableData()
-        refreshTableFromServer()
+        viewModelScope.launch {
+            if (isTableOnline()) {
+                Log.d("TableDetail", "ONLINE mode detected: Auto-refreshing table from server on init.")
+                refreshTableFromServer()
+            } else {
+                Log.d("TableDetail", "Using local only for OFFLINE group on init: zero server interaction.")
+            }
+        }
+    }
+
+    /**
+     * Check whether this table belongs to an ONLINE group with an active remote connection.
+     * OFFLINE groups must return false so they have zero interaction with the server.
+     */
+    suspend fun isTableOnline(): Boolean {
+        val table = _uiState.value.table ?: repository.getTableById(tableId)
+        val groupId = table?.groupId
+        if (groupId.isNullOrBlank()) {
+            Log.d("TableDetail", "isTableOnline: table $tableId has no groupId -> OFFLINE")
+            return false
+        }
+        val group = repository.getGroupById(groupId)
+        val isOnline = group?.mode?.equals("ONLINE", ignoreCase = true) == true && remoteRepository != null
+        Log.d("TableDetail", "isTableOnline check: tableId=$tableId, groupId=$groupId, mode=${group?.mode}, result=$isOnline")
+        return isOnline
     }
 
     fun loadTableData() {
         viewModelScope.launch {
             val table = repository.getTableById(tableId)
+            val group = table?.groupId?.let { repository.getGroupById(it) }
+            val isOnline = group?.mode?.equals("ONLINE", ignoreCase = true) == true && remoteRepository != null
             val totalBuyIns = repository.getTotalBuyInsForTable(tableId)
             val totalExits = repository.getTotalExitsForTable(tableId)
             _uiState.value = _uiState.value.copy(
                 table = table,
+                isOnline = isOnline,
                 totalBuyIns = totalBuyIns,
                 totalExits = totalExits,
                 remainingBalance = totalBuyIns - totalExits
@@ -59,17 +86,25 @@ class TableDetailViewModel(
     }
 
     /**
-     * Refresh and sync table players, buy-ins, and exits from server into local Room database
+     * Refresh and sync table players, buy-ins, and exits from server into local Room database.
+     * Skips completely if table is in an OFFLINE group.
      */
     fun refreshTableFromServer(onComplete: ((Boolean, String?) -> Unit)? = null) {
         if (remoteRepository == null) {
-            onComplete?.invoke(false, "Remote repository not available")
+            Log.d("TableDetail", "Using local only for OFFLINE group (remoteRepository is null)")
+            onComplete?.invoke(true, null)
             return
         }
         viewModelScope.launch {
+            if (!isTableOnline()) {
+                Log.d("TableDetail", "Using local only for OFFLINE group: table $tableId is OFFLINE. Skipping server sync.")
+                onComplete?.invoke(true, null)
+                return@launch
+            }
+
             _isRefreshing.value = true
             try {
-                Log.d("TableDetail", "Refreshing table data from server for table: $tableId")
+                Log.d("TableDetail", "Refreshing table data from server for ONLINE table: $tableId")
 
                 // 1. Fetch and sync Players
                 val playersResult = remoteRepository.getTablePlayers(tableId)
@@ -133,7 +168,7 @@ class TableDetailViewModel(
                         repository.insertOrUpdateExitRecords(roomExits)
                     }
                 } else {
-                    // Fallback to separate endpoints if needed
+                    // Fallback to individual endpoints
                     val buyInsResult = remoteRepository.getTableBuyIns(tableId)
                     if (buyInsResult.isSuccess) {
                         val remoteBuyIns = buyInsResult.getOrNull() ?: emptyList()
@@ -185,23 +220,21 @@ class TableDetailViewModel(
 
     fun addPlayer(name: String) {
         viewModelScope.launch {
+            Log.d("TableDetail", "Adding player locally to table $tableId: $name")
             repository.addPlayer(tableId, name.trim().uppercase())
             onRefreshCounts?.invoke()
         }
     }
 
     /**
-     * Add Buy-In (supports direct server synchronization for online tables)
+     * Add Buy-In (OFFLINE = local Room only, ONLINE = API first then local Room)
      */
     fun addBuyIn(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
-            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
-
-            if (isOnlineTable && remoteRepository != null) {
-                Log.d("TableDetail", "Performing direct online buy-in for player: $playerId, amount: $amount")
+            if (isTableOnline()) {
+                Log.d("TableDetail", "ONLINE mode: performing direct online buy-in for player: $playerId, amount: $amount")
                 val player = repository.getPlayerById(playerId)
-                val remoteResult = remoteRepository.directBuyIn(
+                val remoteResult = remoteRepository?.directBuyIn(
                     tableId = tableId,
                     playerId = playerId,
                     username = player?.name,
@@ -209,7 +242,7 @@ class TableDetailViewModel(
                     note = note
                 )
 
-                if (remoteResult.isSuccess) {
+                if (remoteResult != null && remoteResult.isSuccess) {
                     val directRes = remoteResult.getOrNull()
                     val buyInId = directRes?.buyInId ?: UUID.randomUUID().toString()
                     Log.d("TableDetail", "Direct online buy-in success: $buyInId. Saving to Room.")
@@ -227,32 +260,34 @@ class TableDetailViewModel(
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)
                 } else {
-                    val error = remoteResult.exceptionOrNull()?.message ?: "Direct buy-in failed"
+                    val error = remoteResult?.exceptionOrNull()?.message ?: "Direct buy-in failed"
                     Log.e("TableDetail", "Direct online buy-in failed: $error")
                     onResult?.invoke(false, error)
                 }
             } else {
-                // Offline mode: save directly to local Room
-                repository.addBuyIn(tableId, playerId, amount, note)
-                loadTableData()
-                onRefreshCounts?.invoke()
-                onResult?.invoke(true, null)
+                Log.d("TableDetail", "Using local only for OFFLINE group: addBuyIn for player: $playerId, amount: $amount")
+                try {
+                    repository.addBuyIn(tableId, playerId, amount, note)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } catch (e: Exception) {
+                    Log.e("TableDetail", "Local addBuyIn failed", e)
+                    onResult?.invoke(false, e.message)
+                }
             }
         }
     }
 
     /**
-     * Add Exit (supports direct server synchronization for online tables)
+     * Add Exit (OFFLINE = local Room only, ONLINE = API first then local Room)
      */
     fun addExitRecord(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
-            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
-
-            if (isOnlineTable && remoteRepository != null) {
-                Log.d("TableDetail", "Performing direct online exit for player: $playerId, amount: $amount")
+            if (isTableOnline()) {
+                Log.d("TableDetail", "ONLINE mode: performing direct online exit for player: $playerId, amount: $amount")
                 val player = repository.getPlayerById(playerId)
-                val remoteResult = remoteRepository.directExit(
+                val remoteResult = remoteRepository?.directExit(
                     tableId = tableId,
                     playerId = playerId,
                     username = player?.name,
@@ -260,7 +295,7 @@ class TableDetailViewModel(
                     note = note
                 )
 
-                if (remoteResult.isSuccess) {
+                if (remoteResult != null && remoteResult.isSuccess) {
                     val directRes = remoteResult.getOrNull()
                     val exitId = directRes?.exitId ?: UUID.randomUUID().toString()
                     Log.d("TableDetail", "Direct online exit success: $exitId. Saving to Room.")
@@ -279,47 +314,55 @@ class TableDetailViewModel(
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)
                 } else {
-                    val error = remoteResult.exceptionOrNull()?.message ?: "Direct exit failed"
+                    val error = remoteResult?.exceptionOrNull()?.message ?: "Direct exit failed"
                     Log.e("TableDetail", "Direct online exit failed: $error")
                     onResult?.invoke(false, error)
                 }
             } else {
-                // Offline mode: save directly to local Room
-                repository.addExitRecord(tableId, playerId, amount, note)
-                loadTableData()
-                onRefreshCounts?.invoke()
-                onResult?.invoke(true, null)
+                Log.d("TableDetail", "Using local only for OFFLINE group: addExitRecord for player: $playerId, amount: $amount")
+                try {
+                    repository.addExitRecord(tableId, playerId, amount, note)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } catch (e: Exception) {
+                    Log.e("TableDetail", "Local addExitRecord failed", e)
+                    onResult?.invoke(false, e.message)
+                }
             }
         }
     }
 
     /**
-     * Close Table (supports syncing status to server for online groups)
+     * Close Table (OFFLINE = local Room only, ONLINE = API first then local Room)
      */
     fun closeTable(onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            val currentTable = _uiState.value.table ?: repository.getTableById(tableId)
-            val isOnlineTable = currentTable?.groupId != null && remoteRepository != null
-
-            if (isOnlineTable && remoteRepository != null) {
-                Log.d("TableDetail", "Closing online table on server: $tableId")
-                val result = remoteRepository.closeTable(tableId)
-                if (result.isSuccess) {
+            if (isTableOnline()) {
+                Log.d("TableDetail", "ONLINE mode: closing table on server: $tableId")
+                val result = remoteRepository?.closeTable(tableId)
+                if (result != null && result.isSuccess) {
                     Log.d("TableDetail", "Server close success. Updating local Room table.")
                     repository.closeTableAndApplyToGroup(tableId)
                     loadTableData()
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)
                 } else {
-                    val error = result.exceptionOrNull()?.message ?: "Failed to close table on server"
+                    val error = result?.exceptionOrNull()?.message ?: "Failed to close table on server"
                     Log.e("TableDetail", "Server close failed: $error")
                     onResult?.invoke(false, error)
                 }
             } else {
-                repository.closeTableAndApplyToGroup(tableId)
-                loadTableData()
-                onRefreshCounts?.invoke()
-                onResult?.invoke(true, null)
+                Log.d("TableDetail", "Using local only for OFFLINE group: closing table locally: $tableId")
+                try {
+                    repository.closeTableAndApplyToGroup(tableId)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } catch (e: Exception) {
+                    Log.e("TableDetail", "Local closeTable failed", e)
+                    onResult?.invoke(false, e.message)
+                }
             }
         }
     }
@@ -379,6 +422,7 @@ class TableDetailViewModel(
 
 data class TableDetailUiState(
     val table: PokerTable? = null,
+    val isOnline: Boolean = false,
     val totalBuyIns: Long = 0L,
     val totalExits: Long = 0L,
     val remainingBalance: Long = 0L

@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="splash_background">#121212</color>
     <string name="app_name">Bank Poker</string>
+    <style name="Theme.BankPoker.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#121212</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_chip_full</item>
+        <item name="postSplashScreenTheme">@android:style/Theme.Material.NoActionBar</item>
+    </style>
 </resources>

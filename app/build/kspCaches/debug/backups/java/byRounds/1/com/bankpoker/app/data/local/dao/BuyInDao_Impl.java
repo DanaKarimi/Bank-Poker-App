@@ -5,9 +5,11 @@ import android.os.CancellationSignal;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.room.CoroutinesRoom;
+import androidx.room.EntityDeletionOrUpdateAdapter;
 import androidx.room.EntityInsertionAdapter;
 import androidx.room.RoomDatabase;
 import androidx.room.RoomSQLiteQuery;
+import androidx.room.SharedSQLiteStatement;
 import androidx.room.util.CursorUtil;
 import androidx.room.util.DBUtil;
 import androidx.sqlite.db.SupportSQLiteStatement;
@@ -35,6 +37,16 @@ public final class BuyInDao_Impl implements BuyInDao {
 
   private final EntityInsertionAdapter<BuyIn> __insertionAdapterOfBuyIn;
 
+  private final EntityInsertionAdapter<BuyIn> __insertionAdapterOfBuyIn_1;
+
+  private final EntityDeletionOrUpdateAdapter<BuyIn> __deletionAdapterOfBuyIn;
+
+  private final EntityDeletionOrUpdateAdapter<BuyIn> __updateAdapterOfBuyIn;
+
+  private final SharedSQLiteStatement __preparedStmtOfDeleteBuyInsForTable;
+
+  private final SharedSQLiteStatement __preparedStmtOfDeleteAllBuyIns;
+
   public BuyInDao_Impl(@NonNull final RoomDatabase __db) {
     this.__db = __db;
     this.__insertionAdapterOfBuyIn = new EntityInsertionAdapter<BuyIn>(__db) {
@@ -59,6 +71,80 @@ public final class BuyInDao_Impl implements BuyInDao {
         statement.bindLong(6, entity.getCreatedAt());
       }
     };
+    this.__insertionAdapterOfBuyIn_1 = new EntityInsertionAdapter<BuyIn>(__db) {
+      @Override
+      @NonNull
+      protected String createQuery() {
+        return "INSERT OR REPLACE INTO `buy_ins` (`id`,`tableId`,`playerId`,`amount`,`note`,`createdAt`) VALUES (?,?,?,?,?,?)";
+      }
+
+      @Override
+      protected void bind(@NonNull final SupportSQLiteStatement statement,
+          @NonNull final BuyIn entity) {
+        statement.bindString(1, entity.getId());
+        statement.bindString(2, entity.getTableId());
+        statement.bindString(3, entity.getPlayerId());
+        statement.bindLong(4, entity.getAmount());
+        if (entity.getNote() == null) {
+          statement.bindNull(5);
+        } else {
+          statement.bindString(5, entity.getNote());
+        }
+        statement.bindLong(6, entity.getCreatedAt());
+      }
+    };
+    this.__deletionAdapterOfBuyIn = new EntityDeletionOrUpdateAdapter<BuyIn>(__db) {
+      @Override
+      @NonNull
+      protected String createQuery() {
+        return "DELETE FROM `buy_ins` WHERE `id` = ?";
+      }
+
+      @Override
+      protected void bind(@NonNull final SupportSQLiteStatement statement,
+          @NonNull final BuyIn entity) {
+        statement.bindString(1, entity.getId());
+      }
+    };
+    this.__updateAdapterOfBuyIn = new EntityDeletionOrUpdateAdapter<BuyIn>(__db) {
+      @Override
+      @NonNull
+      protected String createQuery() {
+        return "UPDATE OR ABORT `buy_ins` SET `id` = ?,`tableId` = ?,`playerId` = ?,`amount` = ?,`note` = ?,`createdAt` = ? WHERE `id` = ?";
+      }
+
+      @Override
+      protected void bind(@NonNull final SupportSQLiteStatement statement,
+          @NonNull final BuyIn entity) {
+        statement.bindString(1, entity.getId());
+        statement.bindString(2, entity.getTableId());
+        statement.bindString(3, entity.getPlayerId());
+        statement.bindLong(4, entity.getAmount());
+        if (entity.getNote() == null) {
+          statement.bindNull(5);
+        } else {
+          statement.bindString(5, entity.getNote());
+        }
+        statement.bindLong(6, entity.getCreatedAt());
+        statement.bindString(7, entity.getId());
+      }
+    };
+    this.__preparedStmtOfDeleteBuyInsForTable = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "DELETE FROM buy_ins WHERE tableId = ?";
+        return _query;
+      }
+    };
+    this.__preparedStmtOfDeleteAllBuyIns = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "DELETE FROM buy_ins";
+        return _query;
+      }
+    };
   }
 
   @Override
@@ -74,6 +160,110 @@ public final class BuyInDao_Impl implements BuyInDao {
           return Unit.INSTANCE;
         } finally {
           __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object insertBuyIns(final List<BuyIn> buyIns,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        __db.beginTransaction();
+        try {
+          __insertionAdapterOfBuyIn_1.insert(buyIns);
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object deleteBuyIn(final BuyIn buyIn, final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        __db.beginTransaction();
+        try {
+          __deletionAdapterOfBuyIn.handle(buyIn);
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updateBuyIn(final BuyIn buyIn, final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        __db.beginTransaction();
+        try {
+          __updateAdapterOfBuyIn.handle(buyIn);
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object deleteBuyInsForTable(final String tableId,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfDeleteBuyInsForTable.acquire();
+        int _argIndex = 1;
+        _stmt.bindString(_argIndex, tableId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfDeleteBuyInsForTable.release(_stmt);
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object deleteAllBuyIns(final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfDeleteAllBuyIns.acquire();
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfDeleteAllBuyIns.release(_stmt);
         }
       }
     }, $completion);
@@ -130,6 +320,57 @@ public final class BuyInDao_Impl implements BuyInDao {
         _statement.release();
       }
     });
+  }
+
+  @Override
+  public Object getBuyInsByTableIdOnce(final String tableId,
+      final Continuation<? super List<BuyIn>> $completion) {
+    final String _sql = "SELECT * FROM buy_ins WHERE tableId = ?";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 1);
+    int _argIndex = 1;
+    _statement.bindString(_argIndex, tableId);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<BuyIn>>() {
+      @Override
+      @NonNull
+      public List<BuyIn> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
+          final int _cursorIndexOfTableId = CursorUtil.getColumnIndexOrThrow(_cursor, "tableId");
+          final int _cursorIndexOfPlayerId = CursorUtil.getColumnIndexOrThrow(_cursor, "playerId");
+          final int _cursorIndexOfAmount = CursorUtil.getColumnIndexOrThrow(_cursor, "amount");
+          final int _cursorIndexOfNote = CursorUtil.getColumnIndexOrThrow(_cursor, "note");
+          final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final List<BuyIn> _result = new ArrayList<BuyIn>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final BuyIn _item;
+            final String _tmpId;
+            _tmpId = _cursor.getString(_cursorIndexOfId);
+            final String _tmpTableId;
+            _tmpTableId = _cursor.getString(_cursorIndexOfTableId);
+            final String _tmpPlayerId;
+            _tmpPlayerId = _cursor.getString(_cursorIndexOfPlayerId);
+            final long _tmpAmount;
+            _tmpAmount = _cursor.getLong(_cursorIndexOfAmount);
+            final String _tmpNote;
+            if (_cursor.isNull(_cursorIndexOfNote)) {
+              _tmpNote = null;
+            } else {
+              _tmpNote = _cursor.getString(_cursorIndexOfNote);
+            }
+            final long _tmpCreatedAt;
+            _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
+            _item = new BuyIn(_tmpId,_tmpTableId,_tmpPlayerId,_tmpAmount,_tmpNote,_tmpCreatedAt);
+            _result.add(_item);
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
   }
 
   @Override
@@ -245,6 +486,54 @@ public final class BuyInDao_Impl implements BuyInDao {
             _result = _tmp;
           } else {
             _result = null;
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object getAllBuyInsOnce(final Continuation<? super List<BuyIn>> $completion) {
+    final String _sql = "SELECT * FROM buy_ins";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<BuyIn>>() {
+      @Override
+      @NonNull
+      public List<BuyIn> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final int _cursorIndexOfId = CursorUtil.getColumnIndexOrThrow(_cursor, "id");
+          final int _cursorIndexOfTableId = CursorUtil.getColumnIndexOrThrow(_cursor, "tableId");
+          final int _cursorIndexOfPlayerId = CursorUtil.getColumnIndexOrThrow(_cursor, "playerId");
+          final int _cursorIndexOfAmount = CursorUtil.getColumnIndexOrThrow(_cursor, "amount");
+          final int _cursorIndexOfNote = CursorUtil.getColumnIndexOrThrow(_cursor, "note");
+          final int _cursorIndexOfCreatedAt = CursorUtil.getColumnIndexOrThrow(_cursor, "createdAt");
+          final List<BuyIn> _result = new ArrayList<BuyIn>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final BuyIn _item;
+            final String _tmpId;
+            _tmpId = _cursor.getString(_cursorIndexOfId);
+            final String _tmpTableId;
+            _tmpTableId = _cursor.getString(_cursorIndexOfTableId);
+            final String _tmpPlayerId;
+            _tmpPlayerId = _cursor.getString(_cursorIndexOfPlayerId);
+            final long _tmpAmount;
+            _tmpAmount = _cursor.getLong(_cursorIndexOfAmount);
+            final String _tmpNote;
+            if (_cursor.isNull(_cursorIndexOfNote)) {
+              _tmpNote = null;
+            } else {
+              _tmpNote = _cursor.getString(_cursorIndexOfNote);
+            }
+            final long _tmpCreatedAt;
+            _tmpCreatedAt = _cursor.getLong(_cursorIndexOfCreatedAt);
+            _item = new BuyIn(_tmpId,_tmpTableId,_tmpPlayerId,_tmpAmount,_tmpNote,_tmpCreatedAt);
+            _result.add(_item);
           }
           return _result;
         } finally {

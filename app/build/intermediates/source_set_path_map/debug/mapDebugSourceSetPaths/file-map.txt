@@ -1,54 +1,55 @@
-com.bankpoker.app-tracing-1.2.0-0 C:\Users\USER\.gradle\caches\8.9\transforms\002e81c94dd9492fcf3aab7794855f3c\transformed\tracing-1.2.0\res
-com.bankpoker.app-navigation-common-2.8.3-1 C:\Users\USER\.gradle\caches\8.9\transforms\068f4835a799ecca2cb956457e0d799e\transformed\navigation-common-2.8.3\res
-com.bankpoker.app-room-ktx-2.6.1-2 C:\Users\USER\.gradle\caches\8.9\transforms\0a3e979ee4a7a4f78bf9ae1089dfd6fb\transformed\room-ktx-2.6.1\res
-com.bankpoker.app-lifecycle-viewmodel-compose-release-3 C:\Users\USER\.gradle\caches\8.9\transforms\13037a7ad225dd7c141f4a2cc57bf272\transformed\lifecycle-viewmodel-compose-release\res
-com.bankpoker.app-navigation-runtime-2.8.3-4 C:\Users\USER\.gradle\caches\8.9\transforms\142a16ada9548a8c67744281f9227e49\transformed\navigation-runtime-2.8.3\res
-com.bankpoker.app-activity-compose-1.9.2-5 C:\Users\USER\.gradle\caches\8.9\transforms\1e17580754f9353a1eeeccb851645ad1\transformed\activity-compose-1.9.2\res
-com.bankpoker.app-lifecycle-livedata-2.9.4-6 C:\Users\USER\.gradle\caches\8.9\transforms\2893d8bf187b94e80c90398b261e614c\transformed\lifecycle-livedata-2.9.4\res
-com.bankpoker.app-lifecycle-runtime-release-7 C:\Users\USER\.gradle\caches\8.9\transforms\2cfe30120a9848bc4345611642acc399\transformed\lifecycle-runtime-release\res
-com.bankpoker.app-core-runtime-2.2.0-8 C:\Users\USER\.gradle\caches\8.9\transforms\3b22808887410b24c980b27d769ef2af\transformed\core-runtime-2.2.0\res
-com.bankpoker.app-material3-release-9 C:\Users\USER\.gradle\caches\8.9\transforms\44b4c9081c0f3a701c4a919b2ec43ebc\transformed\material3-release\res
-com.bankpoker.app-lifecycle-viewmodel-release-10 C:\Users\USER\.gradle\caches\8.9\transforms\4a9b45401933bba4e26f76dd04201ad9\transformed\lifecycle-viewmodel-release\res
-com.bankpoker.app-runtime-saveable-11 C:\Users\USER\.gradle\caches\8.9\transforms\56a5dd00f93fc42fc6a7b39006828930\transformed\runtime-saveable\res
-com.bankpoker.app-navigation-compose-2.8.3-12 C:\Users\USER\.gradle\caches\8.9\transforms\56c624f1096188b2b6df0c0d7da58f2c\transformed\navigation-compose-2.8.3\res
-com.bankpoker.app-customview-poolingcontainer-1.0.0-13 C:\Users\USER\.gradle\caches\8.9\transforms\668ae250fbdf39e20f120fccf5c60fc8\transformed\customview-poolingcontainer-1.0.0\res
-com.bankpoker.app-activity-1.9.2-14 C:\Users\USER\.gradle\caches\8.9\transforms\6753317633605db3c1afc892fa416017\transformed\activity-1.9.2\res
-com.bankpoker.app-sqlite-2.4.0-15 C:\Users\USER\.gradle\caches\8.9\transforms\6e1a2c7eb0abb3e8d68425749b51ffb6\transformed\sqlite-2.4.0\res
-com.bankpoker.app-navigation-runtime-ktx-2.8.3-16 C:\Users\USER\.gradle\caches\8.9\transforms\77cb32336d21dd634b2833a12cbbf783\transformed\navigation-runtime-ktx-2.8.3\res
-com.bankpoker.app-lifecycle-viewmodel-ktx-2.9.4-17 C:\Users\USER\.gradle\caches\8.9\transforms\8030f2e245cf4a24ff8d20fc708941b4\transformed\lifecycle-viewmodel-ktx-2.9.4\res
-com.bankpoker.app-annotation-experimental-1.4.1-18 C:\Users\USER\.gradle\caches\8.9\transforms\8e6fd4457955a445101dbe6d63714d6a\transformed\annotation-experimental-1.4.1\res
-com.bankpoker.app-ui-19 C:\Users\USER\.gradle\caches\8.9\transforms\8ec4c788b9c47a0f945e7d4b50649541\transformed\ui\res
-com.bankpoker.app-emoji2-1.4.0-20 C:\Users\USER\.gradle\caches\8.9\transforms\8f2e5119ffbe240c9a13cad5979bdca9\transformed\emoji2-1.4.0\res
-com.bankpoker.app-ui-test-manifest-1.11.4-21 C:\Users\USER\.gradle\caches\8.9\transforms\9ab1e61688f3d07619f12b67ad187235\transformed\ui-test-manifest-1.11.4\res
-com.bankpoker.app-savedstate-ktx-1.3.2-22 C:\Users\USER\.gradle\caches\8.9\transforms\9c66caa1a5328b115c8ac08809f3a4f1\transformed\savedstate-ktx-1.3.2\res
-com.bankpoker.app-material-ripple-release-23 C:\Users\USER\.gradle\caches\8.9\transforms\9da48940b07bfa74a85f49103782f65c\transformed\material-ripple-release\res
-com.bankpoker.app-sqlite-framework-2.4.0-24 C:\Users\USER\.gradle\caches\8.9\transforms\9e4ed1a90f4be4829beb99d219a9d47e\transformed\sqlite-framework-2.4.0\res
-com.bankpoker.app-graphics-path-1.0.1-25 C:\Users\USER\.gradle\caches\8.9\transforms\9f2e86cf62aae7b3577f1a2e70bf27d8\transformed\graphics-path-1.0.1\res
-com.bankpoker.app-navigation-common-ktx-2.8.3-26 C:\Users\USER\.gradle\caches\8.9\transforms\a2c2f3f9fc82edde5440398d56339299\transformed\navigation-common-ktx-2.8.3\res
-com.bankpoker.app-foundation-27 C:\Users\USER\.gradle\caches\8.9\transforms\a784a047acb4923dc68d41227d08f093\transformed\foundation\res
-com.bankpoker.app-lifecycle-livedata-core-ktx-2.9.4-28 C:\Users\USER\.gradle\caches\8.9\transforms\a9443c93cca892fde44092c79e8dc94d\transformed\lifecycle-livedata-core-ktx-2.9.4\res
-com.bankpoker.app-material-icons-core-release-29 C:\Users\USER\.gradle\caches\8.9\transforms\af9ab851af4a2146d3ecb46e33b26051\transformed\material-icons-core-release\res
-com.bankpoker.app-core-viewtree-1.0.0-30 C:\Users\USER\.gradle\caches\8.9\transforms\b151a5df4c8d2a798a531b92ccaa139d\transformed\core-viewtree-1.0.0\res
-com.bankpoker.app-lifecycle-process-2.9.4-31 C:\Users\USER\.gradle\caches\8.9\transforms\b3b33f68d386a6e0eeed69688714c20e\transformed\lifecycle-process-2.9.4\res
-com.bankpoker.app-activity-ktx-1.9.2-32 C:\Users\USER\.gradle\caches\8.9\transforms\bc0bf20c4858f4121f2eee290978db25\transformed\activity-ktx-1.9.2\res
-com.bankpoker.app-lifecycle-runtime-compose-release-33 C:\Users\USER\.gradle\caches\8.9\transforms\cd52dbfe638f70c24838143b6919b3f9\transformed\lifecycle-runtime-compose-release\res
-com.bankpoker.app-lifecycle-viewmodel-savedstate-release-34 C:\Users\USER\.gradle\caches\8.9\transforms\d5674cb76a448353bdca9e4abcfc1a52\transformed\lifecycle-viewmodel-savedstate-release\res
-com.bankpoker.app-window-1.5.0-35 C:\Users\USER\.gradle\caches\8.9\transforms\d87a7ac3f189a530a8f244fcf7cc1dd2\transformed\window-1.5.0\res
-com.bankpoker.app-startup-runtime-1.1.1-36 C:\Users\USER\.gradle\caches\8.9\transforms\dc16c851799e73479961a34ede2889e0\transformed\startup-runtime-1.1.1\res
-com.bankpoker.app-profileinstaller-1.4.0-37 C:\Users\USER\.gradle\caches\8.9\transforms\dcbde925a7f38bd61d01141ac3570071\transformed\profileinstaller-1.4.0\res
-com.bankpoker.app-ui-text-38 C:\Users\USER\.gradle\caches\8.9\transforms\df258c0a4c1f8e17c15ca97157114a03\transformed\ui-text\res
-com.bankpoker.app-lifecycle-livedata-core-2.9.4-39 C:\Users\USER\.gradle\caches\8.9\transforms\df6db88398a2c0f28e6e53cecaaacb12\transformed\lifecycle-livedata-core-2.9.4\res
-com.bankpoker.app-transition-1.6.0-40 C:\Users\USER\.gradle\caches\8.9\transforms\e1984522afdaaba706976068eadd92c4\transformed\transition-1.6.0\res
-com.bankpoker.app-ui-tooling-41 C:\Users\USER\.gradle\caches\8.9\transforms\e575dd95f8e75e875f212a49591fea35\transformed\ui-tooling\res
-com.bankpoker.app-room-runtime-2.6.1-42 C:\Users\USER\.gradle\caches\8.9\transforms\e799f5ae80047e4f7179b68bb5335970\transformed\room-runtime-2.6.1\res
-com.bankpoker.app-core-ktx-1.16.0-43 C:\Users\USER\.gradle\caches\8.9\transforms\e8d93c73db357f418c9e84d9127b9e90\transformed\core-ktx-1.16.0\res
-com.bankpoker.app-ui-graphics-44 C:\Users\USER\.gradle\caches\8.9\transforms\f4484cbc4607b1cffc6a50253d6e6387\transformed\ui-graphics\res
-com.bankpoker.app-core-1.16.0-45 C:\Users\USER\.gradle\caches\8.9\transforms\fad8ac1c142c525d6a1da722c5a7f25c\transformed\core-1.16.0\res
-com.bankpoker.app-savedstate-release-46 C:\Users\USER\.gradle\caches\8.9\transforms\fffbff30f9ae633bc3977bb11034ba66\transformed\savedstate-release\res
-com.bankpoker.app-pngs-47 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\generated\res\pngs\debug
-com.bankpoker.app-resValues-48 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\generated\res\resValues\debug
-com.bankpoker.app-packageDebugResources-49 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-com.bankpoker.app-packageDebugResources-50 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-com.bankpoker.app-debug-51 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\merged_res\debug\mergeDebugResources
-com.bankpoker.app-debug-52 C:\Users\USER\Desktop\All My Code\BankPoker\app\src\debug\res
-com.bankpoker.app-main-53 C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\res
+com.bankpoker.app-pngs-0 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\generated\res\pngs\debug
+com.bankpoker.app-resValues-1 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\generated\res\resValues\debug
+com.bankpoker.app-packageDebugResources-2 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.bankpoker.app-packageDebugResources-3 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.bankpoker.app-debug-4 C:\Users\USER\Desktop\All My Code\BankPoker\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.bankpoker.app-debug-5 C:\Users\USER\Desktop\All My Code\BankPoker\app\src\debug\res
+com.bankpoker.app-main-6 C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\res
+com.bankpoker.app-tracing-1.2.0-7 D:\Android\.gradle\caches\8.9\transforms\002e81c94dd9492fcf3aab7794855f3c\transformed\tracing-1.2.0\res
+com.bankpoker.app-navigation-common-2.8.3-8 D:\Android\.gradle\caches\8.9\transforms\068f4835a799ecca2cb956457e0d799e\transformed\navigation-common-2.8.3\res
+com.bankpoker.app-room-ktx-2.6.1-9 D:\Android\.gradle\caches\8.9\transforms\0a3e979ee4a7a4f78bf9ae1089dfd6fb\transformed\room-ktx-2.6.1\res
+com.bankpoker.app-lifecycle-viewmodel-compose-release-10 D:\Android\.gradle\caches\8.9\transforms\13037a7ad225dd7c141f4a2cc57bf272\transformed\lifecycle-viewmodel-compose-release\res
+com.bankpoker.app-navigation-runtime-2.8.3-11 D:\Android\.gradle\caches\8.9\transforms\142a16ada9548a8c67744281f9227e49\transformed\navigation-runtime-2.8.3\res
+com.bankpoker.app-activity-compose-1.9.2-12 D:\Android\.gradle\caches\8.9\transforms\1e17580754f9353a1eeeccb851645ad1\transformed\activity-compose-1.9.2\res
+com.bankpoker.app-lifecycle-livedata-2.9.4-13 D:\Android\.gradle\caches\8.9\transforms\2893d8bf187b94e80c90398b261e614c\transformed\lifecycle-livedata-2.9.4\res
+com.bankpoker.app-lifecycle-runtime-release-14 D:\Android\.gradle\caches\8.9\transforms\2cfe30120a9848bc4345611642acc399\transformed\lifecycle-runtime-release\res
+com.bankpoker.app-core-runtime-2.2.0-15 D:\Android\.gradle\caches\8.9\transforms\3b22808887410b24c980b27d769ef2af\transformed\core-runtime-2.2.0\res
+com.bankpoker.app-material3-release-16 D:\Android\.gradle\caches\8.9\transforms\44b4c9081c0f3a701c4a919b2ec43ebc\transformed\material3-release\res
+com.bankpoker.app-lifecycle-viewmodel-release-17 D:\Android\.gradle\caches\8.9\transforms\4a9b45401933bba4e26f76dd04201ad9\transformed\lifecycle-viewmodel-release\res
+com.bankpoker.app-runtime-saveable-18 D:\Android\.gradle\caches\8.9\transforms\56a5dd00f93fc42fc6a7b39006828930\transformed\runtime-saveable\res
+com.bankpoker.app-navigation-compose-2.8.3-19 D:\Android\.gradle\caches\8.9\transforms\56c624f1096188b2b6df0c0d7da58f2c\transformed\navigation-compose-2.8.3\res
+com.bankpoker.app-customview-poolingcontainer-1.0.0-20 D:\Android\.gradle\caches\8.9\transforms\668ae250fbdf39e20f120fccf5c60fc8\transformed\customview-poolingcontainer-1.0.0\res
+com.bankpoker.app-activity-1.9.2-21 D:\Android\.gradle\caches\8.9\transforms\6753317633605db3c1afc892fa416017\transformed\activity-1.9.2\res
+com.bankpoker.app-sqlite-2.4.0-22 D:\Android\.gradle\caches\8.9\transforms\6e1a2c7eb0abb3e8d68425749b51ffb6\transformed\sqlite-2.4.0\res
+com.bankpoker.app-navigation-runtime-ktx-2.8.3-23 D:\Android\.gradle\caches\8.9\transforms\77cb32336d21dd634b2833a12cbbf783\transformed\navigation-runtime-ktx-2.8.3\res
+com.bankpoker.app-lifecycle-viewmodel-ktx-2.9.4-24 D:\Android\.gradle\caches\8.9\transforms\8030f2e245cf4a24ff8d20fc708941b4\transformed\lifecycle-viewmodel-ktx-2.9.4\res
+com.bankpoker.app-annotation-experimental-1.4.1-25 D:\Android\.gradle\caches\8.9\transforms\8e6fd4457955a445101dbe6d63714d6a\transformed\annotation-experimental-1.4.1\res
+com.bankpoker.app-ui-26 D:\Android\.gradle\caches\8.9\transforms\8ec4c788b9c47a0f945e7d4b50649541\transformed\ui\res
+com.bankpoker.app-emoji2-1.4.0-27 D:\Android\.gradle\caches\8.9\transforms\8f2e5119ffbe240c9a13cad5979bdca9\transformed\emoji2-1.4.0\res
+com.bankpoker.app-ui-test-manifest-1.11.4-28 D:\Android\.gradle\caches\8.9\transforms\9ab1e61688f3d07619f12b67ad187235\transformed\ui-test-manifest-1.11.4\res
+com.bankpoker.app-savedstate-ktx-1.3.2-29 D:\Android\.gradle\caches\8.9\transforms\9c66caa1a5328b115c8ac08809f3a4f1\transformed\savedstate-ktx-1.3.2\res
+com.bankpoker.app-material-ripple-release-30 D:\Android\.gradle\caches\8.9\transforms\9da48940b07bfa74a85f49103782f65c\transformed\material-ripple-release\res
+com.bankpoker.app-sqlite-framework-2.4.0-31 D:\Android\.gradle\caches\8.9\transforms\9e4ed1a90f4be4829beb99d219a9d47e\transformed\sqlite-framework-2.4.0\res
+com.bankpoker.app-graphics-path-1.0.1-32 D:\Android\.gradle\caches\8.9\transforms\9f2e86cf62aae7b3577f1a2e70bf27d8\transformed\graphics-path-1.0.1\res
+com.bankpoker.app-navigation-common-ktx-2.8.3-33 D:\Android\.gradle\caches\8.9\transforms\a2c2f3f9fc82edde5440398d56339299\transformed\navigation-common-ktx-2.8.3\res
+com.bankpoker.app-foundation-34 D:\Android\.gradle\caches\8.9\transforms\a784a047acb4923dc68d41227d08f093\transformed\foundation\res
+com.bankpoker.app-lifecycle-livedata-core-ktx-2.9.4-35 D:\Android\.gradle\caches\8.9\transforms\a9443c93cca892fde44092c79e8dc94d\transformed\lifecycle-livedata-core-ktx-2.9.4\res
+com.bankpoker.app-material-icons-core-release-36 D:\Android\.gradle\caches\8.9\transforms\af9ab851af4a2146d3ecb46e33b26051\transformed\material-icons-core-release\res
+com.bankpoker.app-core-viewtree-1.0.0-37 D:\Android\.gradle\caches\8.9\transforms\b151a5df4c8d2a798a531b92ccaa139d\transformed\core-viewtree-1.0.0\res
+com.bankpoker.app-lifecycle-process-2.9.4-38 D:\Android\.gradle\caches\8.9\transforms\b3b33f68d386a6e0eeed69688714c20e\transformed\lifecycle-process-2.9.4\res
+com.bankpoker.app-activity-ktx-1.9.2-39 D:\Android\.gradle\caches\8.9\transforms\bc0bf20c4858f4121f2eee290978db25\transformed\activity-ktx-1.9.2\res
+com.bankpoker.app-lifecycle-runtime-compose-release-40 D:\Android\.gradle\caches\8.9\transforms\cd52dbfe638f70c24838143b6919b3f9\transformed\lifecycle-runtime-compose-release\res
+com.bankpoker.app-core-splashscreen-1.0.1-41 D:\Android\.gradle\caches\8.9\transforms\d35c0330e065b8fef776bcb5bfa0acbf\transformed\core-splashscreen-1.0.1\res
+com.bankpoker.app-lifecycle-viewmodel-savedstate-release-42 D:\Android\.gradle\caches\8.9\transforms\d5674cb76a448353bdca9e4abcfc1a52\transformed\lifecycle-viewmodel-savedstate-release\res
+com.bankpoker.app-window-1.5.0-43 D:\Android\.gradle\caches\8.9\transforms\d87a7ac3f189a530a8f244fcf7cc1dd2\transformed\window-1.5.0\res
+com.bankpoker.app-startup-runtime-1.1.1-44 D:\Android\.gradle\caches\8.9\transforms\dc16c851799e73479961a34ede2889e0\transformed\startup-runtime-1.1.1\res
+com.bankpoker.app-profileinstaller-1.4.0-45 D:\Android\.gradle\caches\8.9\transforms\dcbde925a7f38bd61d01141ac3570071\transformed\profileinstaller-1.4.0\res
+com.bankpoker.app-ui-text-46 D:\Android\.gradle\caches\8.9\transforms\df258c0a4c1f8e17c15ca97157114a03\transformed\ui-text\res
+com.bankpoker.app-lifecycle-livedata-core-2.9.4-47 D:\Android\.gradle\caches\8.9\transforms\df6db88398a2c0f28e6e53cecaaacb12\transformed\lifecycle-livedata-core-2.9.4\res
+com.bankpoker.app-transition-1.6.0-48 D:\Android\.gradle\caches\8.9\transforms\e1984522afdaaba706976068eadd92c4\transformed\transition-1.6.0\res
+com.bankpoker.app-ui-tooling-49 D:\Android\.gradle\caches\8.9\transforms\e575dd95f8e75e875f212a49591fea35\transformed\ui-tooling\res
+com.bankpoker.app-room-runtime-2.6.1-50 D:\Android\.gradle\caches\8.9\transforms\e799f5ae80047e4f7179b68bb5335970\transformed\room-runtime-2.6.1\res
+com.bankpoker.app-core-ktx-1.16.0-51 D:\Android\.gradle\caches\8.9\transforms\e8d93c73db357f418c9e84d9127b9e90\transformed\core-ktx-1.16.0\res
+com.bankpoker.app-ui-graphics-52 D:\Android\.gradle\caches\8.9\transforms\f4484cbc4607b1cffc6a50253d6e6387\transformed\ui-graphics\res
+com.bankpoker.app-core-1.16.0-53 D:\Android\.gradle\caches\8.9\transforms\fad8ac1c142c525d6a1da722c5a7f25c\transformed\core-1.16.0\res
+com.bankpoker.app-savedstate-release-54 D:\Android\.gradle\caches\8.9\transforms\fffbff30f9ae633bc3977bb11034ba66\transformed\savedstate-release\res
