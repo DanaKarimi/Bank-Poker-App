@@ -578,6 +578,26 @@ class RemoteRepository(
         }
     }
 
+    /**
+     * Bulk import offline group data to server and convert to online
+     */
+    suspend fun importGroup(
+        request: JsonObject
+    ): Result<com.bankpoker.app.data.remote.dto.ImportGroupResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.importGroup(request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to convert group to online (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {

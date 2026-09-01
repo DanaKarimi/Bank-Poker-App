@@ -151,6 +151,174 @@ class GroupDetailViewModel(
             }
         }
     }
+
+    private val _isConverting = MutableStateFlow(false)
+    val isConverting: StateFlow<Boolean> = _isConverting.asStateFlow()
+
+    fun convertGroupToOnline(
+        onSuccess: (inviteCode: String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (remoteRepository == null) {
+            onError("Authentication error: please log in to convert groups to online.")
+            return
+        }
+
+        viewModelScope.launch {
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup == null) {
+                onError("Group not found")
+                return@launch
+            }
+            if (currentGroup.mode == "ONLINE") {
+                onError("Group is already online.")
+                return@launch
+            }
+
+            _isConverting.value = true
+            try {
+                val bundle = repository.getGroupExportBundle(groupId)
+
+                val groupObj = com.google.gson.JsonObject().apply {
+                    addProperty("id", bundle.group.id)
+                    addProperty("name", bundle.group.name)
+                    addProperty("createdAt", bundle.group.createdAt)
+                }
+
+                val tablesArr = com.google.gson.JsonArray()
+                bundle.tables.forEach { t ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", t.id)
+                        addProperty("groupId", t.groupId ?: groupId)
+                        addProperty("name", t.name)
+                        if (t.chipValue != null) addProperty("chipValue", t.chipValue)
+                        addProperty("status", t.status)
+                        addProperty("createdAt", t.createdAt)
+                        if (t.closedAt != null) addProperty("closedAt", t.closedAt)
+                        addProperty("hasEntryFee", t.hasEntryFee)
+                        if (t.entryFee != null) addProperty("entryFee", t.entryFee)
+                    }
+                    tablesArr.add(obj)
+                }
+
+                val playersArr = com.google.gson.JsonArray()
+                bundle.players.forEach { p ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", p.id)
+                        addProperty("tableId", p.tableId)
+                        addProperty("name", p.name)
+                        addProperty("status", p.status)
+                        addProperty("entryFeePaid", p.entryFeePaid)
+                        addProperty("createdAt", p.createdAt)
+                    }
+                    playersArr.add(obj)
+                }
+
+                val buyInsArr = com.google.gson.JsonArray()
+                bundle.buyIns.forEach { b ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", b.id)
+                        addProperty("tableId", b.tableId)
+                        addProperty("playerId", b.playerId)
+                        addProperty("amount", b.amount)
+                        addProperty("createdAt", b.createdAt)
+                    }
+                    buyInsArr.add(obj)
+                }
+
+                val exitsArr = com.google.gson.JsonArray()
+                bundle.exits.forEach { e ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", e.id)
+                        addProperty("tableId", e.tableId)
+                        addProperty("playerId", e.playerId)
+                        addProperty("amount", e.amount)
+                        addProperty("createdAt", e.createdAt)
+                    }
+                    exitsArr.add(obj)
+                }
+
+                val paymentsArr = com.google.gson.JsonArray()
+                bundle.payments.forEach { pm ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", pm.id)
+                        addProperty("groupId", pm.groupId)
+                        addProperty("fromPlayer", pm.fromPlayer)
+                        addProperty("toPlayer", pm.toPlayer)
+                        addProperty("amount", pm.amount)
+                        addProperty("createdAt", pm.createdAt)
+                    }
+                    paymentsArr.add(obj)
+                }
+
+                val settlementsArr = com.google.gson.JsonArray()
+                bundle.settlements.forEach { s ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", s.id)
+                        addProperty("groupId", s.groupId)
+                        addProperty("tableId", s.tableId)
+                        addProperty("tableName", s.tableName)
+                        addProperty("payerName", s.payerName)
+                        addProperty("receiverName", s.receiverName)
+                        addProperty("amount", s.amount)
+                        addProperty("initialAmount", s.initialAmount)
+                        addProperty("paid", s.paid)
+                        addProperty("timestamp", s.timestamp)
+                    }
+                    settlementsArr.add(obj)
+                }
+
+                val entryFeesArr = com.google.gson.JsonArray()
+                bundle.entryFees.forEach { ef ->
+                    val obj = com.google.gson.JsonObject().apply {
+                        addProperty("id", ef.id)
+                        addProperty("groupId", ef.groupId)
+                        addProperty("tableId", ef.tableId)
+                        addProperty("tableName", ef.tableName)
+                        addProperty("playerName", ef.playerName)
+                        addProperty("amount", ef.amount)
+                        addProperty("paid", ef.paid)
+                        addProperty("timestamp", ef.timestamp)
+                    }
+                    entryFeesArr.add(obj)
+                }
+
+                val root = com.google.gson.JsonObject().apply {
+                    add("group", groupObj)
+                    add("tables", tablesArr)
+                    add("players", playersArr)
+                    add("buyIns", buyInsArr)
+                    add("exits", exitsArr)
+                    add("payments", paymentsArr)
+                    add("settlements", settlementsArr)
+                    add("entryFees", entryFeesArr)
+                }
+
+                val result = remoteRepository.importGroup(root)
+                if (result.isSuccess) {
+                    val resp = result.getOrNull()!!
+                    repository.updateGroupAfterOnlineConversion(
+                        groupId = groupId,
+                        serverId = resp.groupId,
+                        inviteCode = resp.inviteCode
+                    )
+                    _group.value = _group.value?.copy(
+                        mode = "ONLINE",
+                        serverId = resp.groupId,
+                        inviteCode = resp.inviteCode
+                    )
+                    onSuccess(resp.inviteCode)
+                } else {
+                    val err = result.exceptionOrNull()?.message ?: "Conversion failed. Data remains local."
+                    onError(err)
+                }
+            } catch (e: Exception) {
+                onError(e.message ?: "Failed to convert group to online. Data remains local.")
+            } finally {
+                _isConverting.value = false
+            }
+        }
+    }
 }
 
 class GroupDetailViewModelFactory(

@@ -70,6 +70,239 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 /**
+ * POST /api/groups/import
+ * (Requires Auth + role='ADMIN')
+ * Convert an offline group to online with bulk data sync and invite code generation
+ */
+router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const {
+            group,
+            tables = [],
+            players = [],
+            buyIns = [],
+            exits = [],
+            payments = [],
+            settlements = [],
+            entryFees = []
+        } = req.body;
+
+        if (!group || !group.name || !group.name.trim()) {
+            return res.status(400).json({ error: 'Group data with valid name is required' });
+        }
+
+        const now = Date.now();
+        const createdBy = req.user.id;
+        const newGroupId = crypto.randomUUID();
+        const idMapping = {};
+
+        if (group.id) {
+            idMapping[group.id] = newGroupId;
+        }
+
+        // Generate unique 6-character invite code
+        let inviteCode = generateInviteCode();
+        let attempts = 0;
+        while (attempts < 10) {
+            const existing = await get('SELECT id FROM groups WHERE invite_code = ?', [inviteCode]);
+            if (!existing) break;
+            inviteCode = generateInviteCode();
+            attempts++;
+        }
+
+        // 1. Insert Group with mode = ONLINE
+        await run(
+            `INSERT INTO groups (id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, 'ONLINE', ?, ?, ?, ?, 1, 0)`,
+            [newGroupId, group.name.trim(), inviteCode, createdBy, group.createdAt || group.created_at || now, newGroupId, now]
+        );
+
+        // 2. Add creator to group_members
+        await run(
+            `INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at)
+             VALUES (?, ?, ?)`,
+            [createdBy, newGroupId, now]
+        );
+
+        // 3. Insert Tables
+        for (const t of tables) {
+            const newTableId = crypto.randomUUID();
+            idMapping[t.id] = newTableId;
+            const status = t.status || (t.isActive === false ? 'CLOSED' : 'ACTIVE');
+            const isActive = (status === 'ACTIVE' || t.isActive === true || t.is_active === 1) ? 1 : 0;
+
+            await run(
+                `INSERT INTO tables (id, group_id, name, chip_value, status, created_at, closed_at, has_entry_fee, entry_fee, server_id, updated_at, is_synced, is_deleted, is_active)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)`,
+                [
+                    newTableId,
+                    newGroupId,
+                    t.name || 'Table',
+                    t.chipValue ?? t.chip_value ?? null,
+                    status,
+                    t.createdAt ?? t.created_at ?? now,
+                    t.closedAt ?? t.closed_at ?? null,
+                    t.hasEntryFee ? 1 : 0,
+                    t.entryFee ?? t.entry_fee ?? null,
+                    newTableId,
+                    now,
+                    isActive
+                ]
+            );
+        }
+
+        // 4. Insert Players (user_id = null so players can claim via invite code)
+        for (const p of players) {
+            const newPlayerId = crypto.randomUUID();
+            idMapping[p.id] = newPlayerId;
+            const mappedTableId = idMapping[p.tableId || p.table_id] || p.tableId || p.table_id;
+
+            await run(
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, entry_fee_paid, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newPlayerId,
+                    mappedTableId,
+                    p.name.trim(),
+                    p.status || 'ACTIVE',
+                    p.createdAt ?? p.created_at ?? now,
+                    p.entryFeePaid ? 1 : 0,
+                    newPlayerId,
+                    now
+                ]
+            );
+        }
+
+        // 5. Insert BuyIns
+        for (const b of buyIns) {
+            const newBuyInId = crypto.randomUUID();
+            idMapping[b.id] = newBuyInId;
+            const mappedTableId = idMapping[b.tableId || b.table_id] || b.tableId || b.table_id;
+            const mappedPlayerId = idMapping[b.playerId || b.player_id] || b.playerId || b.player_id;
+
+            await run(
+                `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newBuyInId,
+                    mappedTableId,
+                    mappedPlayerId,
+                    Number(b.amount) || 0,
+                    b.note || null,
+                    b.createdAt ?? b.created_at ?? now,
+                    newBuyInId,
+                    now
+                ]
+            );
+        }
+
+        // 6. Insert Exits
+        for (const e of exits) {
+            const newExitId = crypto.randomUUID();
+            idMapping[e.id] = newExitId;
+            const mappedTableId = idMapping[e.tableId || e.table_id] || e.tableId || e.table_id;
+            const mappedPlayerId = idMapping[e.playerId || e.player_id] || e.playerId || e.player_id;
+
+            await run(
+                `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newExitId,
+                    mappedTableId,
+                    mappedPlayerId,
+                    Number(e.amount) || 0,
+                    e.note || null,
+                    e.createdAt ?? e.created_at ?? now,
+                    newExitId,
+                    now
+                ]
+            );
+        }
+
+        // 7. Insert Payments
+        for (const pm of payments) {
+            const newPaymentId = crypto.randomUUID();
+            idMapping[pm.id] = newPaymentId;
+
+            await run(
+                `INSERT INTO payments (id, group_id, from_player, to_player, amount, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newPaymentId,
+                    newGroupId,
+                    pm.fromPlayer || pm.from_player || '',
+                    pm.toPlayer || pm.to_player || '',
+                    Number(pm.amount) || 0,
+                    pm.createdAt ?? pm.created_at ?? now,
+                    newPaymentId,
+                    now
+                ]
+            );
+        }
+
+        // 8. Insert Settlements
+        for (const s of settlements) {
+            const newSettlementId = crypto.randomUUID();
+            idMapping[s.id] = newSettlementId;
+            const mappedTableId = idMapping[s.tableId || s.table_id] || s.tableId || s.table_id || newGroupId;
+
+            await run(
+                `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newSettlementId,
+                    newGroupId,
+                    mappedTableId,
+                    s.tableName || s.table_name || 'Table',
+                    s.payerName || s.payer_name || s.fromPlayer || '',
+                    s.receiverName || s.receiver_name || s.toPlayer || '',
+                    Number(s.amount) || 0,
+                    Number(s.initialAmount || s.initial_amount || s.amount) || 0,
+                    (s.paid || s.isPaid) ? 1 : 0,
+                    s.timestamp ?? s.created_at ?? now,
+                    newSettlementId,
+                    now
+                ]
+            );
+        }
+
+        // 9. Insert Entry Fees
+        for (const ef of entryFees) {
+            const newEfId = crypto.randomUUID();
+            idMapping[ef.id] = newEfId;
+            const mappedTableId = idMapping[ef.tableId || ef.table_id] || ef.tableId || ef.table_id || newGroupId;
+
+            await run(
+                `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                [
+                    newEfId,
+                    newGroupId,
+                    mappedTableId,
+                    ef.tableName || ef.table_name || 'Table',
+                    ef.playerName || ef.player_name || '',
+                    Number(ef.amount) || 0,
+                    ef.paid ? 1 : 0,
+                    ef.timestamp ?? ef.created_at ?? now,
+                    newEfId,
+                    now
+                ]
+            );
+        }
+
+        return res.status(201).json({
+            message: 'Group imported and converted to online successfully',
+            groupId: newGroupId,
+            inviteCode,
+            idMapping
+        });
+    } catch (error) {
+        console.error('Error importing group to online:', error);
+        return res.status(500).json({ error: 'Internal server error while importing group' });
+    }
+});
+
+/**
  * GET /api/groups/:id/invite-code
  * (Requires Auth + role='ADMIN')
  * Return the invite code for a group (accessible by the creator or admins)

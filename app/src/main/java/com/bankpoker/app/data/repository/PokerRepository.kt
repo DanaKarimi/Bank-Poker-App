@@ -772,7 +772,56 @@ class PokerRepository(
             )
         }
     }
+
+    suspend fun getGroupExportBundle(groupId: String): GroupExportBundle {
+        val group = playerGroupDao.getGroupById(groupId) ?: throw IllegalStateException("Group not found")
+        val tables = pokerTableDao.getTablesByGroupIdOnce(groupId)
+        val tableIds = tables.map { it.id }
+
+        val players = mutableListOf<Player>()
+        val buyIns = mutableListOf<BuyIn>()
+        val exits = mutableListOf<ExitRecord>()
+
+        for (tId in tableIds) {
+            val tablePlayers = playerDao.getPlayersForTableOnce(tId)
+            players.addAll(tablePlayers)
+            val tableBuyIns = buyInDao.getBuyInsByTableIdOnce(tId)
+            buyIns.addAll(tableBuyIns)
+            val tableExits = exitRecordDao.getExitRecordsByTableIdOnce(tId)
+            exits.addAll(tableExits)
+        }
+
+        val payments = paymentDao.getPaymentsByGroupIdOnce(groupId)
+        val settlements = settlementRecordDao.getAllSettlementsByGroupIdOnce(groupId)
+        val entryFees = entryFeeRecordDao.getEntryFeeRecordsByGroupIdOnce(groupId)
+
+        return GroupExportBundle(
+            group = group,
+            tables = tables,
+            players = players,
+            buyIns = buyIns,
+            exits = exits,
+            payments = payments,
+            settlements = settlements,
+            entryFees = entryFees
+        )
+    }
+
+    suspend fun updateGroupAfterOnlineConversion(groupId: String, serverId: String, inviteCode: String) {
+        playerGroupDao.updateGroupModeAndSync(groupId, "ONLINE", serverId, inviteCode)
+    }
 }
+
+data class GroupExportBundle(
+    val group: PlayerGroup,
+    val tables: List<PokerTable>,
+    val players: List<Player>,
+    val buyIns: List<BuyIn>,
+    val exits: List<ExitRecord>,
+    val payments: List<Payment>,
+    val settlements: List<SettlementRecord>,
+    val entryFees: List<EntryFeeRecord>
+)
 
 
 

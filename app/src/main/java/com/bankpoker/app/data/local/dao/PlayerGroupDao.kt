@@ -28,6 +28,9 @@ interface PlayerGroupDao {
     @Query("DELETE FROM player_groups")
     suspend fun deleteAllGroups()
 
+    @Query("UPDATE player_groups SET mode = :mode, serverId = :serverId, inviteCode = :inviteCode WHERE id = :groupId")
+    suspend fun updateGroupModeAndSync(groupId: String, mode: String, serverId: String, inviteCode: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGroups(groups: List<PlayerGroup>)
 }

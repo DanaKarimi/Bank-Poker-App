@@ -157,4 +157,10 @@ interface ApiService {
         @Body request: com.google.gson.JsonObject,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @POST("api/groups/import")
+    suspend fun importGroup(
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.ImportGroupResponse>
 }

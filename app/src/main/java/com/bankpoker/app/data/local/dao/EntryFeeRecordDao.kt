@@ -42,6 +42,9 @@ interface EntryFeeRecordDao {
     @Query("SELECT * FROM entry_fee_records")
     suspend fun getAllEntryFeeRecordsOnce(): List<EntryFeeRecord>
 
+    @Query("SELECT * FROM entry_fee_records WHERE groupId = :groupId ORDER BY timestamp ASC")
+    suspend fun getEntryFeeRecordsByGroupIdOnce(groupId: String): List<EntryFeeRecord>
+
     @Query("DELETE FROM entry_fee_records")
     suspend fun deleteAllEntryFeeRecords()
 }

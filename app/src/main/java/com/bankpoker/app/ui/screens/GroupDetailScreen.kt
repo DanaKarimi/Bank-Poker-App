@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -86,6 +87,12 @@ fun GroupDetailScreen(
     var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
     var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     val coroutineScope = rememberCoroutineScope()
+
+    var showConvertConfirmDialog by remember { mutableStateOf(false) }
+    var showConvertSuccessDialog by remember { mutableStateOf(false) }
+    var convertedInviteCode by remember { mutableStateOf("") }
+    val isConverting by viewModel.isConverting.collectAsState()
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     LaunchedEffect(balances, group?.mode) {
         if (group?.mode == "ONLINE" && balances.isNotEmpty()) {
@@ -171,6 +178,22 @@ fun GroupDetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(FeltCard)
                     ) {
+                        if (group?.mode == "OFFLINE") {
+                            DropdownMenuItem(
+                                text = { Text("Convert to Online Group", color = Gold) },
+                                onClick = {
+                                    showMenu = false
+                                    showConvertConfirmDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = Gold
+                                    )
+                                }
+                            )
+                        }
                         if (onNavigateToRequests != null && group?.mode == "ONLINE") {
                             DropdownMenuItem(
                                 text = { Text("Pending Requests", color = Cream) },
@@ -359,6 +382,136 @@ fun GroupDetailScreen(
                 viewModel.deleteGroup()
                 onNavigateBack()
             }
+        )
+    }
+
+    if (showConvertConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isConverting) showConvertConfirmDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Convert to Online", color = Cream, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    text = "This uploads all local tables, players, and transaction history to the cloud server and generates an invite code for your players.\n\nAre you sure you want to continue?",
+                    color = Cream.copy(alpha = 0.85f),
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.convertGroupToOnline(
+                            onSuccess = { inviteCode ->
+                                showConvertConfirmDialog = false
+                                convertedInviteCode = inviteCode
+                                showConvertSuccessDialog = true
+                            },
+                            onError = { errorMsg ->
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    },
+                    enabled = !isConverting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
+                ) {
+                    if (isConverting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.Black,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Syncing...", fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Convert", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isConverting) {
+                    TextButton(onClick = { showConvertConfirmDialog = false }) {
+                        Text("Cancel", color = Cream.copy(alpha = 0.7f))
+                    }
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    if (showConvertSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showConvertSuccessDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎉", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Group is Online!", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Your group and history have been successfully synced to the cloud server.",
+                        color = Cream.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "INVITE CODE",
+                        color = Gold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = FeltBackground),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = convertedInviteCode,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            color = Cream,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            letterSpacing = 4.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(convertedInviteCode))
+                        Toast.makeText(context, "Invite code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
+                ) {
+                    Text("Copy Code", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConvertSuccessDialog = false }) {
+                    Text("Done", color = Cream)
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
