@@ -49,12 +49,12 @@ export const getMyJoinRequests = (groupId) =>
   api.get('/api/requests/my', { params: { groupId } });
 
 // Buy-in requests
-export const sendBuyInRequest = (groupId, tableId, amount) =>
-  api.post('/api/requests/buy-in', { groupId, tableId, amount: Number(amount) });
+export const sendBuyInRequest = (groupId, tableId, amount, note = '') =>
+  api.post('/api/requests/buy-in', { groupId, tableId, amount: Number(amount), note });
 
 // Exit requests
-export const sendExitRequest = (groupId, tableId, amount) =>
-  api.post('/api/requests/exit', { groupId, tableId, amount: Number(amount) });
+export const sendExitRequest = (groupId, tableId, amount, note = '') =>
+  api.post('/api/requests/exit', { groupId, tableId, amount: Number(amount), note });
 
 // Confirm receipt
 export const confirmBuyInReceipt = (requestId) => api.post(`/api/requests/buy-in/${requestId}/confirm`);

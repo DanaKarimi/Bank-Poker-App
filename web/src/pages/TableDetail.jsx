@@ -15,7 +15,8 @@ import {
 } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
-import RequestModal from '../components/RequestModal';
+import BuyInModal from '../components/BuyInModal';
+import ExitModal from '../components/ExitModal';
 import {
   ArrowLeft,
   RefreshCw,
@@ -54,9 +55,9 @@ const TableDetail = () => {
   const [isJoining, setIsJoining] = useState(false);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'activity' | 'players' | 'requests'
 
-  // Request modal state
-  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const [modalType, setModalType] = useState('buy-in');
+  // Modal states
+  const [isBuyInModalOpen, setIsBuyInModalOpen] = useState(false);
+  const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 
   const previousStatusRef = useRef(null);
 
@@ -205,30 +206,35 @@ const TableDetail = () => {
 
   const handleOpenBuyInModal = () => {
     if (isClosed) return;
-    setModalType('buy-in');
-    setIsRequestModalOpen(true);
+    setIsBuyInModalOpen(true);
   };
 
   const handleOpenExitModal = () => {
     if (isClosed) return;
-    setModalType('exit');
-    setIsRequestModalOpen(true);
+    setIsExitModalOpen(true);
   };
 
-  const handleSubmitRequest = async (amount) => {
+  const handleBuyInSubmit = async (amount, note) => {
     try {
-      if (modalType === 'buy-in') {
-        await sendBuyInRequest(groupId, tableId, amount);
-        setSuccessMessage(`Buy-in request for $${Number(amount).toLocaleString()} submitted successfully!`);
-      } else {
-        await sendExitRequest(groupId, tableId, amount);
-        setSuccessMessage(`Exit cashout request for $${Number(amount).toLocaleString()} submitted successfully!`);
-      }
+      await sendBuyInRequest(groupId, tableId, amount, note);
+      setSuccessMessage(`Buy-in request for ${Number(amount).toLocaleString()} chips submitted successfully!`);
       fetchTableData(true);
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err) {
-      console.error('Failed to submit request:', err);
-      setError(err.response?.data?.error || 'Failed to submit request.');
+      console.error('Failed to submit buy-in request:', err);
+      setError(err.response?.data?.error || 'Failed to submit buy-in request.');
+    }
+  };
+
+  const handleExitSubmit = async (amount, note) => {
+    try {
+      await sendExitRequest(groupId, tableId, amount, note);
+      setSuccessMessage(`Exit cashout request for ${Number(amount).toLocaleString()} chips submitted successfully!`);
+      fetchTableData(true);
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err) {
+      console.error('Failed to submit exit request:', err);
+      setError(err.response?.data?.error || 'Failed to submit exit request.');
     }
   };
 
@@ -649,12 +655,22 @@ const TableDetail = () => {
         )}
       </div>
 
-      {/* Request Submission Modal */}
-      <RequestModal
-        isOpen={isRequestModalOpen}
-        onClose={() => setIsRequestModalOpen(false)}
-        onSubmit={handleSubmitRequest}
-        type={modalType}
+      {/* Buy-In Modal */}
+      <BuyInModal
+        isOpen={isBuyInModalOpen}
+        onClose={() => setIsBuyInModalOpen(false)}
+        playerName={myPlayer?.name || user?.username || 'Player'}
+        currentBalance={myTableNetBalance}
+        onSubmit={handleBuyInSubmit}
+      />
+
+      {/* Exit Modal */}
+      <ExitModal
+        isOpen={isExitModalOpen}
+        onClose={() => setIsExitModalOpen(false)}
+        playerName={myPlayer?.name || user?.username || 'Player'}
+        currentBalance={myTableNetBalance}
+        onSubmit={handleExitSubmit}
       />
     </div>
   );
