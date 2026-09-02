@@ -363,6 +363,7 @@ const GroupStats = () => {
         {/* TAB 3: STATS & SETTLEMENT */}
         {activeTab === 'stats' && (
           <StatsTab
+            groupId={groupId}
             stats={groupStatsDetails}
             settlement={settlementPlan}
             balances={balances}

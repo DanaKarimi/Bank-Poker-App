@@ -350,9 +350,15 @@ class TableDetailViewModel(
                     val gId = table?.groupId
                     if (gId != null && remoteRepository != null) {
                         try {
-                            val balances = repository.getBalancesByGroupIdOnce(gId)
-                            val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(balances)
-                            remoteRepository.syncSettlement(gId, settlements)
+                            val group = repository.getGroupById(gId)
+                            val serverGroupId = group?.serverId ?: group?.id ?: gId
+                            if (group?.mode == "ONLINE") {
+                                val balances = repository.getBalancesByGroupIdOnce(gId)
+                                val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(balances)
+                                android.util.Log.d("SettlementSync", "closeTable syncing to serverGroupId: $serverGroupId")
+                                remoteRepository.syncSettlement(serverGroupId, settlements)
+                                remoteRepository.syncGroupBalances(serverGroupId, balances)
+                            }
                         } catch (e: Exception) {
                             Log.e("TableDetail", "Failed to sync settlement after closeTable", e)
                         }

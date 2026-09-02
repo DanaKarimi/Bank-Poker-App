@@ -90,6 +90,19 @@ const initDb = async () => {
             await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
         }
 
+        await run(`
+            CREATE TABLE IF NOT EXISTS synced_balances (
+                id TEXT PRIMARY KEY,
+                group_id TEXT NOT NULL,
+                user_id TEXT,
+                username TEXT NOT NULL,
+                balance INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+            )
+        `);
+        await run(`CREATE INDEX IF NOT EXISTS idx_synced_balances_group ON synced_balances(group_id)`);
+
         console.log('Database schema initialized successfully');
     } catch (error) {
         console.error('Error initializing database schema:', error);

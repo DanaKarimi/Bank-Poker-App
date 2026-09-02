@@ -49,9 +49,11 @@ class GroupDetailViewModel(
         viewModelScope.launch {
             repository.recordManualPayment(groupId, payerName, receiverName, amount)
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
-                remoteRepository.recordPayment(groupId, payerName, receiverName, amount)
+                remoteRepository.recordPayment(serverGroupId, payerName, receiverName, amount)
                 syncSettlementToServer()
+                syncGroupStatsToServer()
             }
         }
     }
@@ -81,10 +83,11 @@ class GroupDetailViewModel(
     ) {
         viewModelScope.launch {
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
                 // Online group: API call -> Server success -> Room Insert
                 val result = remoteRepository.createTable(
-                    groupId = groupId,
+                    groupId = serverGroupId,
                     name = name.trim(),
                     chipValue = chipValue,
                     entryFee = if (hasEntryFee) entryFee else null
@@ -138,9 +141,11 @@ class GroupDetailViewModel(
         viewModelScope.launch {
             repository.recordPayment(groupId, fromPlayer, toPlayer, amount)
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
-                remoteRepository.recordPayment(groupId, fromPlayer, toPlayer, amount)
+                remoteRepository.recordPayment(serverGroupId, fromPlayer, toPlayer, amount)
                 syncSettlementToServer()
+                syncGroupStatsToServer()
             }
         }
     }
@@ -151,12 +156,31 @@ class GroupDetailViewModel(
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 if (currentGroup?.mode == "ONLINE") {
+                    val serverGroupId = currentGroup.serverId ?: currentGroup.id
                     val currentBalances = repository.getBalancesByGroupIdOnce(groupId)
                     val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(currentBalances)
-                    remoteRepository.syncSettlement(groupId, settlements)
+                    android.util.Log.d("SettlementSync", "Pushing ${settlements.size} rows to server group: $serverGroupId")
+                    remoteRepository.syncSettlement(serverGroupId, settlements)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("GroupDetailViewModel", "Failed to sync settlement to server", e)
+                android.util.Log.e("SettlementSync", "FAILED in syncSettlementToServer: ${e.message}", e)
+            }
+        }
+    }
+
+    fun syncGroupStatsToServer() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                if (currentGroup?.mode == "ONLINE") {
+                    val serverGroupId = currentGroup.serverId ?: currentGroup.id
+                    val currentBalances = repository.getBalancesByGroupIdOnce(groupId)
+                    android.util.Log.d("SettlementSync", "Pushing ${currentBalances.size} balances to server group: $serverGroupId")
+                    remoteRepository.syncGroupBalances(serverGroupId, currentBalances)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SettlementSync", "FAILED in syncGroupStatsToServer: ${e.message}", e)
             }
         }
     }
@@ -164,8 +188,9 @@ class GroupDetailViewModel(
     fun syncSettlementPlan(settlements: List<com.bankpoker.app.ui.screens.Settlement>) {
         viewModelScope.launch {
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
-                remoteRepository.syncSettlement(groupId, settlements)
+                remoteRepository.syncSettlement(serverGroupId, settlements)
             }
         }
     }

@@ -94,9 +94,13 @@ fun GroupDetailScreen(
     val isConverting by viewModel.isConverting.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
-    LaunchedEffect(selectedTab, balances, group?.mode) {
-        if (group?.mode == "ONLINE") {
+    LaunchedEffect(selectedTab, balances, group?.mode, group?.serverId) {
+        val currentGroup = group
+        if (currentGroup?.mode == "ONLINE") {
+            val sId = currentGroup.serverId ?: currentGroup.id
+            android.util.Log.d("SettlementSync", "Stats tab opened, forcing sync for group: $sId")
             viewModel.syncSettlementToServer()
+            viewModel.syncGroupStatsToServer()
         }
     }
 

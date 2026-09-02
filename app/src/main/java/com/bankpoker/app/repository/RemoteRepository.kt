@@ -543,15 +543,60 @@ class RemoteRepository(
                 add("settlement", jsonArray)
                 add("settlements", jsonArray)
             }
+            android.util.Log.d("SettlementSync", "Pushing ${settlements.size} rows to server group: $groupId")
+            android.util.Log.d("SettlementSync", "Data: ${com.google.gson.Gson().toJson(root)}")
+
             val response = apiService.syncSettlement(groupId, root, getAuthHeader())
             if (response.isSuccessful && response.body() != null) {
+                android.util.Log.d("SettlementSync", "SUCCESS: Settlement synced")
                 Result.success(response.body()!!)
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to sync settlement plan (HTTP ${response.code()})"
+                android.util.Log.e("SettlementSync", "FAILED: $errorMsg (HTTP ${response.code()})")
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
+            android.util.Log.e("SettlementSync", "FAILED: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Sync group player balances snapshot to server for an online group
+     */
+    suspend fun syncGroupBalances(
+        groupId: String,
+        balances: List<com.bankpoker.app.data.local.entity.GroupBalance>
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val jsonArray = com.google.gson.JsonArray()
+            balances.forEach { b ->
+                val obj = JsonObject().apply {
+                    addProperty("username", b.playerName)
+                    addProperty("playerName", b.playerName)
+                    addProperty("balance", b.balance)
+                }
+                jsonArray.add(obj)
+            }
+            val root = JsonObject().apply {
+                add("balances", jsonArray)
+            }
+            android.util.Log.d("SettlementSync", "Pushing ${balances.size} balances to server group: $groupId")
+            android.util.Log.d("SettlementSync", "Data: ${com.google.gson.Gson().toJson(root)}")
+
+            val response = apiService.syncGroupBalances(groupId, root, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                android.util.Log.d("SettlementSync", "SUCCESS: Balances synced")
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to sync balances (HTTP ${response.code()})"
+                android.util.Log.e("SettlementSync", "FAILED balances sync: $errorMsg (HTTP ${response.code()})")
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettlementSync", "FAILED balances sync: ${e.message}", e)
             Result.failure(e)
         }
     }

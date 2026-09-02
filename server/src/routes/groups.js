@@ -626,7 +626,17 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
         // Calculations
         const totalPayments = paymentsSent + paymentsReceived;
         const netGameBalance = totalExits - totalBuyIns;
-        const currentBalance = netGameBalance + paymentsSent - paymentsReceived;
+        let currentBalance = netGameBalance + paymentsSent - paymentsReceived;
+
+        // Check if there is a direct snapshot in synced_balances
+        const syncedUserBalance = await get(
+            `SELECT balance FROM synced_balances WHERE group_id = ? AND (user_id = ? OR username IN (${placeholders})) ORDER BY updated_at DESC LIMIT 1`,
+            [groupId, userId, ...nameList]
+        );
+        if (syncedUserBalance && syncedUserBalance.balance !== undefined && syncedUserBalance.balance !== null) {
+            currentBalance = Number(syncedUserBalance.balance);
+        }
+
         const myBalance = currentBalance;
         const myBuyIns = totalBuyIns;
         const myExits = totalExits;
@@ -849,7 +859,7 @@ async function calculateGroupBalances(groupId) {
 /**
  * GET /api/groups/:id/balances
  * (Requires Auth)
- * Return calculated balances for all players in this group
+ * Return calculated balances for all players in this group (checking synced snapshot first)
  */
 router.get('/:id/balances', authenticateToken, async (req, res) => {
     try {
@@ -860,11 +870,76 @@ router.get('/:id/balances', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Group not found' });
         }
 
+        const synced = await all(
+            'SELECT * FROM synced_balances WHERE group_id = ? ORDER BY balance DESC',
+            [groupId]
+        );
+
+        if (synced && synced.length > 0) {
+            const balances = synced.map(s => ({
+                userId: s.user_id,
+                username: s.username,
+                balance: Number(s.balance) || 0
+            }));
+            return res.status(200).json({ balances });
+        }
+
         const balances = await calculateGroupBalances(groupId);
         return res.status(200).json({ balances });
     } catch (error) {
         console.error('Error fetching group balances:', error);
         return res.status(500).json({ error: 'Internal server error while fetching group balances' });
+    }
+});
+
+/**
+ * POST /api/groups/:id/sync-balances
+ * (Requires Auth)
+ * Snapshot player balances pushed directly from Android app
+ */
+router.post('/:id/sync-balances', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const balances = req.body.balances || [];
+
+        console.log("=== BALANCES SYNC ===");
+        console.log("Group ID:", groupId);
+        console.log("Balances count:", balances.length);
+        console.log("Data:", JSON.stringify(balances, null, 2));
+
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            console.error(`Group not found for balance sync: ${groupId}`);
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        if (!Array.isArray(balances)) {
+            return res.status(400).json({ error: 'balances array is required' });
+        }
+
+        const now = Date.now();
+        await run('DELETE FROM synced_balances WHERE group_id = ?', [groupId]);
+
+        for (const b of balances) {
+            const username = (b.username || b.playerName || b.name || '').trim();
+            const balance = Number(b.balance) || 0;
+            const userId = b.userId || null;
+
+            if (username) {
+                const id = crypto.randomUUID();
+                await run(
+                    `INSERT INTO synced_balances (id, group_id, user_id, username, balance, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?)`,
+                    [id, groupId, userId, username, balance, now]
+                );
+            }
+        }
+
+        console.log(`Successfully synced ${balances.length} balances for group ${groupId}`);
+        return res.status(200).json({ message: 'Balances synced successfully' });
+    } catch (error) {
+        console.error('Error syncing balances:', error);
+        return res.status(500).json({ error: 'Internal server error while syncing balances' });
     }
 });
 
@@ -879,6 +954,7 @@ router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
 
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
         if (!group) {
+            console.error(`Group not found for settlement-plan GET: ${groupId}`);
             return res.status(404).json({ error: 'Group not found' });
         }
 
@@ -902,6 +978,10 @@ router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
             timestamp: r.timestamp
         }));
 
+        console.log("=== SETTLEMENT GET ===");
+        console.log("Group ID:", groupId);
+        console.log("Returning rows:", settlement.length);
+
         return res.status(200).json({ settlement });
     } catch (error) {
         console.error('Error fetching settlement plan:', error);
@@ -919,8 +999,14 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
         const groupId = req.params.id;
         const settlements = req.body.settlement || req.body.settlements || [];
 
+        console.log("=== SETTLEMENT PUSH ===");
+        console.log("Group ID:", groupId);
+        console.log("Rows count:", settlements.length);
+        console.log("Data:", JSON.stringify(settlements, null, 2));
+
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
         if (!group) {
+            console.error(`Group not found for settlement push: ${groupId}`);
             return res.status(404).json({ error: 'Group not found' });
         }
 

@@ -1,13 +1,46 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Trophy, TrendingDown, Layers, Users, CheckCircle2, Clock } from 'lucide-react';
+import { getGroupSettlementPlan, getGroupStats } from '../api';
 
 const StatsTab = ({
+  groupId = null,
   stats = null,
   settlement = [],
   balances = [],
   loading = false,
+  onRefresh = null,
 }) => {
-  if (loading && !stats) {
+  const [rows, setRows] = useState(settlement || []);
+  const [fetchLoading, setFetchLoading] = useState(false);
+
+  useEffect(() => {
+    setRows(settlement || []);
+  }, [settlement]);
+
+  useEffect(() => {
+    if (groupId) {
+      console.log("Fetching settlement for group:", groupId);
+      setFetchLoading(true);
+      Promise.allSettled([
+        getGroupSettlementPlan(groupId),
+        getGroupStats(groupId),
+      ]).then(([settleRes]) => {
+        if (settleRes.status === 'fulfilled') {
+          const list = settleRes.value.data?.settlement || [];
+          console.log("Received rows:", list.length);
+          setRows(list);
+        }
+      }).catch((err) => {
+        console.error("Failed to fetch settlement in StatsTab:", err);
+      }).finally(() => {
+        setFetchLoading(false);
+      });
+    }
+  }, [groupId]);
+
+  const activeSettlement = rows.length > 0 ? rows : settlement;
+
+  if ((loading || fetchLoading) && !stats && activeSettlement.length === 0) {
     return (
       <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
         Loading group statistics...
@@ -116,19 +149,19 @@ const StatsTab = ({
           </span>
         </div>
 
-        {balances.length === 0 && settlement.length === 0 ? (
+        {balances.length === 0 && activeSettlement.length === 0 ? (
           <div className="py-6 text-center text-xs text-cream-text/60">
             No data yet. Close a table in this group first.
           </div>
-        ) : settlement.length === 0 ? (
+        ) : activeSettlement.length === 0 ? (
           <div className="py-6 text-center text-sm font-bold text-emerald-400">
             All settled! 🎉
           </div>
         ) : (
           <div className="space-y-2.5 pt-1">
-            {settlement.map((item, idx) => {
-              const payer = item.payerName || item.fromPlayer || 'Player';
-              const receiver = item.receiverName || item.toPlayer || 'Player';
+            {activeSettlement.map((item, idx) => {
+              const payer = item.debtorName || item.payerName || item.fromPlayer || 'Player';
+              const receiver = item.creditorName || item.receiverName || item.toPlayer || 'Player';
               const amount = item.amount || 0;
               const isPaid = Boolean(item.isPaid || item.paid);
 

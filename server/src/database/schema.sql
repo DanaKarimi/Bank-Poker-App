@@ -217,3 +217,16 @@ CREATE INDEX IF NOT EXISTS idx_buy_in_requests_user ON buy_in_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_exit_requests_group ON exit_requests(group_id);
 CREATE INDEX IF NOT EXISTS idx_exit_requests_table ON exit_requests(table_id);
 CREATE INDEX IF NOT EXISTS idx_exit_requests_user ON exit_requests(user_id);
+
+-- 14. Synced Balances Table (Direct snapshot from Android app)
+CREATE TABLE IF NOT EXISTS synced_balances (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    user_id TEXT,
+    username TEXT NOT NULL,
+    balance INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_synced_balances_group ON synced_balances(group_id);
+

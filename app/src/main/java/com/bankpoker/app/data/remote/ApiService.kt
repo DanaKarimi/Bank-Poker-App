@@ -151,6 +151,13 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 
+    @POST("api/groups/{groupId}/sync-balances")
+    suspend fun syncGroupBalances(
+        @Path("groupId") groupId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
     @POST("api/groups/{groupId}/payments")
     suspend fun recordGroupPayment(
         @Path("groupId") groupId: String,
