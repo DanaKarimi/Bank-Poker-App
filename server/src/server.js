@@ -28,6 +28,8 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+const fs = require('fs');
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
@@ -35,10 +37,20 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/tables', tableRoutes);
 app.use('/api/sync', syncRoutes);
 
-// 404 Handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
-});
+// Serve Web static files if web/dist exists (single-port production deployment)
+const distPath = path.join(__dirname, '../../web/dist');
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    // SPA fallback for client-side routing (Express 5 compatible)
+    app.use((req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+} else {
+    // 404 Handler for API / missing static build
+    app.use((req, res) => {
+        res.status(404).json({ error: 'Endpoint not found' });
+    });
+}
 
 // Global Error Handler
 app.use((err, req, res, next) => {

@@ -1,10 +1,10 @@
 import axios from 'axios';
 
-// Base API instance connecting to backend server
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Base API instance connecting to backend server (empty string for same-origin production deployment)
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
