@@ -2,6 +2,7 @@ package com.bankpoker.app.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,10 +22,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.bankpoker.app.data.remote.ApiClient
+import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,8 +46,51 @@ fun HomeScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var showMenu by remember { mutableStateOf(false) }
     var showConfirmRestoreDialog by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(false) }
+
+    suspend fun checkConnection() {
+        withContext(Dispatchers.IO) {
+            try {
+                val tokenManager = TokenManager.getInstance(context)
+                val service = ApiClient.getApiService(context, tokenManager)
+                val response = service.healthCheck()
+                val success = response.isSuccessful && response.body()?.status?.equals("ok", ignoreCase = true) == true
+                withContext(Dispatchers.Main) {
+                    isConnected = success
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isConnected = false
+                }
+            }
+        }
+    }
+
+    fun refreshConnection() {
+        coroutineScope.launch {
+            checkConnection()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        checkConnection()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshConnection()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -85,6 +136,35 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = { },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            refreshConnection()
+                            onServerTestClick()
+                        }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .background(
+                                    color = if (isConnected) Color(0xFF10B981) else Color(0xFFEF4444),
+                                    shape = CircleShape
+                                )
+                                .border(
+                                    BorderStroke(1.dp, Color.White),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = "Server Connection Status",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
                 actions = {
                     Box {
                         IconButton(onClick = { showMenu = true }) {
@@ -99,20 +179,6 @@ fun HomeScreen(
                             onDismissRequest = { showMenu = false },
                             modifier = Modifier.background(FeltCard)
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Create Server Group", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    onCreateGroupClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Server Test", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    onServerTestClick()
-                                }
-                            )
                             DropdownMenuItem(
                                 text = { Text("Export Backup", color = Cream) },
                                 onClick = {
