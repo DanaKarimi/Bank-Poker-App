@@ -34,6 +34,7 @@ fun HomeScreen(
     onServerTestClick: () -> Unit = {},
     onCreateGroupClick: () -> Unit = {}
 ) {
+    android.util.Log.d("HomeScreen", "Rendering HomeScreen")
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }

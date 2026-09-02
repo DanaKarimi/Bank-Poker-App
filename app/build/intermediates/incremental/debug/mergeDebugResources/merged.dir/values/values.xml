@@ -336,10 +336,10 @@
         <item name="android:textColor">?android:attr/textColorSecondary</item>
     </style>
     <style name="TextAppearance.Compat.Notification.Title" parent="@android:style/TextAppearance.StatusBar.EventContent.Title"/>
-    <style name="Theme.BankPoker.SplashScreen" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#121212</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_chip_full</item>
-        <item name="postSplashScreenTheme">@android:style/Theme.Material.NoActionBar</item>
+    <style name="Theme.BankPoker" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#0E3B2E</item>
     </style>
     <style name="Theme.SplashScreen" parent="Theme.SplashScreen.Common">
         <item name="postSplashScreenTheme">?android:attr/theme</item>

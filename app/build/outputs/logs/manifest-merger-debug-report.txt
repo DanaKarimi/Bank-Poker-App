@@ -132,7 +132,7 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] D:\Android\.gradle\caches\8
 	android:allowBackup
 		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:8:9-35
 	android:theme
-		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:16:9-66
+		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:16:9-47
 	android:dataExtractionRules
 		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:9:9-65
 	android:usesCleartextTraffic
@@ -142,7 +142,7 @@ ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManif
 	android:exported
 		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:20:13-36
 	android:theme
-		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:21:13-70
+		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:21:13-51
 	android:name
 		ADDED from C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:19:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER

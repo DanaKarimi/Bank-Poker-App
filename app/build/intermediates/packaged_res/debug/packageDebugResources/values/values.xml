@@ -2,9 +2,9 @@
 <resources>
     <color name="splash_background">#121212</color>
     <string name="app_name">Bank Poker</string>
-    <style name="Theme.BankPoker.SplashScreen" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#121212</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_chip_full</item>
-        <item name="postSplashScreenTheme">@android:style/Theme.Material.NoActionBar</item>
+    <style name="Theme.BankPoker" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#0E3B2E</item>
     </style>
 </resources>

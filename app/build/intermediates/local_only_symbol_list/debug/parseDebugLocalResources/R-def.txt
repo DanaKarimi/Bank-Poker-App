@@ -10,6 +10,6 @@ drawable ic_launcher_legacy
 mipmap ic_launcher
 mipmap ic_launcher_round
 string app_name
-style Theme.BankPoker.SplashScreen
+style Theme.BankPoker
 xml backup_rules
 xml data_extraction_rules

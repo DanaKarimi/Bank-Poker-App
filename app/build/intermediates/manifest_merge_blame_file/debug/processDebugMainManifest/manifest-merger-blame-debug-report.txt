@@ -43,8 +43,8 @@
 28-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:13:9-54
 29        android:supportsRtl="true"
 29-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:14:9-35
-30        android:theme="@android:style/Theme.Material.NoActionBar"
-30-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:16:9-66
+30        android:theme="@style/Theme.BankPoker"
+30-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:16:9-47
 31        android:usesCleartextTraffic="true" >
 31-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:15:9-44
 32        <activity
@@ -53,8 +53,8 @@
 33-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:19:13-41
 34            android:exported="true"
 34-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:20:13-36
-35            android:theme="@android:style/Theme.Material.NoActionBar" >
-35-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:21:13-70
+35            android:theme="@style/Theme.BankPoker" >
+35-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:21:13-51
 36            <intent-filter>
 36-->C:\Users\USER\Desktop\All My Code\BankPoker\app\src\main\AndroidManifest.xml:22:13-25:29
 37                <action android:name="android.intent.action.MAIN" />

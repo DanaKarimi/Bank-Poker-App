@@ -385,7 +385,7 @@ int style TextAppearance_Compat_Notification_Info 0x7f0a000c
 int style TextAppearance_Compat_Notification_Line2 0x7f0a000d
 int style TextAppearance_Compat_Notification_Time 0x7f0a000e
 int style TextAppearance_Compat_Notification_Title 0x7f0a000f
-int style Theme_BankPoker_SplashScreen 0x7f0a0010
+int style Theme_BankPoker 0x7f0a0010
 int style Theme_SplashScreen 0x7f0a0011
 int style Theme_SplashScreen_Common 0x7f0a0012
 int style Theme_SplashScreen_IconBackground 0x7f0a0013

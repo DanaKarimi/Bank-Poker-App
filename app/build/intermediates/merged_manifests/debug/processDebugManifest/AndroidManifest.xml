@@ -27,12 +27,12 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.BankPoker"
         android:usesCleartextTraffic="true" >
         <activity
             android:name="com.bankpoker.app.MainActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Material.NoActionBar" >
+            android:theme="@style/Theme.BankPoker" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

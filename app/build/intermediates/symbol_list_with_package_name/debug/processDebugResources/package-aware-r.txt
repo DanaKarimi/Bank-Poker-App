@@ -386,7 +386,7 @@ style TextAppearance_Compat_Notification_Info
 style TextAppearance_Compat_Notification_Line2
 style TextAppearance_Compat_Notification_Time
 style TextAppearance_Compat_Notification_Title
-style Theme_BankPoker_SplashScreen
+style Theme_BankPoker
 style Theme_SplashScreen
 style Theme_SplashScreen_Common
 style Theme_SplashScreen_IconBackground
