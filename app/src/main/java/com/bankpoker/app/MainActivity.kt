@@ -25,6 +25,10 @@ class MainActivity : ComponentActivity() {
         database = BankPokerDatabase.getDatabase(this)
         Log.d("MainActivity", "Database initialized")
 
+        // Initialize ApiClient with persisted Base URL from SharedPreferences
+        com.bankpoker.app.data.remote.ApiClient.initialize(this)
+        Log.d("MainActivity", "ApiClient initialized")
+
         setContent {
             Log.d("MainActivity", "setContent compose")
             BankPokerTheme {

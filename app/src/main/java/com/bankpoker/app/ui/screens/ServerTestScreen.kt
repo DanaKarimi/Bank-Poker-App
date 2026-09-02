@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.ApiConfig
+import com.bankpoker.app.data.remote.ServerConfigManager
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.components.GoldGradientButton
@@ -34,25 +35,40 @@ fun ServerTestScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val serverConfigManager = remember { ServerConfigManager.getInstance(context) }
     val tokenManager = remember { TokenManager.getInstance(context) }
     val remoteRepository = remember {
-        val service = ApiClient.getApiService(tokenManager)
+        val service = ApiClient.getApiService(context, tokenManager)
         RemoteRepository(service, tokenManager)
     }
 
-    var baseUrlInput by remember { mutableStateOf(ApiConfig.getEffectiveBaseUrl()) }
+    var baseUrlInput by remember { mutableStateOf(serverConfigManager.getBaseUrl()) }
     var usernameInput by remember { mutableStateOf("admin") }
     var passwordInput by remember { mutableStateOf("password123") }
     var responseLog by remember { mutableStateOf("Ready to test server connection.") }
     var isLoading by remember { mutableStateOf(false) }
     var currentToken by remember { mutableStateOf(tokenManager.getToken()) }
 
-    fun updateBaseUrl() {
-        ApiConfig.customBaseUrl = baseUrlInput.trim()
-        ApiClient.resetClient()
-        val newService = ApiClient.getApiService(tokenManager, ApiConfig.getEffectiveBaseUrl())
+    fun updateBaseUrl(andConnect: Boolean = false) {
+        val savedUrl = serverConfigManager.saveBaseUrl(baseUrlInput)
+        baseUrlInput = savedUrl
+        val newService = ApiClient.rebuild(context, savedUrl)
         remoteRepository.updateApiService(newService)
-        responseLog = "Base URL updated to: ${ApiConfig.getEffectiveBaseUrl()}"
+        responseLog = "Base URL saved permanently: $savedUrl"
+
+        if (andConnect) {
+            isLoading = true
+            coroutineScope.launch {
+                val result = remoteRepository.healthCheck()
+                isLoading = false
+                if (result.isSuccess) {
+                    responseLog = "Connected successfully to $savedUrl!"
+                    onNavigateBack()
+                } else {
+                    responseLog = "URL saved ($savedUrl), but health check failed: ${result.exceptionOrNull()?.message}"
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -60,7 +76,7 @@ fun ServerTestScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "SERVER TEST",
+                        text = "SERVER SETTINGS",
                         style = MaterialTheme.typography.titleLarge,
                         color = Gold,
                         fontWeight = FontWeight.Bold,
@@ -116,17 +132,24 @@ fun ServerTestScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "🌐 SERVER CONFIGURATION",
+                            text = "🌐 SERVER CONFIGURATION (PERSISTENT)",
                             style = MaterialTheme.typography.labelLarge,
                             color = Gold,
                             letterSpacing = 1.sp,
                             fontWeight = FontWeight.Bold
                         )
 
+                        Text(
+                            text = "Enter your server IP (e.g. 192.168.1.50). It will be saved permanently.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.7f)
+                        )
+
                         OutlinedTextField(
                             value = baseUrlInput,
                             onValueChange = { baseUrlInput = it },
-                            label = { Text("Base URL", color = Cream.copy(alpha = 0.7f)) },
+                            label = { Text("Server IP / Base URL", color = Cream.copy(alpha = 0.7f)) },
+                            placeholder = { Text("192.168.1.50 or http://10.0.2.2:3000/") },
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Cream,
@@ -142,24 +165,24 @@ fun ServerTestScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = { updateBaseUrl() },
+                                onClick = { updateBaseUrl(andConnect = true) },
                                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Apply URL", fontWeight = FontWeight.Bold)
+                                Text("Save & Connect", fontWeight = FontWeight.Bold)
                             }
 
                             OutlinedButton(
                                 onClick = {
-                                    baseUrlInput = ApiConfig.DEFAULT_BASE_URL
-                                    updateBaseUrl()
+                                    baseUrlInput = ServerConfigManager.DEFAULT_BASE_URL
+                                    updateBaseUrl(andConnect = false)
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Gold),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Reset 10.0.2.2")
+                                Text("Reset Default")
                             }
                         }
                     }
