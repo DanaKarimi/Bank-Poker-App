@@ -19,6 +19,7 @@ htmlcov/
 .env
 .env.local
 *.env.*
+!web/.env.development
 
 # Editors
 .vscode/
