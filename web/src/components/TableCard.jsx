@@ -4,6 +4,8 @@ import StatusBadge from './StatusBadge';
 
 const TableCard = ({ table, onClick }) => {
   const isClosed = table.status === 'CLOSED' || table.is_active === 0;
+  const entryFeeAmount = Number(table.entry_fee || table.entryFee) || 0;
+  const isEntryFeePaid = table.myEntryFeePaid === true || table.my_entry_fee_paid === 1;
 
   return (
     <div
@@ -15,7 +17,7 @@ const TableCard = ({ table, onClick }) => {
       }`}
     >
       <div>
-        {/* Header: Name + Status */}
+        {/* Header: Name + Status & Entry Fee Badge */}
         <div className="flex items-start justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2">
             <div
@@ -28,9 +30,22 @@ const TableCard = ({ table, onClick }) => {
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-cream-text text-sm group-hover:text-gold-accent transition">
-                {table.name || `Table ${table.id}`}
-              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-cream-text text-sm group-hover:text-gold-accent transition">
+                  {table.name || `Table ${table.id}`}
+                </h3>
+                {entryFeeAmount > 0 && (
+                  isEntryFeePaid ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/60 shadow-sm">
+                      Entry Fee Paid ✓
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-red-950 text-red-300 border border-red-500/60 shadow-sm">
+                      UNPAID
+                    </span>
+                  )
+                )}
+              </div>
               <div className="text-[10px] text-cream-text/50">
                 Created: {new Date(table.created_at || table.createdAt || Date.now()).toLocaleDateString()}
               </div>
@@ -56,10 +71,10 @@ const TableCard = ({ table, onClick }) => {
           </div>
         </div>
 
-        {(table.has_entry_fee || table.hasEntryFee) && (table.entry_fee || table.entryFee) > 0 && (
+        {entryFeeAmount > 0 && (
           <div className="mt-2 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-500/20 px-2 py-0.5 rounded inline-flex items-center gap-1">
             <DollarSign className="w-3 h-3" />
-            <span>Entry Fee: ${table.entry_fee || table.entryFee}</span>
+            <span>Entry Fee: ${entryFeeAmount}</span>
           </div>
         )}
       </div>

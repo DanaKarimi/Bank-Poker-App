@@ -433,6 +433,26 @@ class TableDetailViewModel(
     fun toggleEntryFee(playerId: String, paid: Boolean) {
         viewModelScope.launch {
             repository.toggleEntryFee(playerId, paid)
+            if (isTableOnline() && remoteRepository != null) {
+                pushEntryFeeStatusesToServer()
+            }
+        }
+    }
+
+    fun pushEntryFeeStatusesToServer() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            if (!isTableOnline()) return@launch
+            val table = _uiState.value.table ?: repository.getTableById(tableId)
+            val targetTableId = table?.id ?: tableId
+            val currentPlayers = repository.getPlayersForTableOnce(tableId)
+            val statuses = currentPlayers.map { Pair(it.name, it.entryFeePaid) }
+            try {
+                Log.d("TableDetail", "Pushing entry fee statuses to server for table: $targetTableId")
+                remoteRepository.syncEntryFeeStatuses(targetTableId, statuses)
+            } catch (e: Exception) {
+                Log.e("TableDetail", "Failed to sync entry fee statuses to server: ${e.message}", e)
+            }
         }
     }
 }

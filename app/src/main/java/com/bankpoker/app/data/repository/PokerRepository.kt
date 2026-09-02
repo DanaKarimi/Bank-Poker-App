@@ -88,6 +88,8 @@ class PokerRepository(
     // Player operations
     fun getPlayersByTableId(tableId: String): Flow<List<Player>> = playerDao.getPlayersByTableId(tableId)
 
+    suspend fun getPlayersForTableOnce(tableId: String): List<Player> = playerDao.getPlayersForTableOnce(tableId)
+
     suspend fun getPlayerById(playerId: String): Player? = playerDao.getPlayerById(playerId)
 
     suspend fun addPlayer(tableId: String, name: String): Player {

@@ -765,20 +765,22 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
 router.get('/:id/tables', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
+        const userId = req.user?.id;
 
-        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
 
         const rawTables = await all(
-            `SELECT t.*, (
-                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
-             ) as playerCount
+            `SELECT t.*, 
+                (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE') as playerCount,
+                (SELECT p.entry_fee_paid FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myEntryFeePaid,
+                (SELECT p.id FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myPlayerId
              FROM tables t
              WHERE t.group_id = ? AND t.is_deleted = 0
              ORDER BY t.created_at DESC`,
-            [groupId]
+            [userId, userId, group.id]
         );
 
         const tables = rawTables.map(t => {
@@ -797,6 +799,9 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
                 has_entry_fee: t.has_entry_fee,
                 entryFee: t.entry_fee,
                 entry_fee: t.entry_fee,
+                myEntryFeePaid: t.myEntryFeePaid != null ? Boolean(t.myEntryFeePaid) : null,
+                my_entry_fee_paid: t.myEntryFeePaid != null ? Number(t.myEntryFeePaid) : null,
+                hasJoinedTable: Boolean(t.myPlayerId),
                 createdAt: t.created_at,
                 created_at: t.created_at,
                 closedAt: t.closed_at,

@@ -128,13 +128,15 @@ router.post('/:id/close', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
+        const userId = req.user?.id;
         const table = await get(
-            `SELECT t.*, (
-                SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE'
-             ) as playerCount
+            `SELECT t.*, 
+                (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE') as playerCount,
+                (SELECT p.entry_fee_paid FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myEntryFeePaid,
+                (SELECT p.id FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myPlayerId
              FROM tables t
-             WHERE t.id = ? AND t.is_deleted = 0`,
-            [tableId]
+             WHERE (t.id = ? OR t.server_id = ?) AND t.is_deleted = 0`,
+            [userId, userId, tableId, tableId]
         );
 
         if (!table) {
@@ -156,6 +158,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
             has_entry_fee: table.has_entry_fee,
             entryFee: table.entry_fee,
             entry_fee: table.entry_fee,
+            myEntryFeePaid: table.myEntryFeePaid != null ? Boolean(table.myEntryFeePaid) : null,
+            my_entry_fee_paid: table.myEntryFeePaid != null ? Number(table.myEntryFeePaid) : null,
+            hasJoinedTable: Boolean(table.myPlayerId),
             createdAt: table.created_at,
             created_at: table.created_at,
             closedAt: table.closed_at,
@@ -550,6 +555,64 @@ router.post('/:id/exit-direct', authenticateToken, requireAdmin, async (req, res
     } catch (error) {
         console.error('Error recording direct exit:', error);
         return res.status(500).json({ error: 'Internal server error while recording direct exit' });
+    }
+});
+
+/**
+ * POST /api/tables/:id/entry-fee-sync
+ * (Requires Auth + role='ADMIN')
+ * Sync player entry fee payment statuses for a table from Android Admin app
+ */
+router.post('/:id/entry-fee-sync', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const tableId = req.params.id;
+        const { statuses } = req.body;
+
+        const table = await get(
+            'SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0',
+            [tableId, tableId]
+        );
+
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+
+        if (!Array.isArray(statuses)) {
+            return res.status(400).json({ error: 'statuses array is required' });
+        }
+
+        const now = Date.now();
+        let updatedCount = 0;
+
+        for (const item of statuses) {
+            const playerName = item.playerName || item.player_name || item.name;
+            const isPaid = (item.isPaid === true || item.isPaid === 1 || item.paid === true || item.paid === 1 || item.is_paid === true || item.is_paid === 1) ? 1 : 0;
+
+            if (playerName) {
+                const result = await run(
+                    `UPDATE players
+                     SET entry_fee_paid = ?, updated_at = ?, is_synced = 1
+                     WHERE (table_id = ? OR table_id = ?)
+                       AND UPPER(TRIM(name)) = UPPER(TRIM(?))
+                       AND is_deleted = 0`,
+                    [isPaid, now, table.id, table.server_id || table.id, playerName]
+                );
+                if (result.changes > 0) {
+                    updatedCount += result.changes;
+                }
+            }
+        }
+
+        console.log(`[EntryFeeSync] Synced entry fee statuses for table ${table.id} (${table.name}): ${updatedCount} player records updated`);
+
+        return res.status(200).json({
+            message: 'Entry fee status synced',
+            tableId: table.id,
+            updatedCount
+        });
+    } catch (error) {
+        console.error('Error syncing entry fee status:', error);
+        return res.status(500).json({ error: 'Internal server error while syncing entry fee status' });
     }
 });
 

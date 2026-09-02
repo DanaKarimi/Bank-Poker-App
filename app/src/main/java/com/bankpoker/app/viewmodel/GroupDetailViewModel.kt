@@ -3,6 +3,7 @@ package com.bankpoker.app.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PlayerGroup
@@ -42,6 +43,21 @@ class GroupDetailViewModel(
     fun markEntryFeePaid(playerId: String) {
         viewModelScope.launch {
             repository.toggleEntryFee(playerId, true)
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                val player = repository.getPlayerById(playerId)
+                if (player != null) {
+                    val table = repository.getTableById(player.tableId)
+                    val tableId = table?.id ?: player.tableId
+                    val players = repository.getPlayersForTableOnce(player.tableId)
+                    val statuses = players.map { Pair(it.name, if (it.id == playerId) true else it.entryFeePaid) }
+                    try {
+                        remoteRepository.syncEntryFeeStatuses(tableId, statuses)
+                    } catch (e: Exception) {
+                        Log.e("GroupDetail", "Failed to sync entry fee status: ${e.message}")
+                    }
+                }
+            }
         }
     }
 

@@ -312,11 +312,22 @@ const TableDetail = () => {
                 <Layers className="w-7 h-7" />
               </div>
               <div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-2xl font-black tracking-tight text-cream-text">
                     {table?.name || `Table ${tableId}`}
                   </h1>
                   <StatusBadge status={table?.status} />
+                  {(table?.entry_fee || table?.entryFee) > 0 && (
+                    (myPlayer?.entry_fee_paid === 1 || myPlayer?.entryFeePaid === true || table?.myEntryFeePaid === true || table?.my_entry_fee_paid === 1) ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/60 shadow-sm">
+                        Entry Fee Paid ✓
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-red-950 text-red-300 border border-red-500/60 shadow-sm">
+                        UNPAID
+                      </span>
+                    )
+                  )}
                 </div>
                 <p className="text-xs text-cream-text/60 mt-0.5">
                   Live Table Session & Transaction Ledger
@@ -643,6 +654,17 @@ const TableDetail = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {(table?.entry_fee || table?.entryFee) > 0 && (
+                        (p.entry_fee_paid === 1 || p.entryFeePaid === true) ? (
+                          <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                            Fee Paid ✓
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-red-950 text-red-300 border border-red-500/40">
+                            Fee Unpaid
+                          </span>
+                        )
+                      )}
                       <span className="px-2.5 py-1 text-[10px] font-extrabold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
                         {p.status || 'ACTIVE'}
                       </span>

@@ -83,6 +83,9 @@ const initDb = async () => {
         if (!playerColNames.includes('user_id')) {
             await run("ALTER TABLE players ADD COLUMN user_id TEXT");
         }
+        if (!playerColNames.includes('entry_fee_paid')) {
+            await run("ALTER TABLE players ADD COLUMN entry_fee_paid INTEGER DEFAULT 0");
+        }
 
         const tablesColumns = await all("PRAGMA table_info(tables)");
         const tableColNames = tablesColumns.map(c => c.name);

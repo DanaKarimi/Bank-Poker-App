@@ -177,4 +177,11 @@ interface ApiService {
         @Body request: com.google.gson.JsonObject,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @POST("api/tables/{tableId}/entry-fee-sync")
+    suspend fun syncEntryFee(
+        @Path("tableId") tableId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 }

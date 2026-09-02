@@ -673,6 +673,43 @@ class RemoteRepository(
         }
     }
 
+    /**
+     * Sync table entry fee statuses to server for an online table
+     */
+    suspend fun syncEntryFeeStatuses(
+        tableId: String,
+        statuses: List<Pair<String, Boolean>>
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val jsonArray = com.google.gson.JsonArray()
+            statuses.forEach { (playerName, isPaid) ->
+                val obj = JsonObject().apply {
+                    addProperty("playerName", playerName)
+                    addProperty("isPaid", isPaid)
+                }
+                jsonArray.add(obj)
+            }
+            val root = JsonObject().apply {
+                add("statuses", jsonArray)
+            }
+            android.util.Log.d("EntryFeeSync", "Pushing ${statuses.size} entry fee statuses to table: $tableId")
+
+            val response = apiService.syncEntryFee(tableId, root, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                android.util.Log.d("EntryFeeSync", "SUCCESS: Entry fee statuses synced")
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to sync entry fee status (HTTP ${response.code()})"
+                android.util.Log.e("EntryFeeSync", "FAILED: $errorMsg (HTTP ${response.code()})")
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("EntryFeeSync", "FAILED: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {
