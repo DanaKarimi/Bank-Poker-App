@@ -1216,10 +1216,15 @@ router.get('/:id/players-list', authenticateToken, async (req, res) => {
         }
 
         const players = Array.from(playerMap.values());
+        const userId = req.user?.id;
+        const userHasClaimed = rawPlayers.some(p => p.user_id && p.user_id === userId);
+        const hasUnclaimedPlayers = players.some(p => !p.isClaimed);
 
         return res.status(200).json({
             groupId: group.id,
             groupName: group.name,
+            userHasClaimed,
+            hasUnclaimedPlayers,
             players
         });
     } catch (error) {

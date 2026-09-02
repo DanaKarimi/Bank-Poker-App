@@ -28,7 +28,6 @@ import {
   Plus,
   Users,
   BarChart3,
-  UserCheck,
 } from 'lucide-react';
 
 const GroupStats = () => {
@@ -163,15 +162,6 @@ const GroupStats = () => {
           </Link>
 
           <div className="flex items-center gap-2">
-            <Link
-              to={`/group/${groupId}/claim`}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition shadow-sm"
-              title="Claim Player Identity"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span className="hidden sm:inline">Claim Player</span>
-            </Link>
-
             <button
               onClick={() => fetchData()}
               className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition"

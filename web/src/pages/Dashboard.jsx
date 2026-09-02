@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api from '../api';
+import api, { getGroupPlayersList } from '../api';
 import { Users, Plus, LogOut, RefreshCw, ChevronRight, Key, AlertCircle, CheckCircle, X } from 'lucide-react';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -56,15 +57,37 @@ const Dashboard = () => {
       setJoinSuccess(response.data.message || 'Joined group successfully!');
       setInviteCode('');
       
-      setTimeout(() => {
-        setIsJoinModalOpen(false);
-        setJoinSuccess('');
-        if (groupId) {
-          navigate(`/group/${groupId}/claim`);
-        } else {
-          fetchGroups();
+      if (groupId) {
+        try {
+          // Check if this group has unclaimed players and user hasn't claimed yet
+          const playersRes = await getGroupPlayersList(groupId);
+          const userHasClaimed = playersRes.data?.userHasClaimed || false;
+          const hasUnclaimed = (playersRes.data?.players || []).some((p) => !p.isClaimed);
+
+          setTimeout(() => {
+            setIsJoinModalOpen(false);
+            setJoinSuccess('');
+            if (!userHasClaimed && hasUnclaimed) {
+              navigate(`/group/${groupId}/claim`);
+            } else {
+              navigate(`/group/${groupId}`);
+            }
+          }, 600);
+        } catch (fetchErr) {
+          console.error('Failed to check players list:', fetchErr);
+          setTimeout(() => {
+            setIsJoinModalOpen(false);
+            setJoinSuccess('');
+            navigate(`/group/${groupId}`);
+          }, 600);
         }
-      }, 600);
+      } else {
+        setTimeout(() => {
+          setIsJoinModalOpen(false);
+          setJoinSuccess('');
+          fetchGroups();
+        }, 600);
+      }
     } catch (err) {
       console.error('Join group error:', err);
       setJoinError(err.response?.data?.error || 'Failed to join group. Check the invite code.');

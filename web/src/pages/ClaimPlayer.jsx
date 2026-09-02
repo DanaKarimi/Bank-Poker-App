@@ -29,8 +29,18 @@ const ClaimPlayer = () => {
     setError('');
     try {
       const response = await getGroupPlayersList(groupId);
+      const userHasClaimed = response.data?.userHasClaimed || false;
+      const allPlayers = response.data?.players || [];
+      const unclaimed = allPlayers.filter((p) => !p.isClaimed);
+
+      // Guard: If user already has a claimed player or group has no unclaimed identities, skip straight to group
+      if (userHasClaimed || unclaimed.length === 0) {
+        navigate(`/group/${groupId}`, { replace: true });
+        return;
+      }
+
       setGroupName(response.data?.groupName || 'Poker Group');
-      setPlayers(response.data?.players || []);
+      setPlayers(allPlayers);
     } catch (err) {
       console.error('Failed to fetch players list:', err);
       setError(err.response?.data?.error || 'Failed to load group player roster.');
@@ -52,8 +62,8 @@ const ClaimPlayer = () => {
       });
       setSuccess(`Welcome back! You claimed "${player.name}". Redirecting...`);
       setTimeout(() => {
-        navigate(`/group/${groupId}`);
-      }, 1200);
+        navigate(`/group/${groupId}`, { replace: true });
+      }, 1000);
     } catch (err) {
       console.error('Failed to claim player:', err);
       setError(err.response?.data?.error || 'Failed to claim player identity.');
@@ -81,8 +91,8 @@ const ClaimPlayer = () => {
       });
       setSuccess(`Joined group as "${trimmedName}"! Redirecting...`);
       setTimeout(() => {
-        navigate(`/group/${groupId}`);
-      }, 1200);
+        navigate(`/group/${groupId}`, { replace: true });
+      }, 1000);
     } catch (err) {
       console.error('Failed to join as new player:', err);
       setError(err.response?.data?.error || 'Failed to join group.');
