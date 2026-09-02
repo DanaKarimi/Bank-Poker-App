@@ -418,6 +418,55 @@ router.get('/:id/members', authenticateToken, requireAdmin, async (req, res) => 
 });
 
 /**
+ * GET /api/groups/by-invite/:code
+ * (Requires Auth)
+ * Inspect group metadata & player claim status before joining
+ */
+router.get('/by-invite/:code', authenticateToken, async (req, res) => {
+    try {
+        const cleanCode = (req.params.code || '').trim().toUpperCase();
+        if (!cleanCode) {
+            return res.status(400).json({ error: 'Invite code is required' });
+        }
+
+        const group = await get(
+            'SELECT * FROM groups WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(?)) AND is_deleted = 0',
+            [cleanCode]
+        );
+
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found with that invite code' });
+        }
+
+        const groupId = group.id;
+        const userId = req.user.id;
+
+        // Query all players in tables of this group
+        const groupPlayers = await all(
+            `SELECT p.id, p.user_id 
+             FROM players p
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [groupId]
+        );
+
+        const hasUnclaimedPlayers = groupPlayers.some(p => p.user_id === null || p.user_id === undefined || p.user_id === '');
+        const userHasPlayer = groupPlayers.some(p => p.user_id && p.user_id === userId);
+
+        return res.status(200).json({
+            groupId: group.id,
+            name: group.name,
+            mode: group.mode || 'OFFLINE',
+            hasUnclaimedPlayers,
+            userHasPlayer
+        });
+    } catch (error) {
+        console.error('Error fetching group by invite code:', error);
+        return res.status(500).json({ error: 'Internal server error while inspecting invite code' });
+    }
+});
+
+/**
  * POST /api/groups/join
  * Join a group using its unique invite_code
  */

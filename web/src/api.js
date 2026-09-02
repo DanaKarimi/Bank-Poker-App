@@ -66,6 +66,7 @@ export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-sta
 export const getGroupBalances = (groupId) => api.get(`/api/groups/${groupId}/balances`);
 export const getGroupSettlementPlan = (groupId) => api.get(`/api/groups/${groupId}/settlement-plan`);
 export const getGroupStatsDetails = (groupId) => api.get(`/api/groups/${groupId}/stats`);
+export const getGroupByInvite = (code) => api.get(`/api/groups/by-invite/${encodeURIComponent(code)}`);
 export const getGroupPlayersList = (groupId) => api.get(`/api/groups/${groupId}/players-list`);
 export const claimPlayer = (groupId, data) => api.post(`/api/groups/${groupId}/claim-player`, data);
 export const joinNewPlayer = (groupId, data) => api.post(`/api/groups/${groupId}/join-new-player`, data);

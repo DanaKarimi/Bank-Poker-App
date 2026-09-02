@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api, { getGroupPlayersList } from '../api';
-import { Users, Plus, LogOut, RefreshCw, ChevronRight, Key, AlertCircle, CheckCircle, X } from 'lucide-react';
+import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer } from '../api';
+import {
+  Users,
+  Plus,
+  LogOut,
+  RefreshCw,
+  ChevronRight,
+  ChevronLeft,
+  Key,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  UserCheck,
+  UserPlus,
+} from 'lucide-react';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -10,13 +23,18 @@ const Dashboard = () => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
-  // Join Group Modal State
+
+  // Join Group Multi-step Modal State: 'A' (code) | 'B' (question) | 'C' (claim) | 'D' (new)
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [joinStep, setJoinStep] = useState('A');
   const [inviteCode, setInviteCode] = useState('');
   const [joinError, setJoinError] = useState('');
   const [joinSuccess, setJoinSuccess] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [inspectedGroup, setInspectedGroup] = useState(null);
+  const [unclaimedPlayers, setUnclaimedPlayers] = useState([]);
+  const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState('');
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -36,62 +54,137 @@ const Dashboard = () => {
     fetchGroups();
   }, []);
 
-  const handleJoinGroup = async (e) => {
+  const openJoinModal = () => {
+    setJoinStep('A');
+    setInviteCode('');
+    setJoinError('');
+    setJoinSuccess('');
+    setInspectedGroup(null);
+    setUnclaimedPlayers([]);
+    setNewPlayerName(user?.username || '');
+    setIsJoinModalOpen(true);
+  };
+
+  const closeJoinModal = () => {
+    if (isJoining) return;
+    setIsJoinModalOpen(false);
+    setJoinStep('A');
+    setJoinError('');
+    setJoinSuccess('');
+  };
+
+  // STEP A: Validate invite code and branch
+  const handleValidateInvite = async (e) => {
     e.preventDefault();
     setJoinError('');
     setJoinSuccess('');
 
-    if (!inviteCode.trim()) {
+    const cleanCode = inviteCode.trim().toUpperCase();
+    if (!cleanCode) {
       setJoinError('Please enter an invite code.');
       return;
     }
 
     setIsJoining(true);
     try {
-      const response = await api.post('/api/groups/join', {
-        invite_code: inviteCode.trim(),
-      });
-      const joinedGroup = response.data?.group;
-      const groupId = joinedGroup?.id;
+      // 1. Call GET /api/groups/by-invite/:code
+      const response = await getGroupByInvite(cleanCode);
+      const groupData = response.data;
+      setInspectedGroup(groupData);
 
-      setJoinSuccess(response.data.message || 'Joined group successfully!');
-      setInviteCode('');
-      
-      if (groupId) {
-        try {
-          // Check if this group has unclaimed players and user hasn't claimed yet
-          const playersRes = await getGroupPlayersList(groupId);
-          const userHasClaimed = playersRes.data?.userHasClaimed || false;
-          const hasUnclaimed = (playersRes.data?.players || []).some((p) => !p.isClaimed);
-
-          setTimeout(() => {
-            setIsJoinModalOpen(false);
-            setJoinSuccess('');
-            if (!userHasClaimed && hasUnclaimed) {
-              navigate(`/group/${groupId}/claim`);
-            } else {
-              navigate(`/group/${groupId}`);
-            }
-          }, 600);
-        } catch (fetchErr) {
-          console.error('Failed to check players list:', fetchErr);
-          setTimeout(() => {
-            setIsJoinModalOpen(false);
-            setJoinSuccess('');
-            navigate(`/group/${groupId}`);
-          }, 600);
-        }
-      } else {
+      // Branch logic:
+      // If user already has a player or the group has NO unclaimed players (native online)
+      if (groupData.userHasPlayer || !groupData.hasUnclaimedPlayers) {
+        // Join group directly
+        const joinRes = await api.post('/api/groups/join', {
+          invite_code: cleanCode,
+        });
+        setJoinSuccess(joinRes.data?.message || 'Joined group successfully! Entering...');
         setTimeout(() => {
           setIsJoinModalOpen(false);
-          setJoinSuccess('');
-          fetchGroups();
-        }, 600);
+          navigate(`/group/${groupData.groupId}`);
+        }, 800);
+      } else {
+        // Group has unclaimed players and user is new to this group -> Go to STEP B (Question)
+        setJoinStep('B');
       }
     } catch (err) {
-      console.error('Join group error:', err);
-      setJoinError(err.response?.data?.error || 'Failed to join group. Check the invite code.');
+      console.error('Validate invite error:', err);
+      setJoinError(err.response?.data?.error || 'Group not found with that invite code.');
     } finally {
+      setIsJoining(false);
+    }
+  };
+
+  // STEP B -> STEP C: Fetch unclaimed players
+  const handleSelectExisting = async () => {
+    setJoinError('');
+    setIsLoadingPlayers(true);
+    setJoinStep('C');
+    try {
+      const res = await getGroupPlayersList(inspectedGroup.groupId);
+      const allPlayers = res.data?.players || [];
+      const unclaimed = allPlayers.filter((p) => !p.isClaimed);
+      setUnclaimedPlayers(unclaimed);
+    } catch (err) {
+      console.error('Failed to load unclaimed players:', err);
+      setJoinError('Failed to load unclaimed player roster.');
+    } finally {
+      setIsLoadingPlayers(false);
+    }
+  };
+
+  // STEP C: Claim selected player identity
+  const handleClaimPlayer = async (player) => {
+    if (isJoining) return;
+    setIsJoining(true);
+    setJoinError('');
+    setJoinSuccess('');
+
+    try {
+      await claimPlayer(inspectedGroup.groupId, {
+        playerId: player.id,
+        playerName: player.name,
+      });
+      setJoinSuccess(`Welcome back! You claimed "${player.name}". Entering group...`);
+      setTimeout(() => {
+        setIsJoinModalOpen(false);
+        navigate(`/group/${inspectedGroup.groupId}`);
+      }, 800);
+    } catch (err) {
+      console.error('Claim player error:', err);
+      setJoinError(err.response?.data?.error || 'Failed to claim player identity.');
+      setIsJoining(false);
+    }
+  };
+
+  // STEP D: Create new player profile
+  const handleCreateNewPlayer = async (e) => {
+    e.preventDefault();
+    if (isJoining) return;
+
+    const trimmedName = newPlayerName.trim();
+    if (!trimmedName) {
+      setJoinError('Please enter your in-game name.');
+      return;
+    }
+
+    setIsJoining(true);
+    setJoinError('');
+    setJoinSuccess('');
+
+    try {
+      await joinNewPlayer(inspectedGroup.groupId, {
+        playerName: trimmedName,
+      });
+      setJoinSuccess(`Joined as "${trimmedName}"! Entering group...`);
+      setTimeout(() => {
+        setIsJoinModalOpen(false);
+        navigate(`/group/${inspectedGroup.groupId}`);
+      }, 800);
+    } catch (err) {
+      console.error('Join new player error:', err);
+      setJoinError(err.response?.data?.error || 'Failed to create new player identity.');
       setIsJoining(false);
     }
   };
@@ -116,7 +209,7 @@ const Dashboard = () => {
 
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-sm font-semibold transition active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-sm font-semibold transition active:scale-95 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Logout</span>
@@ -143,18 +236,14 @@ const Dashboard = () => {
               onClick={fetchGroups}
               disabled={loading}
               title="Refresh groups"
-              className="p-3 bg-felt-dark hover:bg-felt-dark/80 text-gold-accent rounded-xl border border-gold-accent/40 shadow transition active:scale-95 disabled:opacity-50"
+              className="p-3 bg-felt-dark hover:bg-felt-dark/80 text-gold-accent rounded-xl border border-gold-accent/40 shadow transition active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
 
             <button
-              onClick={() => {
-                setIsJoinModalOpen(true);
-                setJoinError('');
-                setJoinSuccess('');
-              }}
-              className="px-5 py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2"
+              onClick={openJoinModal}
+              className="px-5 py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2 cursor-pointer"
             >
               <Plus className="w-5 h-5" />
               <span>Join Group</span>
@@ -184,8 +273,8 @@ const Dashboard = () => {
               You haven't joined any poker groups yet. Ask your group admin for an invite code or join an existing group.
             </p>
             <button
-              onClick={() => setIsJoinModalOpen(true)}
-              className="px-6 py-2.5 bg-gold-accent text-black font-bold rounded-xl shadow hover:bg-gold-light transition"
+              onClick={openJoinModal}
+              className="px-6 py-2.5 bg-gold-accent text-black font-bold rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
             >
               Join with Invite Code
             </button>
@@ -247,26 +336,31 @@ const Dashboard = () => {
         )}
       </main>
 
-      {/* Join Group Modal */}
+      {/* Multi-step Join Group Modal */}
       {isJoinModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            {/* Close button */}
             <button
-              onClick={() => setIsJoinModalOpen(false)}
-              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition"
+              onClick={closeJoinModal}
+              disabled={isJoining}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
+            {/* Modal Header */}
             <div className="flex items-center gap-2 mb-4">
               <Key className="w-6 h-6 text-gold-accent" />
-              <h2 className="text-xl font-bold text-gold-accent">Join Poker Group</h2>
+              <h2 className="text-xl font-bold text-gold-accent">
+                {joinStep === 'A' && 'Join Poker Group'}
+                {joinStep === 'B' && 'Identity Claim'}
+                {joinStep === 'C' && 'Select Your Name'}
+                {joinStep === 'D' && 'New Player Profile'}
+              </h2>
             </div>
 
-            <p className="text-xs text-cream-text/75 mb-4">
-              Enter the unique invite code provided by your group organizer or table manager.
-            </p>
-
+            {/* Error message */}
             {joinError && (
               <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-lg flex items-center gap-2 text-red-200 text-xs">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
@@ -274,45 +368,224 @@ const Dashboard = () => {
               </div>
             )}
 
+            {/* Success message */}
             {joinSuccess && (
-              <div className="mb-4 p-3 bg-green-950/80 border border-green-500 rounded-lg flex items-center gap-2 text-green-200 text-xs">
-                <CheckCircle className="w-4 h-4 shrink-0 text-green-400" />
+              <div className="mb-4 p-3 bg-green-950/80 border border-green-500 rounded-lg flex items-center gap-2 text-green-200 text-xs animate-pulse">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-green-400" />
                 <span>{joinSuccess}</span>
               </div>
             )}
 
-            <form onSubmit={handleJoinGroup} className="space-y-4">
+            {/* STEP A: Invite Code Input */}
+            {joinStep === 'A' && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1">
-                  Invite Code
-                </label>
-                <input
-                  type="text"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. POKER123"
-                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono placeholder-cream-text/40 focus:outline-none focus:border-gold-accent uppercase transition"
-                  required
-                />
-              </div>
+                <p className="text-xs text-cream-text/75 mb-4">
+                  Enter the unique invite code provided by your group organizer or table manager.
+                </p>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsJoinModalOpen(false)}
-                  className="px-4 py-2.5 bg-felt-dark hover:bg-felt-dark/80 text-cream-text/80 rounded-xl text-sm font-semibold transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isJoining}
-                  className="px-5 py-2.5 bg-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow hover:bg-gold-light disabled:opacity-50 transition"
-                >
-                  {isJoining ? 'Joining...' : 'Join Group'}
-                </button>
+                <form onSubmit={handleValidateInvite} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1">
+                      Invite Code
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. POKER123"
+                      className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono placeholder-cream-text/40 focus:outline-none focus:border-gold-accent uppercase transition"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeJoinModal}
+                      className="px-4 py-2.5 bg-felt-dark hover:bg-felt-dark/80 text-cream-text/80 rounded-xl text-sm font-semibold transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isJoining || !inviteCode.trim()}
+                      className="px-5 py-2.5 bg-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow hover:bg-gold-light disabled:opacity-50 transition cursor-pointer"
+                    >
+                      {isJoining ? 'Checking Code...' : 'Join Group'}
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
+            )}
+
+            {/* STEP B: Question (Converted Group) */}
+            {joinStep === 'B' && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <div className="p-3 bg-felt-dark/80 border border-gold-accent/30 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-cream-text/70">Group:</span>
+                  <span className="font-bold text-gold-accent text-sm">{inspectedGroup?.name}</span>
+                </div>
+
+                <div className="text-center space-y-1.5 pt-1">
+                  <h3 className="text-base font-black text-cream-text">
+                    Have you played in this group before?
+                  </h3>
+                  <p className="text-xs text-cream-text/65">
+                    If you played before this group went online, claim your previous player identity to restore your balance and game history.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectExisting}
+                    className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4 text-black shrink-0" />
+                    <span>Yes, I was in this group</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJoinError('');
+                      setJoinStep('D');
+                    }}
+                    className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
+                    <span>No, I'm a new player</span>
+                  </button>
+                </div>
+
+                <div className="pt-2 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJoinError('');
+                      setJoinStep('A');
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-cream-text/70 hover:text-gold-accent transition font-semibold cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP C: Unclaimed Player List */}
+            {joinStep === 'C' && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <p className="text-xs text-cream-text/70">
+                  Tap your name below to claim your past games and balances.
+                </p>
+
+                {isLoadingPlayers ? (
+                  <div className="py-8 text-center text-xs text-cream-text/50">
+                    <div className="w-6 h-6 border-2 border-gold-accent border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    Loading unclaimed roster...
+                  </div>
+                ) : unclaimedPlayers.length === 0 ? (
+                  <div className="py-6 text-center space-y-3 bg-felt-dark/60 rounded-xl p-4 border border-gold-accent/20">
+                    <p className="text-xs text-cream-text/60">
+                      No unclaimed player identities available in this group.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setJoinStep('D')}
+                      className="px-4 py-2 bg-gold-accent text-black font-bold text-xs rounded-xl shadow transition cursor-pointer"
+                    >
+                      Join as New Player
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5 max-h-56 overflow-y-auto p-1">
+                    {unclaimedPlayers.map((player) => (
+                      <button
+                        key={player.id}
+                        type="button"
+                        disabled={isJoining}
+                        onClick={() => handleClaimPlayer(player)}
+                        className="p-3 bg-[#043327] hover:bg-gold-accent hover:text-black border-2 border-gold-accent/50 hover:border-gold-accent rounded-xl font-bold text-xs text-[#f5f5dc] shadow-md hover:scale-105 active:scale-95 transition-all duration-150 flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="font-mono text-[9px] uppercase text-gold-accent/70 group-hover:text-black">
+                          Player
+                        </span>
+                        <span className="font-black text-center truncate max-w-full">
+                          {player.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-start">
+                  <button
+                    type="button"
+                    disabled={isJoining}
+                    onClick={() => {
+                      setJoinError('');
+                      setJoinStep('B');
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-cream-text/70 hover:text-gold-accent transition font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP D: New Player Profile Form */}
+            {joinStep === 'D' && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <p className="text-xs text-cream-text/70">
+                  Enter your display name to start with a fresh player profile in this group.
+                </p>
+
+                <form onSubmit={handleCreateNewPlayer} className="space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-cream-text/70 mb-1">
+                      Your In-Game Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      placeholder="Enter your name"
+                      className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/50 focus:border-gold-accent rounded-xl text-cream-text font-bold placeholder-cream-text/40 outline-none transition"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      disabled={isJoining}
+                      onClick={() => {
+                        setJoinError('');
+                        setJoinStep('B');
+                      }}
+                      className="inline-flex items-center gap-1 text-xs text-cream-text/70 hover:text-gold-accent transition font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isJoining || !newPlayerName.trim()}
+                      className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 active:scale-[0.98] text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                    >
+                      {isJoining ? 'Joining...' : 'Create & Join'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}
