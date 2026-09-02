@@ -27,7 +27,7 @@ import com.bankpoker.app.data.local.entity.EntryFeeRecord
 
 @Database(
     entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class, SettlementRecord::class, EntryFeeRecord::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class BankPokerDatabase : RoomDatabase() {
@@ -96,6 +96,14 @@ abstract class BankPokerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `player_groups` ADD COLUMN `mode` TEXT NOT NULL DEFAULT 'OFFLINE'")
+                database.execSQL("ALTER TABLE `player_groups` ADD COLUMN `serverId` TEXT")
+                database.execSQL("ALTER TABLE `player_groups` ADD COLUMN `inviteCode` TEXT")
+            }
+        }
+
         @Volatile
         private var INSTANCE: BankPokerDatabase? = null
 
@@ -105,7 +113,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankPokerDatabase::class.java,
                     "bank_poker_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
                 INSTANCE = instance
                 instance
             }

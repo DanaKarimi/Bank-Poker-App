@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,13 +16,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -64,7 +67,8 @@ fun GroupDetailScreen(
     onNavigateBack: () -> Unit,
     onTableClick: (String) -> Unit,
     onNavigateToHistory: () -> Unit,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onNavigateToRequests: ((String, String) -> Unit)? = null
 ) {
 
     val context = LocalContext.current
@@ -84,6 +88,29 @@ fun GroupDetailScreen(
     var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     val coroutineScope = rememberCoroutineScope()
 
+    var showConvertConfirmDialog by remember { mutableStateOf(false) }
+    var showConvertSuccessDialog by remember { mutableStateOf(false) }
+    var convertedInviteCode by remember { mutableStateOf("") }
+    val isConverting by viewModel.isConverting.collectAsState()
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    LaunchedEffect(selectedTab, balances, group?.mode, group?.serverId) {
+        val currentGroup = group
+        if (currentGroup?.mode == "ONLINE") {
+            val sId = currentGroup.serverId ?: currentGroup.id
+            android.util.Log.d("SettlementSync", "Stats tab opened, forcing sync for group: $sId")
+            viewModel.syncSettlementToServer()
+            viewModel.syncGroupStatsToServer()
+        }
+    }
+
+    LaunchedEffect(group?.id, group?.mode, group?.inviteCode) {
+        val currentGroup = group
+        if (currentGroup?.mode == "ONLINE" && !currentGroup.inviteCode.isNullOrBlank()) {
+            viewModel.syncInviteCodeToServer(currentGroup.inviteCode)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -102,13 +129,27 @@ fun GroupDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Gold
                         )
                     }
                 },
                 actions = {
+                    if (onNavigateToRequests != null && group?.mode == "ONLINE") {
+                        IconButton(onClick = {
+                            group?.let { g ->
+                                onNavigateToRequests(g.id, g.name)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Pending Requests",
+                                tint = Color(0xFFFFB300)
+                            )
+                        }
+                    }
+
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.List,
@@ -147,6 +188,38 @@ fun GroupDetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(FeltCard)
                     ) {
+                        if (group?.mode == "OFFLINE") {
+                            DropdownMenuItem(
+                                text = { Text("Convert to Online Group", color = Gold) },
+                                onClick = {
+                                    showMenu = false
+                                    showConvertConfirmDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = Gold
+                                    )
+                                }
+                            )
+                        }
+                        if (onNavigateToRequests != null && group?.mode == "ONLINE") {
+                            DropdownMenuItem(
+                                text = { Text("Pending Requests", color = Cream) },
+                                onClick = {
+                                    showMenu = false
+                                    group?.let { g -> onNavigateToRequests(g.id, g.name) }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Notifications,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFB300)
+                                    )
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Edit Name", color = Cream) },
                             onClick = {
@@ -280,14 +353,25 @@ fun GroupDetailScreen(
         CreateTableBottomSheet(
             onDismiss = { showCreateTableSheet = false },
             onCreateTable = { name, chipValue, hasEntryFee, entryFee ->
-                viewModel.createTable(name, chipValue, hasEntryFee, entryFee)
-                showCreateTableSheet = false
+                viewModel.createTable(
+                    name = name,
+                    chipValue = chipValue,
+                    hasEntryFee = hasEntryFee,
+                    entryFee = entryFee,
+                    onSuccess = {
+                        Toast.makeText(context, "Table created successfully!", Toast.LENGTH_SHORT).show()
+                        showCreateTableSheet = false
+                    },
+                    onError = { errorMsg ->
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
+                )
             }
         )
     }
 
     if (showEditDialog) {
-        EditGroupNameDialog(
+        EditGroupNameBottomSheet(
             currentName = group?.name ?: "",
             onDismiss = { showEditDialog = false },
             onConfirm = { newName ->
@@ -298,7 +382,8 @@ fun GroupDetailScreen(
     }
 
     if (showDeleteDialog) {
-        DeleteGroupDialog(
+        DeleteGroupBottomSheet(
+            groupName = group?.name ?: "Group",
             tablesCount = tables.size,
             playersCount = balances.size,
             onDismiss = { showDeleteDialog = false },
@@ -307,6 +392,136 @@ fun GroupDetailScreen(
                 viewModel.deleteGroup()
                 onNavigateBack()
             }
+        )
+    }
+
+    if (showConvertConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isConverting) showConvertConfirmDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Convert to Online", color = Cream, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    text = "This uploads all local tables, players, and transaction history to the cloud server and generates an invite code for your players.\n\nAre you sure you want to continue?",
+                    color = Cream.copy(alpha = 0.85f),
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.convertGroupToOnline(
+                            onSuccess = { inviteCode ->
+                                showConvertConfirmDialog = false
+                                convertedInviteCode = inviteCode
+                                showConvertSuccessDialog = true
+                            },
+                            onError = { errorMsg ->
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    },
+                    enabled = !isConverting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
+                ) {
+                    if (isConverting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.Black,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Syncing...", fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Convert", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isConverting) {
+                    TextButton(onClick = { showConvertConfirmDialog = false }) {
+                        Text("Cancel", color = Cream.copy(alpha = 0.7f))
+                    }
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    if (showConvertSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showConvertSuccessDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎉", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Group is Online!", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Your group and history have been successfully synced to the cloud server.",
+                        color = Cream.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "INVITE CODE",
+                        color = Gold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = FeltBackground),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = convertedInviteCode,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            color = Cream,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            letterSpacing = 4.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(convertedInviteCode))
+                        Toast.makeText(context, "Invite code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
+                ) {
+                    Text("Copy Code", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConvertSuccessDialog = false }) {
+                    Text("Done", color = Cream)
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
@@ -1473,8 +1688,9 @@ fun CreateTableBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditGroupNameDialog(
+fun EditGroupNameBottomSheet(
     currentName: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
@@ -1482,94 +1698,205 @@ fun EditGroupNameDialog(
     var name by remember { mutableStateOf(currentName) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = FeltCard,
-        title = { Text("Edit Group Name", color = Gold, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        if (error != null) error = null
-                    },
-                    label = { Text("Group Name") },
-                    singleLine = true,
-                    isError = error != null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold,
-                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                        focusedLabelColor = Gold,
-                        cursorColor = Gold,
-                        focusedTextColor = Cream,
-                        unfocusedTextColor = Cream
-                    )
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "EDIT GROUP NAME", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    if (error != null) error = null
+                },
+                label = { Text("Group Name", color = Gold) },
+                singleLine = true,
+                isError = error != null,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedLabelColor = Gold,
+                    cursorColor = Gold,
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
                 )
-                if (error != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (name.isBlank()) {
+                            error = "Group name cannot be empty"
+                            return@Button
+                        }
+                        onConfirm(name.trim())
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (name.isBlank()) {
-                        error = "Group name cannot be empty"
-                        return@TextButton
-                    }
-                    onConfirm(name.trim())
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-            ) {
-                Text("Save", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
-            }
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeleteGroupDialog(
+fun DeleteGroupBottomSheet(
+    groupName: String,
     tablesCount: Int,
     playersCount: Int,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = FeltCard,
-        title = { Text("Delete Group?", color = LoseRed, fontWeight = FontWeight.Bold) },
-        text = {
-            Text(
-                text = "This permanently deletes the group with its $tablesCount tables and $playersCount players. Cannot be undone.",
-                color = Cream,
-                style = MaterialTheme.typography.bodyMedium
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
             )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                colors = ButtonDefaults.textButtonColors(contentColor = LoseRed)
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Delete", fontWeight = FontWeight.Bold, color = LoseRed)
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Cream.copy(alpha = 0.7f))
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE GROUP?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to permanently delete \"$groupName\" with its $tablesCount tables and $playersCount players?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "This action cannot be undone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
 fun buildGroupShareResultsText(

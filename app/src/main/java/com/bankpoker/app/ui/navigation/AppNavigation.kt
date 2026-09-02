@@ -1,6 +1,8 @@
 package com.bankpoker.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -8,7 +10,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.bankpoker.app.data.local.BankPokerDatabase
+import com.bankpoker.app.data.remote.ApiClient
+import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.PokerRepository
+import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.screens.HomeScreen
 import com.bankpoker.app.ui.screens.TableDetailScreen
 import com.bankpoker.app.ui.screens.TablesScreen
@@ -31,6 +36,9 @@ import com.bankpoker.app.ui.screens.StatsScreen
 import com.bankpoker.app.ui.screens.PlayerProfileScreen
 import com.bankpoker.app.viewmodel.GroupHistoryViewModel
 import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
+import com.bankpoker.app.ui.screens.ServerTestScreen
+import com.bankpoker.app.ui.screens.CreateGroupScreen
+import com.bankpoker.app.ui.screens.RequestsScreen
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -67,6 +75,12 @@ fun AppNavigation(
                 },
                 onGroupsClick = {
                     navController.navigate(Screen.Groups.route)
+                },
+                onServerTestClick = {
+                    navController.navigate(Screen.ServerTest.route)
+                },
+                onCreateGroupClick = {
+                    navController.navigate(Screen.CreateGroup.route)
                 }
             )
         }
@@ -94,8 +108,14 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val tableId = backStackEntry.arguments?.getString("tableId") ?: return@composable
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: TableDetailViewModel = viewModel(
-                factory = TableDetailViewModelFactory(repository, tableId)
+                factory = TableDetailViewModelFactory(repository, tableId, remoteRepository)
             )
             TableDetailScreen(
                 viewModel = viewModel,
@@ -104,18 +124,30 @@ fun AppNavigation(
                 },
                 onPlayerClick = { playerName ->
                     navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                },
+                onNavigateToRequests = { id, name ->
+                    navController.navigate(Screen.Requests.createRoute(id, name))
                 }
             )
         }
 
         composable(Screen.Groups.route) {
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: GroupsViewModel = viewModel(
-                factory = GroupsViewModelFactory(repository)
+                factory = GroupsViewModelFactory(repository, remoteRepository)
             )
             GroupsScreen(
                 viewModel = viewModel,
                 onGroupClick = { groupId ->
                     navController.navigate(Screen.GroupDetail.createRoute(groupId))
+                },
+                onCreateServerGroupClick = {
+                    navController.navigate(Screen.CreateGroup.route)
                 }
             )
         }
@@ -127,8 +159,14 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val context = LocalContext.current
+            val tokenManager = remember { TokenManager.getInstance(context) }
+            val remoteRepository = remember {
+                val service = ApiClient.getApiService(tokenManager)
+                RemoteRepository(service, tokenManager)
+            }
             val viewModel: GroupDetailViewModel = viewModel(
-                factory = GroupDetailViewModelFactory(repository, groupId)
+                factory = GroupDetailViewModelFactory(repository, groupId, remoteRepository)
             )
             GroupDetailScreen(
                 viewModel = viewModel,
@@ -143,6 +181,9 @@ fun AppNavigation(
                 },
                 onPlayerClick = { playerName ->
                     navController.navigate(Screen.PlayerProfile.createRoute(playerName))
+                },
+                onNavigateToRequests = { id, name ->
+                    navController.navigate(Screen.Requests.createRoute(id, name))
                 }
             )
         }
@@ -198,6 +239,49 @@ fun AppNavigation(
             )
             PlayerProfileScreen(
                 viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.ServerTest.route) {
+            ServerTestScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.CreateGroup.route) {
+            CreateGroupScreen(
+                pokerRepository = repository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.Requests.route,
+            arguments = listOf(
+                navArgument("groupId") { type = NavType.StringType },
+                navArgument("groupName") {
+                    type = NavType.StringType
+                    defaultValue = "Online Group"
+                }
+            )
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+            val rawGroupName = backStackEntry.arguments?.getString("groupName") ?: "Online Group"
+            val groupName = try {
+                URLDecoder.decode(rawGroupName, StandardCharsets.UTF_8.toString())
+            } catch (e: Exception) {
+                rawGroupName
+            }
+            RequestsScreen(
+                groupId = groupId,
+                groupName = groupName,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

@@ -1,190 +1,150 @@
-# 🃏 BankPoker — Poker Bank Manager
+# 🃏 BankPoker
 
-BankPoker is a native Android app (Kotlin + Jetpack Compose + Room) designed for poker home-game hosts and bankers. It provides complete management of poker tables, players, buy-ins, exits, and settlements. The app supports both standalone "Quick Tables" and persistent "Groups" for recurring games, with automatic balance accumulation and settlement planning. All wrapped in a beautiful Casino Classic green-felt and gold theme.
+**BankPoker** is a full-stack, self-hosted poker bank and ledger management system designed for home-game hosts and players. It combines a native **Android Admin App** (Kotlin + Jetpack Compose + Room), a modern **Player Web App** (React + Vite + Tailwind CSS), and a lightweight **Node.js REST API Server** (Express + SQLite).
 
-## ✨ Features
+BankPoker manages poker tables, seated players, live buy-ins, cash-out exits, entry fees ("Voroodi"), cumulative group balances, and automated debt settlement calculations.
 
-### 🏠 Home Screen
-- **Two main modes on launch:**
-  - **Quick Table** – Start a one-time standalone game
-  - **Groups** – Manage your recurring poker circles
+---
 
-### ⚡ Quick Table
-- Create standalone poker tables with optional chip value
-- Tables list shows **only** standalone tables (group tables are kept completely separate)
-- Active/Closed status badges
-- Full table management: players, buy-ins, exits, history, results
+## 🌟 Key Features
 
-### 👥 Groups
-- Create player groups (e.g., "Friday Poker Night")
-- Each group has its **own isolated tables** – never mixed with Quick Tables
-- **3 tabs per group:**
-  - **Tables** – View and create tables specific to this group
-  - **Balances** – Cumulative ledger across all closed tables in the group
-  - **Stats** – Overview, biggest winner/debtor, and settlement plan
+### 1. Dual Operating Modes: Offline & Online
+- **Offline Mode (Local Room DB):** Manage standalone "Quick Tables" or local player groups on Android with zero internet connectivity required.
+- **Online Mode (Server Sync):** Host online poker groups synchronized in real-time with the Node.js server, allowing players to join via Web and request buy-ins and exits.
+- **Seamless Offline-to-Online Conversion:** Convert any existing offline group to an online server group with a single tap. All tables, player histories, balances, and settlements are bulk-uploaded and a unique 6-character Invite Code is generated.
 
-### 🎰 Table Detail
-- **3 tabs:** Players / History / Results
-- Add players manually to the table
-- Record Buy-ins and Exits with optional notes
-- Live balance per player (in chips)
-- **Table Summary:** total buy-ins, total exits, remaining chips in play
-- **Automatic Settlement Plan** on close (greedy algorithm: who pays whom)
-- Share results, edit/delete tables
+### 2. Player Identity Claim System
+- When players join a converted group via the Web App using an invite code, they are prompted to either **claim their existing pre-converted player name** (re-linking past history and stats) or **join as a new player**.
+- Native online groups seamlessly bind players to their authenticated account.
 
-### 💰 Voroodi (Entry Fee) Tracking
-- Optional **"Voroodi?" switch** when creating a group table
-- If enabled:
-  - A **check-circle button** appears next to each player's avatar
-  - Tap to toggle: **Paid** (green ✓) or **Unpaid** (grey outline)
-  - Shows "Voroodi: Paid" (green) or "Voroodi: Unpaid" (red) under player name
-- Perfect for tracking entry fees separate from chip buy-ins
+### 3. Comprehensive Table & Chip Management
+- **Table Controls:** Active vs. Closed states, optional chip values, and table notes.
+- **Real-Time Buy-In & Exit Flow:**
+  - **Player Requests (Web):** Players can submit buy-in and exit requests with amounts and notes.
+  - **Admin Approval (Android):** Host receives notifications and approves/rejects requests.
+  - **Direct Admin Actions:** Host can directly add buy-ins or process cash-outs at the table.
+  - **Player Confirmation:** Two-way handshake confirming chip handoffs.
+- **Live Balances:** Instant calculations of chips in play, total buy-ins, total exits, and net player balance.
 
-### 📊 Group Balances & Stats
-- **Balances accumulate automatically** when any table in the group is closed
-- Net result (exits − buy-ins) for each player is added to their group balance
-- **Stats tab shows:**
-  - Overview: total tables, closed tables, player count
-  - Total chips settled so far
-  - 🏆 **Biggest Winner** (green highlight)
-  - 💸 **Biggest Debtor** (red highlight)
-  - **Group-wide Settlement Plan** with "PAID ✓" button to mark payments
-  - Payment history log
+### 4. Entry Fee (Voroodi) Tracking
+- Optional table entry fee configuration (`entryFee > 0`).
+- **Admin Control (Android):** Host marks entry fee as Paid/Unpaid for each seated player.
+- **Web App Badges:** Web tables display a dynamic green badge (`Entry Fee Paid ✓`) or red badge (`UNPAID`) based on the authenticated player's payment status.
 
-### 🎨 Casino Classic Design
-- Green felt background with radial gradient
-- Gold accents, borders, and typography
-- Cream-colored text for readability
-- FeltCard backgrounds with gold-bordered cards
-- Avatar colors assigned per player for visual distinction
+### 5. Group Balances & Statistical Insights
+- **Cumulative Ledger:** Automatically rolls up net player performance when group tables are closed.
+- **Player Stats:** Total buy-ins, total exits, net balance, and payment adjustments.
+- **Leaderboards:** Identifies 🏆 **Biggest Winner** and 💸 **Biggest Debtor**.
+- **Personal Player View:** Players on Web see their own personalized stats cards at the top of the group overview.
 
-## 🛠 Tech Stack
+### 6. Automated Settlement Plan
+- **Greedy Two-Pointer Algorithm:** Computes the minimal number of peer-to-peer transactions required to settle all debts in the group.
+- **Payment Badges:** Visual `PAID` (green) and `PENDING` (gold) badges for every debt row.
+- **Admin Settlement Action:** Host marks payments as settled, instantly syncing payment records to the backend.
 
-| Technology | Usage |
-|------------|-------|
-| **Kotlin** | Primary language |
-| **Jetpack Compose** | Declarative UI |
-| **Material 3** | Components and theming |
-| **Room (SQLite)** | Local database with migrations |
-| **MVVM Architecture** | ViewModel + StateFlow + Flow |
-| **Coroutines** | Async operations |
-| **Navigation Compose** | Screen navigation |
+### 7. Audit History & Edits
+- Chronological transaction log of all buy-ins, cash-outs, and settlements.
+- Full edit and deletion support for hosts to correct bookkeeping errors.
 
-## 📦 Project Structure
+### 8. Authentication & Role-Based Access
+- Secure **JWT Authentication** with password hashing (`bcryptjs`).
+- Role permissions: `ADMIN` (Hosts managing tables and approving requests) and `PLAYER` (Viewing tables and submitting requests).
+
+### 9. Android Connectivity & IP Persistence
+- **Top-Left Globe Status Indicator:** Live visual indicator on the Android Home Screen (Green = Connected, Red = Disconnected).
+- **Persistent Server IP:** Server Base URL is stored in `SharedPreferences` (`ServerConfigManager`) and automatically loaded on app restart without re-entry.
+- **Rebuildable Retrofit Client:** Dynamically updates backend endpoints on the fly when the host switches Wi-Fi networks or server addresses.
+
+---
+
+## 🏗 System Architecture
+
+The repository is structured as a clean monorepo containing three core components:
 
 ```
-app/src/main/java/com/bankpoker/app/
-├── MainActivity.kt
-├── data/
-│   ├── local/
-│   │   ├── BankPokerDatabase.kt          # Room DB with migrations
-│   │   ├── dao/
-│   │   │   ├── BuyInDao.kt
-│   │   │   ├── ExitRecordDao.kt
-│   │   │   ├── GroupBalanceDao.kt
-│   │   │   ├── PaymentDao.kt
-│   │   │   ├── PlayerDao.kt
-│   │   │   └── PokerTableDao.kt
-│   │   └── entity/
-│   │       ├── BuyIn.kt
-│   │       ├── ExitRecord.kt
-│   │       ├── Group.kt
-│   │       ├── GroupBalance.kt
-│   │       ├── Payment.kt
-│   │       ├── Player.kt                  # + entryFeePaid field
-│   │       └── PokerTable.kt              # + hasEntryFee, entryFee, groupId
-│   └── repository/
-│       └── PokerRepository.kt
-├── ui/
-│   ├── navigation/
-│   │   ├── AppNavigation.kt
-│   │   └── Screen.kt
-│   ├── screens/
-│   │   ├── HomeScreen.kt                  # Two-mode landing page
-│   │   ├── TablesScreen.kt                # Quick Tables only
-│   │   ├── TableDetailScreen.kt
-│   │   ├── GroupsScreen.kt
-│   │   ├── GroupDetailScreen.kt           # Tables/Balances/Stats tabs
-│   │   └── StatsScreen.kt
-│   └── theme/
-│       ├── Color.kt                       # Gold, FeltBackground, Cream, etc.
-│       ├── Theme.kt
-│       └── Type.kt
-└── viewmodel/
-    ├── TableDetailViewModel.kt            # + toggleEntryFee()
-    ├── TablesViewModel.kt                 # Filters groupId = NULL
-    ├── GroupDetailViewModel.kt
-    └── (Factories)
+BankPoker/
+├── server/          # Backend REST API (Node.js + Express + SQLite)
+├── web/             # Frontend Client for Players (React 19 + Vite + Tailwind CSS)
+├── app/             # Native Mobile Admin App (Kotlin + Jetpack Compose + Room)
+├── REQUIREMENTS.md  # Detailed setup checklist and dependencies for fresh environments
+└── README.md        # Product documentation
 ```
 
-## 🚀 Getting Started
+### Data Flow Overview
 
-### Prerequisites
-1. Android Studio Hedgehog (2023.1.1) or newer
-2. JDK 17 or newer
-3. Android SDK with API level 35
+```
+                      ┌────────────────────────────────────────┐
+                      │          Android Host App              │
+                      │  (Kotlin, Compose, Room, Retrofit)     │
+                      └──────────────────┬─────────────────────┘
+                                         │ HTTP / REST (JWT)
+                                         ▼
+┌──────────────────────┐      ┌────────────────────────┐      ┌──────────────────────┐
+│   Player Web App     │ ───► │     Node.js Server     │ ◄─── │   SQLite Database    │
+│ (React, Vite, Axios) │      │ (Express, Auth, Sync)  │      │  (server/bankpoker.db)│
+└──────────────────────┘      └────────────────────────┘      └──────────────────────┘
+```
 
-### Steps
-1. **Clone the repository**
+---
+
+## 🚀 How to Run
+
+### 1. Start the Backend Server
+
+```bash
+cd server
+npm install
+npm run dev
+```
+
+- **Port:** `3000` (`http://localhost:3000`)
+- **Health Check:** `http://localhost:3000/api/health`
+- **Database:** Auto-creates `server/bankpoker.db` on launch.
+
+### 2. Start the Player Web App
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+- **Port:** `5173` (`http://localhost:5173`)
+- **Backend API URL:** Configured via `VITE_API_URL` (defaults to `http://localhost:3000`).
+
+### 3. Run the Android Admin App
+
+1. Open the project root in **Android Studio**.
+2. Sync Gradle dependencies.
+3. Build and launch on an Android device or emulator:
    ```bash
-   git clone https://github.com/DanaKarimi/Bank-Poker-App.git
-   cd Bank-Poker-App
+   ./gradlew assembleDebug
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
    ```
+4. **Configure Server IP in Android:**
+   - Tap the **Globe Icon** in the top-left of the Android Home Screen.
+   - Enter your server IP (e.g. `10.0.2.2` for emulator, or your local LAN IP like `192.168.1.50`).
+   - Tap **Save & Connect**. The indicator will turn **Green** upon successful connection.
 
-2. **Open in Android Studio**
-   - Launch Android Studio
-   - Select "Open an Existing Project"
-   - Navigate to the project folder
+---
 
-3. **Sync Gradle files**
-   - Android Studio will automatically sync
-   - Wait for dependencies to download
+## 👤 User Accounts & Registration
 
-4. **Configure SDK path** (if needed)
-   - Edit `local.properties`:
-     ```properties
-     sdk.dir=/path/to/your/Android/sdk
-     ```
+BankPoker uses dynamic JWT authentication. You can create accounts directly through the application:
 
-5. **Build and Run**
-   - Click the Run button in Android Studio
-   - Or via command line:
-     ```bash
-     ./gradlew assembleDebug
-     adb install app/build/outputs/apk/debug/app-debug.apk
-     ```
+- **Register via Web App:** Navigate to `http://localhost:5173/register` to create a player account.
+- **Register / Test via Android App:** Open the Server Settings screen (tap the Globe icon) to test authentication, registration, and login.
 
-### Minimum Requirements
-- **Minimum SDK:** 24 (Android 7.0)
-- **Target SDK:** 35 (Android 15)
-- **Compile SDK:** 35
+---
 
-## 📋 Business Rules
+## ⚙️ Fresh Machine Setup & Detailed Requirements
 
-### Tables
-- A table can be **Active** or **Closed**
-- Closed tables cannot accept new transactions
-- Tables are either **standalone** (groupId = null) or **linked to a group**
+For step-by-step dependency installation (Node.js, JDK 17, Android SDK, environment variables, and Cloudflare Tunnel deployment), see:
 
-### Players & Transactions
-- A player can have multiple buy-ins
-- A player normally has one exit (marks them as Exited)
-- Exit amount is NOT validated against current balance (flexible cash-out)
-- **Net Result = Total Exits − Total Buy-ins**
-  - Positive → Creditor (won)
-  - Negative → Debtor (lost)
-  - Zero → Break-even
+👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**
 
-### Groups
-- Group balances accumulate **only when a table is closed**
-- Settlement plan uses a greedy two-pointer algorithm
-- Payments can be marked as "PAID" to track real-world settlements
-
-### Voroodi (Entry Fee)
-- Optional feature for group tables only
-- Tracked separately from chip buy-ins/exits
-- Visual indicator per player (✓ paid / ○ unpaid)
+---
 
 ## 📄 License
 
-This project is provided as-is for educational and personal use.
+This project is maintained for private poker management and educational use.

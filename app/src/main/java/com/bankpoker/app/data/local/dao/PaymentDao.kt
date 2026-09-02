@@ -33,6 +33,9 @@ interface PaymentDao {
     @Query("DELETE FROM payments")
     suspend fun deleteAllPayments()
 
+    @Query("SELECT * FROM payments WHERE groupId = :groupId ORDER BY createdAt ASC")
+    suspend fun getPaymentsByGroupIdOnce(groupId: String): List<Payment>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayments(payments: List<Payment>)
 }

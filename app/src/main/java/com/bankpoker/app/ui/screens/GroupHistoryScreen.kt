@@ -250,48 +250,16 @@ fun GroupHistoryScreen(
         )
     }
 
-    // Delete Payment Confirmation Dialog
+    // Delete Payment Confirmation Bottom Sheet
     if (selectedPaymentForDelete != null) {
         val payment = selectedPaymentForDelete!!
-        AlertDialog(
-            onDismissRequest = { selectedPaymentForDelete = null },
-            title = {
-                Text(
-                    text = "Delete Payment?",
-                    color = LoseRed,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = "Deleting this payment will reverse the balance changes ($${payment.amount} between ${payment.fromPlayer} and ${payment.toPlayer}) and restore the remaining debt.",
-                    color = Cream
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deletePayment(payment.id)
-                        selectedPaymentForDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = LoseRed,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("REVERSE & DELETE", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { selectedPaymentForDelete = null }
-                ) {
-                    Text("CANCEL", color = Cream)
-                }
-            },
-            containerColor = FeltCard,
-            shape = RoundedCornerShape(20.dp)
+        DeletePaymentBottomSheet(
+            payment = payment,
+            onDismiss = { selectedPaymentForDelete = null },
+            onConfirm = {
+                viewModel.deletePayment(payment.id)
+                selectedPaymentForDelete = null
+            }
         )
     }
 
@@ -387,48 +355,16 @@ fun GroupHistoryScreen(
         )
     }
 
-    // Delete Entry Fee Confirmation Dialog
+    // Delete Entry Fee Confirmation Bottom Sheet
     if (selectedEntryFeeForDelete != null) {
         val record = selectedEntryFeeForDelete!!
-        AlertDialog(
-            onDismissRequest = { selectedEntryFeeForDelete = null },
-            title = {
-                Text(
-                    text = "Delete Entry Fee?",
-                    color = LoseRed,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = "Remove the entry fee obligation of $${record.amount} for ${record.playerName} (${record.tableName})?",
-                    color = Cream
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteEntryFeeRecord(record.id)
-                        selectedEntryFeeForDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = LoseRed,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("DELETE", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { selectedEntryFeeForDelete = null }
-                ) {
-                    Text("CANCEL", color = Cream)
-                }
-            },
-            containerColor = FeltCard,
-            shape = RoundedCornerShape(20.dp)
+        DeleteEntryFeeBottomSheet(
+            record = record,
+            onDismiss = { selectedEntryFeeForDelete = null },
+            onConfirm = {
+                viewModel.deleteEntryFeeRecord(record.id)
+                selectedEntryFeeForDelete = null
+            }
         )
     }
 }
@@ -767,16 +703,144 @@ private fun EditPaymentBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            GoldGradientButton(
-                text = "SAVE CHANGES",
-                onClick = {
-                    if (isValid) {
-                        onSave(amountLong)
-                    }
-                },
-                enabled = isValid,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (isValid) {
+                            onSave(amountLong)
+                        }
+                    },
+                    enabled = isValid,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeletePaymentBottomSheet(
+    payment: Payment,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
             )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE PAYMENT",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to delete this payment of $${payment.amount} between ${payment.fromPlayer} and ${payment.toPlayer}?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "This will reverse balance changes and restore remaining debt.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -897,16 +961,135 @@ private fun EditEntryFeeBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            GoldGradientButton(
-                text = "SAVE CHANGES",
-                onClick = {
-                    if (isValid) {
-                        onSave(amountLong, isPaid)
-                    }
-                },
-                enabled = isValid,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (isValid) {
+                            onSave(amountLong, isPaid)
+                        }
+                    },
+                    enabled = isValid,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeleteEntryFeeBottomSheet(
+    record: EntryFeeRecord,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
             )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE ENTRY FEE",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to remove the entry fee obligation of $${record.amount} for ${record.playerName} (${record.tableName})?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

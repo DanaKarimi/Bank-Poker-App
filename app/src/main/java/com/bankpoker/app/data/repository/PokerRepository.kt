@@ -52,9 +52,16 @@ class PokerRepository(
 
     suspend fun getTableById(tableId: String): PokerTable? = pokerTableDao.getTableById(tableId)
 
-    suspend fun createTable(name: String, chipValue: Long?, groupId: String? = null, hasEntryFee: Boolean = false, entryFee: Long? = null): PokerTable {
+    suspend fun createTable(
+        name: String,
+        chipValue: Long?,
+        groupId: String? = null,
+        hasEntryFee: Boolean = false,
+        entryFee: Long? = null,
+        customId: String? = null
+    ): PokerTable {
         val table = PokerTable(
-            id = UUID.randomUUID().toString(),
+            id = customId ?: UUID.randomUUID().toString(),
             name = name,
             chipValue = chipValue,
             status = "ACTIVE",
@@ -81,6 +88,8 @@ class PokerRepository(
     // Player operations
     fun getPlayersByTableId(tableId: String): Flow<List<Player>> = playerDao.getPlayersByTableId(tableId)
 
+    suspend fun getPlayersForTableOnce(tableId: String): List<Player> = playerDao.getPlayersForTableOnce(tableId)
+
     suspend fun getPlayerById(playerId: String): Player? = playerDao.getPlayerById(playerId)
 
     suspend fun addPlayer(tableId: String, name: String): Player {
@@ -102,6 +111,18 @@ class PokerRepository(
     suspend fun getPlayingPlayersCount(tableId: String): Int = playerDao.getPlayingPlayersCount(tableId)
 
     suspend fun getAllSavedPlayerNames(): List<String> = playerDao.getAllPlayerNames()
+
+    suspend fun insertOrUpdatePlayers(players: List<Player>) {
+        playerDao.insertPlayers(players)
+    }
+
+    suspend fun insertOrUpdateBuyIns(buyIns: List<BuyIn>) {
+        buyInDao.insertBuyIns(buyIns)
+    }
+
+    suspend fun insertOrUpdateExitRecords(exitRecords: List<ExitRecord>) {
+        exitRecordDao.insertExitRecords(exitRecords)
+    }
 
     // Buy-in operations
     fun getBuyInsByTableId(tableId: String): Flow<List<BuyIn>> = buyInDao.getBuyInsByTableId(tableId)
@@ -226,11 +247,20 @@ class PokerRepository(
 
     suspend fun getGroupById(groupId: String): PlayerGroup? = playerGroupDao.getGroupById(groupId)
 
-    suspend fun createGroup(name: String): PlayerGroup {
+    suspend fun createGroup(
+        name: String,
+        mode: String = "OFFLINE",
+        serverId: String? = null,
+        inviteCode: String? = null,
+        customId: String? = null
+    ): PlayerGroup {
         val group = PlayerGroup(
-            id = UUID.randomUUID().toString(),
+            id = customId ?: serverId ?: UUID.randomUUID().toString(),
             name = name,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            mode = mode,
+            serverId = serverId,
+            inviteCode = inviteCode
         )
         playerGroupDao.insertGroup(group)
         return group
@@ -239,6 +269,8 @@ class PokerRepository(
     fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>> = pokerTableDao.getTablesByGroupId(groupId)
 
     fun getBalancesByGroupId(groupId: String): Flow<List<GroupBalance>> = groupBalanceDao.getBalancesByGroupId(groupId)
+
+    suspend fun getBalancesByGroupIdOnce(groupId: String): List<GroupBalance> = groupBalanceDao.getBalancesByGroupIdOnce(groupId)
 
     fun getPaymentsByGroupId(groupId: String): Flow<List<Payment>> = paymentDao.getPaymentsByGroupId(groupId)
 
@@ -744,7 +776,56 @@ class PokerRepository(
             )
         }
     }
+
+    suspend fun getGroupExportBundle(groupId: String): GroupExportBundle {
+        val group = playerGroupDao.getGroupById(groupId) ?: throw IllegalStateException("Group not found")
+        val tables = pokerTableDao.getTablesByGroupIdOnce(groupId)
+        val tableIds = tables.map { it.id }
+
+        val players = mutableListOf<Player>()
+        val buyIns = mutableListOf<BuyIn>()
+        val exits = mutableListOf<ExitRecord>()
+
+        for (tId in tableIds) {
+            val tablePlayers = playerDao.getPlayersForTableOnce(tId)
+            players.addAll(tablePlayers)
+            val tableBuyIns = buyInDao.getBuyInsByTableIdOnce(tId)
+            buyIns.addAll(tableBuyIns)
+            val tableExits = exitRecordDao.getExitRecordsByTableIdOnce(tId)
+            exits.addAll(tableExits)
+        }
+
+        val payments = paymentDao.getPaymentsByGroupIdOnce(groupId)
+        val settlements = settlementRecordDao.getAllSettlementsByGroupIdOnce(groupId)
+        val entryFees = entryFeeRecordDao.getEntryFeeRecordsByGroupIdOnce(groupId)
+
+        return GroupExportBundle(
+            group = group,
+            tables = tables,
+            players = players,
+            buyIns = buyIns,
+            exits = exits,
+            payments = payments,
+            settlements = settlements,
+            entryFees = entryFees
+        )
+    }
+
+    suspend fun updateGroupAfterOnlineConversion(groupId: String, serverId: String, inviteCode: String) {
+        playerGroupDao.updateGroupModeAndSync(groupId, "ONLINE", serverId, inviteCode)
+    }
 }
+
+data class GroupExportBundle(
+    val group: PlayerGroup,
+    val tables: List<PokerTable>,
+    val players: List<Player>,
+    val buyIns: List<BuyIn>,
+    val exits: List<ExitRecord>,
+    val payments: List<Payment>,
+    val settlements: List<SettlementRecord>,
+    val entryFees: List<EntryFeeRecord>
+)
 
 
 

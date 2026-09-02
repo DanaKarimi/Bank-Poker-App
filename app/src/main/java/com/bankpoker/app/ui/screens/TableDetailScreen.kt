@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,13 +24,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -39,6 +43,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -80,7 +85,8 @@ import kotlinx.coroutines.launch
 fun TableDetailScreen(
     viewModel: TableDetailViewModel,
     onNavigateBack: () -> Unit,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onNavigateToRequests: ((String, String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val players by viewModel.players.collectAsState(initial = emptyList())
@@ -135,6 +141,43 @@ fun TableDetailScreen(
                     }
                 },
                 actions = {
+                    val isRefreshing by viewModel.isRefreshing.collectAsState()
+
+                    if (uiState.isOnline) {
+                        IconButton(
+                            onClick = {
+                                viewModel.refreshTableFromServer { success, errorMsg ->
+                                    if (success) {
+                                        Toast.makeText(context, "Table synced from server", Toast.LENGTH_SHORT).show()
+                                    } else if (errorMsg != null) {
+                                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isRefreshing
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh from Server",
+                                tint = Gold
+                            )
+                        }
+
+                        if (onNavigateToRequests != null && uiState.table?.groupId != null) {
+                            IconButton(onClick = {
+                                uiState.table?.let { t ->
+                                    onNavigateToRequests(t.groupId ?: "", t.name)
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Pending Requests",
+                                    tint = Color(0xFFFFB300)
+                                )
+                            }
+                        }
+                    }
+
                     IconButton(onClick = {
                         val text = buildShareResultsText(
                             tableName = uiState.table?.name ?: "Table",
@@ -235,8 +278,12 @@ fun TableDetailScreen(
             },
             onConfirm = { amount, note ->
                 val playerId = currentPlayer.id
-                coroutineScope.launch {
-                    viewModel.addBuyIn(playerId, amount, note)
+                viewModel.addBuyIn(playerId, amount, note) { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(context, "Buy-in recorded successfully", Toast.LENGTH_SHORT).show()
+                    } else if (errorMsg != null) {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
                 showBuyInDialog = false
                 selectedPlayerForBuyIn = null
@@ -256,8 +303,12 @@ fun TableDetailScreen(
             },
             onConfirm = { amount, note ->
                 val playerId = currentPlayer.id
-                coroutineScope.launch {
-                    viewModel.addExitRecord(playerId, amount, note)
+                viewModel.addExitRecord(playerId, amount, note) { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(context, "Exit recorded successfully", Toast.LENGTH_SHORT).show()
+                    } else if (errorMsg != null) {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
                 showExitDialog = false
                 selectedPlayerForExit = null
@@ -268,27 +319,17 @@ fun TableDetailScreen(
     }
     
     if (showCloseTableDialog) {
-        AlertDialog(
-            onDismissRequest = { showCloseTableDialog = false },
-            title = { Text("Close Table", color = Gold) },
-            text = { Text("Are you sure you want to close this table? No new transactions will be allowed.", color = Cream) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.closeTable()
-                        showCloseTableDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Close")
+        CloseTableBottomSheet(
+            onDismiss = { showCloseTableDialog = false },
+            onConfirm = {
+                viewModel.closeTable { success, errorMsg ->
+                    if (success) {
+                        Toast.makeText(context, "Table closed successfully", Toast.LENGTH_SHORT).show()
+                    } else if (errorMsg != null) {
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCloseTableDialog = false }) {
-                    Text("Cancel", color = Gold)
-                }
+                showCloseTableDialog = false
             }
         )
     }
@@ -1054,7 +1095,7 @@ fun HistoryTab(
     }
     
     if (selectedTransactionForEdit != null) {
-        EditTransactionDialog(
+        EditTransactionBottomSheet(
             transaction = selectedTransactionForEdit!!,
             viewModel = viewModel,
             onDismiss = { selectedTransactionForEdit = null }
@@ -1062,7 +1103,7 @@ fun HistoryTab(
     }
 
     if (selectedTransactionForDelete != null) {
-        DeleteTransactionDialog(
+        DeleteTransactionBottomSheet(
             transaction = selectedTransactionForDelete!!,
             viewModel = viewModel,
             onDismiss = { selectedTransactionForDelete = null }
@@ -1159,42 +1200,16 @@ fun TransactionCard(
     }
 
     if (showActionDialog) {
-        AlertDialog(
-            onDismissRequest = { showActionDialog = false },
-            title = { Text("Transaction Actions", color = Gold) },
-            text = { Text("What would you like to do?", color = Cream) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showActionDialog = false
-                        onEdit()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-                ) {
-                    Text("Edit")
-                }
+        TransactionActionBottomSheet(
+            transaction = transaction,
+            onDismiss = { showActionDialog = false },
+            onEdit = {
+                showActionDialog = false
+                onEdit()
             },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = { showActionDialog = false },
-                        colors = ButtonDefaults.textButtonColors(contentColor = Gold)
-                    ) {
-                        Text("Cancel")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(
-                        onClick = {
-                            showActionDialog = false
-                            onDelete()
-                        },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("Delete")
-                    }
-                }
+            onDelete = {
+                showActionDialog = false
+                onDelete()
             }
         )
     }
@@ -2222,8 +2237,186 @@ fun shareText(context: android.content.Context, text: String) {
     context.startActivity(shareIntent)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditTransactionDialog(
+fun CloseTableBottomSheet(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close Table",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "CLOSE TABLE",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Gold,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to close this table? No new buy-in or exit transactions will be allowed.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Close Table", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransactionActionBottomSheet(
+    transaction: TransactionItem,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "${transaction.playerName} (${transaction.type})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Cream
+                    )
+                    Text(
+                        text = formatTimestamp(transaction.timestamp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.6f)
+                    )
+                }
+                Text(
+                    text = "${transaction.amount} chips",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (transaction.type == "Buy-in") Green80 else Amber80
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            ActionRow(
+                icon = Icons.Default.Edit,
+                label = "Edit ${transaction.type}",
+                iconTint = Gold,
+                onClick = {
+                    onDismiss()
+                    onEdit()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ActionRow(
+                icon = Icons.Default.Delete,
+                label = "Delete ${transaction.type}",
+                iconTint = LoseRed,
+                textColor = LoseRed,
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditTransactionBottomSheet(
     transaction: TransactionItem,
     viewModel: TableDetailViewModel,
     onDismiss: () -> Unit
@@ -2231,161 +2424,340 @@ fun EditTransactionDialog(
     var amount by remember { mutableStateOf(transaction.amount.toString()) }
     var note by remember { mutableStateOf(transaction.note ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
+    val amountLong = amount.toLongOrNull() ?: 0L
+    val isValid = amountLong > 0L
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Edit ${transaction.type}") },
-        text = {
-            Column {
-                Text(
-                    text = "Player: ${transaction.playerName}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it.filter { c -> c.isDigit() } },
-                    label = { Text("Chip Amount") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(
+                title = "EDIT ${transaction.type.uppercase()}",
+                suit = if (transaction.type == "Buy-in") "♠" else "♦"
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground.copy(alpha = 0.6f))
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(20L, 50L, 100L, 200L).forEach { value ->
-                        SuggestionChip(
-                            onClick = { amount = value.toString() },
-                            label = { Text("+$value") }
+                    Column {
+                        Text(
+                            text = "Player",
+                            color = Cream.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Text(
+                            text = transaction.playerName,
+                            color = Cream,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                    Text(
+                        text = transaction.type,
+                        color = if (transaction.type == "Buy-in") Green80 else Amber80,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    singleLine = true
-                )
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val amountLong = amount.toLongOrNull()
-                    if (amountLong == null || amountLong <= 0) {
-                        error = "Amount must be greater than zero"
-                        return@TextButton
-                    }
-                    
-                    if (transaction.type == "Buy-in") {
-                        viewModel.updateBuyIn(
-                            BuyIn(
-                                id = transaction.id,
-                                tableId = transaction.tableId,
-                                playerId = transaction.playerId,
-                                amount = amountLong,
-                                note = note.ifBlank { null },
-                                createdAt = transaction.timestamp
-                            )
-                        )
-                    } else {
-                        viewModel.updateExitRecord(
-                            ExitRecord(
-                                id = transaction.id,
-                                tableId = transaction.tableId,
-                                playerId = transaction.playerId,
-                                amount = amountLong,
-                                note = note.ifBlank { null },
-                                createdAt = transaction.timestamp
-                            )
-                        )
-                    }
-                    onDismiss()
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = amount,
+                onValueChange = { input ->
+                    amount = input.filter { it.isDigit() }
+                    error = null
                 },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Gold
+                label = { Text("Chip Amount", color = Gold) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                isError = error != null,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.5f),
+                    focusedLabelColor = Gold,
+                    unfocusedLabelColor = Cream.copy(alpha = 0.7f),
+                    cursorColor = Gold
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
                 )
-            ) {
-                Text("Save")
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(20L, 50L, 100L, 200L, 500L).forEach { value ->
+                    SuggestionChip(
+                        onClick = { amount = value.toString() },
+                        label = { Text("+$value", color = Gold, fontWeight = FontWeight.Bold) },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = FeltBackground.copy(alpha = 0.8f)
+                        ),
+                        border = SuggestionChipDefaults.suggestionChipBorder(
+                            enabled = true,
+                            borderColor = Gold.copy(alpha = 0.4f)
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (optional)", color = Gold.copy(alpha = 0.8f)) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedLabelColor = Gold,
+                    unfocusedLabelColor = Cream.copy(alpha = 0.6f),
+                    cursorColor = Gold
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (!isValid) {
+                            error = "Amount must be greater than zero"
+                            return@Button
+                        }
+
+                        if (transaction.type == "Buy-in") {
+                            viewModel.updateBuyIn(
+                                BuyIn(
+                                    id = transaction.id,
+                                    tableId = transaction.tableId,
+                                    playerId = transaction.playerId,
+                                    amount = amountLong,
+                                    note = note.ifBlank { null },
+                                    createdAt = transaction.timestamp
+                                )
+                            )
+                        } else {
+                            viewModel.updateExitRecord(
+                                ExitRecord(
+                                    id = transaction.id,
+                                    tableId = transaction.tableId,
+                                    playerId = transaction.playerId,
+                                    amount = amountLong,
+                                    note = note.ifBlank { null },
+                                    createdAt = transaction.timestamp
+                                )
+                            )
+                        }
+                        onDismiss()
+                    },
+                    enabled = isValid,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeleteTransactionDialog(
+fun DeleteTransactionBottomSheet(
     transaction: TransactionItem,
     viewModel: TableDetailViewModel,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Delete ${transaction.type}?") },
-        text = { 
-            Text("Are you sure you want to delete this ${transaction.type.lowercase()} for ${transaction.playerName}?")
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (transaction.type == "Buy-in") {
-                        viewModel.deleteBuyIn(
-                            BuyIn(
-                                id = transaction.id,
-                                tableId = transaction.tableId,
-                                playerId = transaction.playerId,
-                                amount = transaction.amount,
-                                note = transaction.note,
-                                createdAt = transaction.timestamp
-                            )
-                        )
-                    } else {
-                        viewModel.deleteExitRecord(
-                            ExitRecord(
-                                id = transaction.id,
-                                tableId = transaction.tableId,
-                                playerId = transaction.playerId,
-                                amount = transaction.amount,
-                                note = transaction.note,
-                                createdAt = transaction.timestamp
-                            ),
-                            transaction.playerId
-                        )
-                    }
-                    onDismiss()
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
+        containerColor = FeltCard,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Delete")
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE ${transaction.type.uppercase()}?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to delete this ${transaction.type.lowercase()} of ${transaction.amount} chips for ${transaction.playerName}?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = formatTimestamp(transaction.timestamp),
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (transaction.type == "Buy-in") {
+                            viewModel.deleteBuyIn(
+                                BuyIn(
+                                    id = transaction.id,
+                                    tableId = transaction.tableId,
+                                    playerId = transaction.playerId,
+                                    amount = transaction.amount,
+                                    note = transaction.note,
+                                    createdAt = transaction.timestamp
+                                )
+                            )
+                        } else {
+                            viewModel.deleteExitRecord(
+                                ExitRecord(
+                                    id = transaction.id,
+                                    tableId = transaction.tableId,
+                                    playerId = transaction.playerId,
+                                    amount = transaction.amount,
+                                    note = transaction.note,
+                                    createdAt = transaction.timestamp
+                                ),
+                                transaction.playerId
+                            )
+                        }
+                        onDismiss()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
 @Composable

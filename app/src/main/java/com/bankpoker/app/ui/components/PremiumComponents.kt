@@ -628,6 +628,7 @@ fun EditTableBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeleteTableConfirmDialog(
     tableName: String,
@@ -636,33 +637,102 @@ fun DeleteTableConfirmDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = FeltCard,
-        title = {
-            Text("Delete Table?", color = Gold, fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Text(
-                "This permanently deletes \"$tableName\" with $playersCount players and $recordsCount records. Cannot be undone.",
-                color = Cream,
-                style = MaterialTheme.typography.bodyMedium
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.6f))
             )
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = LoseRed)
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(LoseRed.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, LoseRed.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = LoseRed,
+                    modifier = Modifier.size(28.dp)
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Gold)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "DELETE TABLE?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = LoseRed,
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Are you sure you want to permanently delete \"$tableName\" with $playersCount players and $recordsCount records?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Cream.copy(alpha = 0.85f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "This action cannot be undone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.5f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Cream
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LoseRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
