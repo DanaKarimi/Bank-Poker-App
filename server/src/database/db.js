@@ -1,9 +1,22 @@
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
 
-// Database file path: server/bankpoker.db
-const dbPath = path.resolve(__dirname, '../../bankpoker.db');
+// Ensure environment variables are loaded if db.js is loaded standalone
+if (!process.env.DATABASE_PATH) {
+    dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
+
+// Database file path: configurable via DATABASE_PATH, defaults to server/bankpoker.db
+const defaultDbPath = path.resolve(__dirname, '../../bankpoker.db');
+const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : defaultDbPath;
+
+// Ensure database directory exists before connecting
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
 
 // SQLite connection
 const db = new sqlite3.Database(dbPath, (err) => {

@@ -38,7 +38,9 @@ app.use('/api/tables', tableRoutes);
 app.use('/api/sync', syncRoutes);
 
 // Serve Web static files if web/dist exists (single-port production deployment)
-const distPath = path.join(__dirname, '../../web/dist');
+const distPath = process.env.CLIENT_DIST_PATH
+    ? path.resolve(process.env.CLIENT_DIST_PATH)
+    : path.join(__dirname, '../../web/dist');
 if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
     // SPA fallback for client-side routing (Express 5 compatible)

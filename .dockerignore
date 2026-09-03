@@ -1,0 +1,40 @@
+# Git & IDEs
+.git
+.gitignore
+.gradle
+.idea
+.vscode
+*.swp
+*.swo
+
+# Android project files
+app/
+
+# Node dependencies & local builds
+node_modules/
+server/node_modules/
+web/node_modules/
+web/dist/
+
+# SQLite databases & persistent data
+server/*.db
+server/*.sqlite
+data/
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Environment & Secrets
+.env
+.env.local
+server/.env
+*.env.*
+!web/.env.development
+!.env.example
+
+# Logs & OS artifacts
+*.log
+Thumbs.db
+.DS_Store
