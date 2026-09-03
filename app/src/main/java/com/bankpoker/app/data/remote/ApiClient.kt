@@ -63,8 +63,9 @@ object ApiClient {
     }
 
     private fun createRetrofit(okHttpClient: OkHttpClient, baseUrl: String): Retrofit {
+        val formattedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()
-            .baseUrl(baseUrl)
+            .baseUrl(formattedBaseUrl)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
