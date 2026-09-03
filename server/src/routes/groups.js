@@ -441,24 +441,18 @@ router.get('/by-invite/:code', authenticateToken, async (req, res) => {
         const groupId = group.id;
         const userId = req.user.id;
 
-        // Query all players in tables of this group
-        const groupPlayers = await all(
-            `SELECT p.id, p.user_id 
-             FROM players p
-             JOIN tables t ON p.table_id = t.id
-             WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0`,
-            [groupId]
-        );
-
-        const hasUnclaimedPlayers = groupPlayers.some(p => p.user_id === null || p.user_id === undefined || p.user_id === '');
-        const userHasPlayer = groupPlayers.some(p => p.user_id && p.user_id === userId);
+        const players = await getGroupUniquePlayers(groupId, userId);
+        const hasUnclaimedPlayers = players.some(p => !p.isClaimed);
+        const userHasPlayer = players.some(p => p.isMe);
+        const claimedPlayer = players.find(p => p.isMe);
 
         return res.status(200).json({
             groupId: group.id,
             name: group.name,
             mode: group.mode || 'OFFLINE',
             hasUnclaimedPlayers,
-            userHasPlayer
+            userHasPlayer,
+            claimedPlayerName: claimedPlayer ? claimedPlayer.name : null
         });
     } catch (error) {
         console.error('Error fetching group by invite code:', error);
@@ -818,18 +812,67 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
 });
 
 /**
- * Helper to calculate all player balances in a group
+ * Helper to get deduplicated player identities for a group.
+ * Matches offline semantics:
+ * - Deduplicate by COALESCE(user_id, lower(trim(name)))
+ * - Representative row = the row with MAX(created_at) for that identity
+ * - Returns id, name, status, user_id, balance, totalBuyIns, totalExits, etc.
+ * - Balances and history are aggregated across ALL rows of that identity.
  */
-async function calculateGroupBalances(groupId) {
-    const playerRows = await all(
-        `SELECT DISTINCT p.name, p.user_id, u.username
+async function getGroupUniquePlayers(groupId, currentUserId = null) {
+    const rawPlayers = await all(
+        `SELECT p.id, p.table_id, p.user_id, p.name, p.status, p.created_at, p.entry_fee_paid,
+                u.username as user_username
          FROM players p
          JOIN tables t ON p.table_id = t.id
          LEFT JOIN users u ON p.user_id = u.id
-         WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0`,
+         WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0
+         ORDER BY p.created_at DESC`,
         [groupId]
     );
 
+    // Build map of lower(trim(name)) -> user_id for players who have a claimed user_id
+    const nameToUserId = new Map();
+    for (const p of rawPlayers) {
+        if (p.user_id && p.name) {
+            const clean = p.name.trim().toLowerCase();
+            if (!nameToUserId.has(clean)) {
+                nameToUserId.set(clean, p.user_id);
+            }
+        }
+    }
+
+    // Group rows by identity: COALESCE(user_id, lower(trim(name)))
+    const identityMap = new Map();
+
+    for (const p of rawPlayers) {
+        const cleanName = (p.name || '').trim().toLowerCase();
+        const effectiveUserId = p.user_id || nameToUserId.get(cleanName) || null;
+        const identityKey = effectiveUserId ? `user:${effectiveUserId}` : `name:${cleanName}`;
+
+        if (!identityMap.has(identityKey)) {
+            identityMap.set(identityKey, {
+                repRow: p, // first row is MAX(created_at) because ORDER BY p.created_at DESC
+                effectiveUserId,
+                rows: [p],
+                playerIds: [p.id],
+                names: new Set([p.name.trim()])
+            });
+        } else {
+            const entry = identityMap.get(identityKey);
+            entry.rows.push(p);
+            entry.playerIds.push(p.id);
+            entry.names.add(p.name.trim());
+            if (!entry.effectiveUserId && effectiveUserId) {
+                entry.effectiveUserId = effectiveUserId;
+            }
+            if (p.created_at > entry.repRow.created_at) {
+                entry.repRow = p;
+            }
+        }
+    }
+
+    // Also check players from payments table
     const paymentPlayerRows = await all(
         `SELECT DISTINCT from_player as name FROM payments WHERE group_id = ? AND is_deleted = 0
          UNION
@@ -837,77 +880,141 @@ async function calculateGroupBalances(groupId) {
         [groupId, groupId]
     );
 
-    const playerMap = new Map();
-    for (const r of playerRows) {
-        if (!playerMap.has(r.name)) {
-            playerMap.set(r.name, {
-                userId: r.user_id || null,
-                username: r.name
-            });
-        }
-    }
     for (const r of paymentPlayerRows) {
-        if (!playerMap.has(r.name)) {
-            playerMap.set(r.name, {
-                userId: null,
-                username: r.name
+        const cleanName = (r.name || '').trim().toLowerCase();
+        if (!cleanName) continue;
+        const effectiveUserId = nameToUserId.get(cleanName) || null;
+        const identityKey = effectiveUserId ? `user:${effectiveUserId}` : `name:${cleanName}`;
+
+        if (!identityMap.has(identityKey)) {
+            const placeholderRow = {
+                id: null,
+                table_id: null,
+                user_id: effectiveUserId,
+                name: r.name.trim(),
+                status: 'ACTIVE',
+                created_at: 0,
+                entry_fee_paid: 0,
+                user_username: null
+            };
+            identityMap.set(identityKey, {
+                repRow: placeholderRow,
+                effectiveUserId,
+                rows: [],
+                playerIds: [],
+                names: new Set([r.name.trim()])
             });
+        } else {
+            identityMap.get(identityKey).names.add(r.name.trim());
         }
     }
 
-    const balances = [];
-    for (const [name, info] of playerMap.entries()) {
-        const buyInsRow = await get(
-            `SELECT COALESCE(SUM(b.amount), 0) as total_buy_ins
-             FROM buy_ins b
-             JOIN players p ON b.player_id = p.id
-             JOIN tables t ON p.table_id = t.id
-             WHERE t.group_id = ? AND p.name = ? AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
-            [groupId, name]
-        );
-        const totalBuyIns = buyInsRow ? Number(buyInsRow.total_buy_ins) : 0;
+    // Pre-fetch all buy-ins and exits for this group
+    const groupBuyIns = await all(
+        `SELECT b.player_id, COALESCE(SUM(b.amount), 0) as total
+         FROM buy_ins b
+         JOIN players p ON b.player_id = p.id
+         JOIN tables t ON p.table_id = t.id
+         WHERE t.group_id = ? AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0
+         GROUP BY b.player_id`,
+        [groupId]
+    );
+    const buyInMap = new Map();
+    for (const b of groupBuyIns) {
+        buyInMap.set(b.player_id, Number(b.total) || 0);
+    }
 
-        const exitsRow = await get(
-            `SELECT COALESCE(SUM(e.amount), 0) as total_exits
-             FROM exit_records e
-             JOIN players p ON e.player_id = p.id
-             JOIN tables t ON p.table_id = t.id
-             WHERE t.group_id = ? AND p.name = ? AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
-            [groupId, name]
-        );
-        const totalExits = exitsRow ? Number(exitsRow.total_exits) : 0;
+    const groupExits = await all(
+        `SELECT e.player_id, COALESCE(SUM(e.amount), 0) as total
+         FROM exit_records e
+         JOIN players p ON e.player_id = p.id
+         JOIN tables t ON p.table_id = t.id
+         WHERE t.group_id = ? AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0
+         GROUP BY e.player_id`,
+        [groupId]
+    );
+    const exitMap = new Map();
+    for (const e of groupExits) {
+        exitMap.set(e.player_id, Number(e.total) || 0);
+    }
 
-        const sentRow = await get(
-            `SELECT COALESCE(SUM(amount), 0) as sent
-             FROM payments
-             WHERE group_id = ? AND from_player = ? AND is_deleted = 0`,
-            [groupId, name]
-        );
-        const paymentsSent = sentRow ? Number(sentRow.sent) : 0;
+    const groupPayments = await all(
+        `SELECT from_player, to_player, COALESCE(amount, 0) as amount
+         FROM payments
+         WHERE group_id = ? AND is_deleted = 0`,
+        [groupId]
+    );
 
-        const recRow = await get(
-            `SELECT COALESCE(SUM(amount), 0) as received
-             FROM payments
-             WHERE group_id = ? AND to_player = ? AND is_deleted = 0`,
-            [groupId, name]
-        );
-        const paymentsReceived = recRow ? Number(recRow.received) : 0;
+    const uniquePlayers = [];
+
+    for (const [, entry] of identityMap.entries()) {
+        const { repRow, effectiveUserId, rows, playerIds, names } = entry;
+
+        let totalBuyIns = 0;
+        let totalExits = 0;
+        for (const pid of playerIds) {
+            totalBuyIns += (buyInMap.get(pid) || 0);
+            totalExits += (exitMap.get(pid) || 0);
+        }
+
+        const nameList = Array.from(names).map(n => n.toLowerCase());
+        let paymentsSent = 0;
+        let paymentsReceived = 0;
+        for (const pm of groupPayments) {
+            const fromLower = (pm.from_player || '').trim().toLowerCase();
+            const toLower = (pm.to_player || '').trim().toLowerCase();
+            if (nameList.includes(fromLower)) {
+                paymentsSent += Number(pm.amount) || 0;
+            }
+            if (nameList.includes(toLower)) {
+                paymentsReceived += Number(pm.amount) || 0;
+            }
+        }
 
         const balance = (totalExits - totalBuyIns) + (paymentsSent - paymentsReceived);
+        const isMe = Boolean(currentUserId && effectiveUserId && String(effectiveUserId) === String(currentUserId));
 
-        balances.push({
-            userId: info.userId,
-            username: info.username,
+        uniquePlayers.push({
+            id: repRow.id,
+            name: repRow.name.trim(),
+            status: repRow.status || 'ACTIVE',
+            userId: effectiveUserId,
+            user_id: effectiveUserId,
+            username: repRow.user_username || repRow.name.trim(),
+            isClaimed: Boolean(effectiveUserId),
+            isMe: isMe,
+            createdAt: repRow.created_at,
+            created_at: repRow.created_at,
+            sessionCount: rows.length,
             totalBuyIns,
+            total_buy_ins: totalBuyIns,
             totalExits,
+            total_exits: totalExits,
             paymentsSent,
             paymentsReceived,
             balance
         });
     }
 
-    balances.sort((a, b) => b.balance - a.balance);
-    return balances;
+    return uniquePlayers;
+}
+
+/**
+ * Helper to calculate all player balances in a group (deduplicated)
+ */
+async function calculateGroupBalances(groupId, currentUserId = null) {
+    const players = await getGroupUniquePlayers(groupId, currentUserId);
+    return players.map(p => ({
+        userId: p.userId,
+        username: p.name,
+        name: p.name,
+        totalBuyIns: p.totalBuyIns,
+        totalExits: p.totalExits,
+        paymentsSent: p.paymentsSent,
+        paymentsReceived: p.paymentsReceived,
+        balance: p.balance,
+        isMe: p.isMe
+    })).sort((a, b) => b.balance - a.balance);
 }
 
 /**
@@ -918,27 +1025,39 @@ async function calculateGroupBalances(groupId) {
 router.get('/:id/balances', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
+        const userId = req.user?.id;
 
-        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
 
         const synced = await all(
             'SELECT * FROM synced_balances WHERE group_id = ? ORDER BY balance DESC',
-            [groupId]
+            [group.id]
         );
 
         if (synced && synced.length > 0) {
-            const balances = synced.map(s => ({
-                userId: s.user_id,
-                username: s.username,
-                balance: Number(s.balance) || 0
-            }));
+            // Deduplicate synced_balances by COALESCE(user_id, lower(trim(username)))
+            const syncedMap = new Map();
+            for (const s of synced) {
+                const nameKey = (s.username || '').trim().toLowerCase();
+                const key = s.user_id ? `user:${s.user_id}` : `name:${nameKey}`;
+                if (!syncedMap.has(key)) {
+                    syncedMap.set(key, {
+                        userId: s.user_id,
+                        username: (s.username || '').trim(),
+                        name: (s.username || '').trim(),
+                        balance: Number(s.balance) || 0,
+                        isMe: Boolean(userId && s.user_id && String(s.user_id) === String(userId))
+                    });
+                }
+            }
+            const balances = Array.from(syncedMap.values()).sort((a, b) => b.balance - a.balance);
             return res.status(200).json({ balances });
         }
 
-        const balances = await calculateGroupBalances(groupId);
+        const balances = await calculateGroupBalances(group.id, userId);
         return res.status(200).json({ balances });
     } catch (error) {
         console.error('Error fetching group balances:', error);
@@ -1231,47 +1350,25 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
 });
 
 /**
- * GET /api/groups/:id/players-list
+ * GET /api/groups/:id/players-list and GET /api/groups/:id/players
  * (Requires Auth)
- * Return list of player identities in this group with claim status
+ * Return list of player identities in this group with claim status and aggregate balance
  */
-router.get('/:id/players-list', authenticateToken, async (req, res) => {
+const handleGetGroupPlayersList = async (req, res) => {
     try {
         const groupId = req.params.id;
+        const userId = req.user?.id;
 
-        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        const rawPlayers = await all(
-            `SELECT p.id, p.name, p.user_id, p.table_id
-             FROM players p
-             JOIN tables t ON p.table_id = t.id
-             WHERE t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0
-             ORDER BY p.name ASC, p.created_at ASC`,
-            [groupId]
-        );
+        const players = await getGroupUniquePlayers(group.id, userId);
+        // Sort players alphabetically by name for clear roster selection
+        players.sort((a, b) => a.name.localeCompare(b.name));
 
-        const playerMap = new Map();
-        for (const p of rawPlayers) {
-            const name = p.name.trim();
-            if (!playerMap.has(name)) {
-                playerMap.set(name, {
-                    id: p.id,
-                    name: name,
-                    isClaimed: Boolean(p.user_id)
-                });
-            } else {
-                if (p.user_id) {
-                    playerMap.get(name).isClaimed = true;
-                }
-            }
-        }
-
-        const players = Array.from(playerMap.values());
-        const userId = req.user?.id;
-        const userHasClaimed = rawPlayers.some(p => p.user_id && p.user_id === userId);
+        const userHasClaimed = players.some(p => p.isMe);
         const hasUnclaimedPlayers = players.some(p => !p.isClaimed);
 
         return res.status(200).json({
@@ -1285,12 +1382,16 @@ router.get('/:id/players-list', authenticateToken, async (req, res) => {
         console.error('Error fetching group players list:', error);
         return res.status(500).json({ error: 'Internal server error while fetching players list' });
     }
-});
+};
+
+router.get('/:id/players-list', authenticateToken, handleGetGroupPlayersList);
+router.get('/:id/players', authenticateToken, handleGetGroupPlayersList);
 
 /**
  * POST /api/groups/:id/claim-player
  * (Requires Auth)
- * Claim an existing player record in an offline-to-online converted group
+ * Claim an existing player record in an offline-to-online converted group.
+ * Allows safe RE-CLAIM by unlinking user_id from previously claimed rows.
  */
 router.post('/:id/claim-player', authenticateToken, async (req, res) => {
     try {
@@ -1302,7 +1403,7 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'playerId or playerName is required' });
         }
 
-        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
@@ -1313,7 +1414,7 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
                 `SELECT p.* FROM players p
                  JOIN tables t ON p.table_id = t.id
                  WHERE t.group_id = ? AND p.id = ? AND p.is_deleted = 0 AND t.is_deleted = 0`,
-                [groupId, playerId]
+                [group.id, playerId]
             );
         }
 
@@ -1321,9 +1422,9 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
             targetPlayer = await get(
                 `SELECT p.* FROM players p
                  JOIN tables t ON p.table_id = t.id
-                 WHERE t.group_id = ? AND p.name = ? AND p.is_deleted = 0 AND t.is_deleted = 0
-                 ORDER BY p.created_at ASC LIMIT 1`,
-                [groupId, playerName.trim()]
+                 WHERE t.group_id = ? AND LOWER(TRIM(p.name)) = LOWER(TRIM(?)) AND p.is_deleted = 0 AND t.is_deleted = 0
+                 ORDER BY p.created_at DESC LIMIT 1`,
+                [group.id, playerName.trim()]
             );
         }
 
@@ -1331,33 +1432,78 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Player identity not found in this group' });
         }
 
-        if (targetPlayer.user_id && targetPlayer.user_id !== userId) {
+        const targetName = targetPlayer.name.trim();
+
+        // Check if this player identity has already been claimed by another user
+        const claimedByOther = await get(
+            `SELECT p.id, p.user_id FROM players p
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND LOWER(TRIM(p.name)) = LOWER(TRIM(?))
+               AND p.user_id IS NOT NULL AND p.user_id != ?
+               AND p.is_deleted = 0 AND t.is_deleted = 0
+             LIMIT 1`,
+            [group.id, targetName, userId]
+        );
+
+        if (claimedByOther) {
             return res.status(400).json({ error: 'This player identity has already been claimed by another user' });
         }
 
         const now = Date.now();
 
+        // RE-CLAIM: If user already claimed another player identity in this group, unlink the old one
+        await run(
+            `UPDATE players
+             SET user_id = NULL, updated_at = ?
+             WHERE id IN (
+                 SELECT p.id FROM players p
+                 JOIN tables t ON p.table_id = t.id
+                 WHERE t.group_id = ? AND p.user_id = ? AND LOWER(TRIM(p.name)) != LOWER(TRIM(?))
+                   AND p.is_deleted = 0 AND t.is_deleted = 0
+             )`,
+            [now, group.id, userId, targetName]
+        );
+
+        // Set user_id on ALL rows of the new identity in this group
         await run(
             `UPDATE players
              SET user_id = ?, updated_at = ?
              WHERE id IN (
                  SELECT p.id FROM players p
                  JOIN tables t ON p.table_id = t.id
-                 WHERE t.group_id = ? AND p.name = ? AND (p.user_id IS NULL OR p.user_id = ?)
+                 WHERE t.group_id = ? AND LOWER(TRIM(p.name)) = LOWER(TRIM(?))
+                   AND p.is_deleted = 0 AND t.is_deleted = 0
              )`,
-            [userId, now, groupId, targetPlayer.name, userId]
+            [userId, now, group.id, targetName]
         );
 
+        // Also update synced_balances if present
+        await run(
+            `UPDATE synced_balances
+             SET user_id = NULL, updated_at = ?
+             WHERE group_id = ? AND user_id = ? AND LOWER(TRIM(username)) != LOWER(TRIM(?))`,
+            [now, group.id, userId, targetName]
+        );
+        await run(
+            `UPDATE synced_balances
+             SET user_id = ?, updated_at = ?
+             WHERE group_id = ? AND LOWER(TRIM(username)) = LOWER(TRIM(?))`,
+            [userId, now, group.id, targetName]
+        );
+
+        // Ensure user is in group_members
         await run(
             `INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at)
              VALUES (?, ?, ?)`,
-            [userId, groupId, now]
+            [userId, group.id, now]
         );
 
         return res.status(200).json({
             message: 'Player claimed successfully',
             playerId: targetPlayer.id,
-            playerName: targetPlayer.name
+            playerName: targetName,
+            userId: userId,
+            isMe: true
         });
     } catch (error) {
         console.error('Error claiming player:', error);

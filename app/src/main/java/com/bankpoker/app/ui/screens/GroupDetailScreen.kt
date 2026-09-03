@@ -74,7 +74,17 @@ fun GroupDetailScreen(
     val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
-    val balances by viewModel.balances.collectAsState(initial = emptyList())
+    val rawBalances by viewModel.balances.collectAsState(initial = emptyList())
+    val balances = remember(rawBalances) {
+        rawBalances
+            .groupBy { it.playerName.trim().lowercase() }
+            .map { (_, list) ->
+                val rep = list.first()
+                val totalBalance = list.sumOf { it.balance }
+                rep.copy(playerName = rep.playerName.trim(), balance = totalBalance)
+            }
+            .sortedBy { it.balance }
+    }
 
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }

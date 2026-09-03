@@ -93,8 +93,8 @@ const Dashboard = () => {
       setInspectedGroup(groupData);
 
       // Branch logic:
-      // If user already has a player or the group has NO unclaimed players (native online)
-      if (groupData.userHasPlayer || !groupData.hasUnclaimedPlayers) {
+      // If group has NO unclaimed players (native online or fully claimed): join directly
+      if (!groupData.hasUnclaimedPlayers) {
         // Join group directly
         const joinRes = await api.post('/api/groups/join', {
           invite_code: cleanCode,
@@ -105,7 +105,7 @@ const Dashboard = () => {
           navigate(`/group/${groupData.groupId}`);
         }, 800);
       } else {
-        // Group has unclaimed players and user is new to this group -> Go to STEP B (Question)
+        // Group has unclaimed players -> Go to STEP B (Question / Re-claim option)
         setJoinStep('B');
       }
     } catch (err) {
@@ -427,36 +427,84 @@ const Dashboard = () => {
                   <span className="font-bold text-gold-accent text-sm">{inspectedGroup?.name}</span>
                 </div>
 
-                <div className="text-center space-y-1.5 pt-1">
-                  <h3 className="text-base font-black text-cream-text">
-                    Have you played in this group before?
-                  </h3>
-                  <p className="text-xs text-cream-text/65">
-                    If you played before this group went online, claim your previous player identity to restore your balance and game history.
-                  </p>
-                </div>
+                {inspectedGroup?.userHasPlayer ? (
+                  <div className="text-center space-y-1.5 pt-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold-accent/15 border border-gold-accent/40 text-gold-accent text-xs font-bold mb-1">
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Linked as: {inspectedGroup.claimedPlayerName || 'Claimed Player'}</span>
+                    </div>
+                    <h3 className="text-base font-black text-cream-text">
+                      Already in this group
+                    </h3>
+                    <p className="text-xs text-cream-text/65">
+                      You are currently linked to this group. If you claimed the wrong player identity, you can re-claim another one below.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-1.5 pt-1">
+                    <h3 className="text-base font-black text-cream-text">
+                      Have you played in this group before?
+                    </h3>
+                    <p className="text-xs text-cream-text/65">
+                      If you played before this group went online, claim your previous player identity to restore your balance and game history.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleSelectExisting}
-                    className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <UserCheck className="w-4 h-4 text-black shrink-0" />
-                    <span>Yes, I was in this group</span>
-                  </button>
+                  {inspectedGroup?.userHasPlayer ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const joinRes = await api.post('/api/groups/join', {
+                            invite_code: inviteCode.trim().toUpperCase(),
+                          });
+                          setJoinSuccess(joinRes.data?.message || 'Entering group...');
+                          setTimeout(() => {
+                            setIsJoinModalOpen(false);
+                            navigate(`/group/${inspectedGroup.groupId}`);
+                          }, 500);
+                        }}
+                        className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-black shrink-0" />
+                        <span>Enter Group</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setJoinError('');
-                      setJoinStep('D');
-                    }}
-                    className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
-                    <span>No, I'm a new player</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={handleSelectExisting}
+                        className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
+                        <span>Re-claim / Switch Player Identity</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleSelectExisting}
+                        className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-black shrink-0" />
+                        <span>Yes, I was in this group</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJoinError('');
+                          setJoinStep('D');
+                        }}
+                        className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
+                        <span>No, I'm a new player</span>
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 <div className="pt-2 flex justify-start">

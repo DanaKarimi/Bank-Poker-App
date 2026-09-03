@@ -317,12 +317,13 @@ class PokerRepository(
     }
 
     private suspend fun applyToGroupBalance(groupId: String, name: String, delta: Long) {
-        val existing = groupBalanceDao.getBalance(groupId, name)
+        val trimmedName = name.trim()
+        val existing = groupBalanceDao.getBalance(groupId, trimmedName)
         if (existing != null) {
-            groupBalanceDao.updateBalance(existing.copy(balance = existing.balance + delta))
+            groupBalanceDao.updateBalance(existing.copy(playerName = trimmedName, balance = existing.balance + delta))
         } else {
             groupBalanceDao.insertBalance(
-                GroupBalance(UUID.randomUUID().toString(), groupId, name, delta)
+                GroupBalance(UUID.randomUUID().toString(), groupId, trimmedName, delta)
             )
         }
     }
