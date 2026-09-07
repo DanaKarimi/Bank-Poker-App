@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "BankPoker - Poker Ledger & Settlements",
   "short_name": "BankPoker",
   "description": "Poker ledger, real-time buy-ins, cashouts, and smart debt settlements",
@@ -10,10 +10,22 @@
   "orientation": "portrait-primary",
   "icons": [
     {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "/favicon.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

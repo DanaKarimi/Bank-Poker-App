@@ -1,15 +1,22 @@
-﻿const CACHE_NAME = 'bankpoker-v1';
+const CACHE_NAME = 'bankpoker-v2';
 const APP_SHELL = [
   '/',
   '/favicon.svg',
   '/icons.svg',
-  '/manifest.webmanifest'
+  '/manifest.webmanifest',
+  '/icons/icon-180.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL);
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(
+        APP_SHELL.map((url) =>
+          cache.add(url).catch((err) => console.warn('PWA Cache item skipped:', url, err))
+        )
+      );
     })
   );
   self.skipWaiting();
