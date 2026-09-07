@@ -78,3 +78,45 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Web Push Event Handler
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'BankPoker Alert', body: event.data.text() };
+    }
+  }
+
+  const title = data.title || 'BankPoker';
+  const options = {
+    body: data.body || data.message || 'You have a new update in BankPoker',
+    icon: '/icons/icon-192.png',
+    badge: '/favicon.svg',
+    data: data.payload || data,
+    vibrate: [100, 50, 100],
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Notification Click Handler
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/dashboard';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes('/dashboard') && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});

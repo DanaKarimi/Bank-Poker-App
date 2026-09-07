@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api';
+import { subscribeWebPush } from '../utils/webPush';
 
 const AuthContext = createContext(null);
 
@@ -26,6 +27,13 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   }, []);
+
+  // Web push silent registration on login or token change
+  useEffect(() => {
+    if (token) {
+      subscribeWebPush();
+    }
+  }, [token]);
 
   /**
    * Log in user with username and password
