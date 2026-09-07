@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 /**
  * Token manager to securely store and retrieve JWT authentication tokens using SharedPreferences.
  */
-class TokenManager(context: Context) {
+class TokenManager(val context: Context) {
 
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(
         PREFS_NAME,

@@ -84,6 +84,7 @@ class RemoteRepository(
                 val body = response.body()!!
                 body.token?.let { token ->
                     tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
                 }
                 body.user?.let { user ->
                     tokenManager.saveUser(user)
@@ -144,6 +145,7 @@ class RemoteRepository(
                 val body = response.body()!!
                 body.token?.let { token ->
                     tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
                 }
                 body.user?.let { user ->
                     tokenManager.saveUser(user)
@@ -176,6 +178,7 @@ class RemoteRepository(
                 val body = response.body()!!
                 body.token?.let { token ->
                     tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
                 }
                 body.user?.let { user ->
                     tokenManager.saveUser(user)
@@ -950,6 +953,23 @@ class RemoteRepository(
                 Result.success(response.body()!!.settings)
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update settings"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun registerFcmToken(fcmToken: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.registerFcmToken(
+                mapOf("token" to fcmToken, "platform" to "android"),
+                getAuthHeader()
+            )
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to register FCM token"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {

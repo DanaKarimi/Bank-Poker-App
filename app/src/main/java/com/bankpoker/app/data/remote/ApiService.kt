@@ -263,4 +263,10 @@ interface ApiService {
         @Body settings: Map<String, Boolean>,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.NotificationSettingsResponse>
+
+    @POST("api/notifications/fcm-token")
+    suspend fun registerFcmToken(
+        @Body body: Map<String, String>,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 }
