@@ -1,13 +1,13 @@
-﻿{
+{
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "bankpoker-app-placeholder",
-    "storage_bucket": "bankpoker-app-placeholder.appspot.com"
+    "project_number": "549411669855",
+    "project_id": "bankpoker",
+    "storage_bucket": "bankpoker.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef0123456789",
+        "mobilesdk_app_id": "1:549411669855:android:29a3607a3e1ee5a2ff58ea",
         "android_client_info": {
           "package_name": "com.bankpoker.app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyFakePlaceholderKeyForBankPokerBuild"
+          "current_key": "AIzaSyCJCGz08V2_GProWAs0O141TKsjz91-9-c"
         }
       ],
       "services": {
