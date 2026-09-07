@@ -15,7 +15,11 @@ import {
   X,
   UserCheck,
   UserPlus,
+  ArrowRight
 } from 'lucide-react';
+import { UserBadge } from '../components/AvatarSystem';
+import GroupCodeChip from '../components/GroupCodeChip';
+import ProfileModal from '../components/ProfileModal';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -23,6 +27,12 @@ const Dashboard = () => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Profile modal and smart lookup state
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [smartCode, setSmartCode] = useState('');
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [smartError, setSmartError] = useState('');
 
   // Join Group Multi-step Modal State: 'A' (code) | 'B' (question) | 'C' (claim) | 'D' (new)
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -53,6 +63,34 @@ const Dashboard = () => {
   useEffect(() => {
     fetchGroups();
   }, []);
+
+  const handleSmartLookup = async (e) => {
+    e.preventDefault();
+    const clean = smartCode.trim().toUpperCase();
+    if (clean.length < 4) {
+      setSmartError('Please enter a valid 6-character code.');
+      return;
+    }
+    setSmartLoading(true);
+    setSmartError('');
+    try {
+      const res = await api.get(`/api/lookup/${clean}`);
+      const data = res.data;
+      if (data.type === 'GROUP') {
+        openJoinModal();
+        setInviteCode(clean);
+      } else if (data.type === 'TABLE') {
+        navigate(`/table/${data.id}`);
+      } else {
+        navigate(`/group/${data.id}`);
+      }
+    } catch (err) {
+      console.error('Lookup error:', err);
+      setSmartError(err.response?.data?.error || 'Code not found. Please verify code.');
+    } finally {
+      setSmartLoading(false);
+    }
+  };
 
   const openJoinModal = () => {
     setJoinStep('A');
@@ -201,15 +239,26 @@ const Dashboard = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 bg-felt-card px-3 py-1.5 rounded-xl border border-gold-accent/30 text-sm">
-              <span className="text-cream-text/70">Player:</span>
-              <span className="font-bold text-gold-accent">{user?.username}</span>
+          <div className="flex items-center gap-3">
+            <div
+              onClick={() => setIsProfileOpen(true)}
+              className="flex items-center bg-felt-card hover:bg-felt-card/80 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-gold-accent/40 cursor-pointer transition select-none shadow"
+              title="Click to manage profile"
+            >
+              <UserBadge
+                displayName={user?.display_name || user?.username}
+                username={user?.username}
+                avatarId={user?.avatar_id}
+                role={user?.role}
+                isGuest={user?.is_guest}
+                size={34}
+              />
             </div>
 
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-sm font-semibold transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-xs font-semibold transition active:scale-95 cursor-pointer"
+              title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Logout</span>
@@ -258,6 +307,50 @@ const Dashboard = () => {
             <span>{error}</span>
           </div>
         )}
+
+        {/* Smart Single Code Input Card */}
+        <div className="mb-8 p-5 bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-left">
+            <h2 className="text-sm font-black uppercase tracking-wider text-gold-accent flex items-center gap-2 justify-center sm:justify-start">
+              <span>♠</span>
+              <span>Quick Code Join</span>
+            </h2>
+            <p className="text-xs text-cream-text/70 mt-0.5">
+              Enter any 6-character Group Invite Code or Table Code to jump directly in.
+            </p>
+            {smartError && (
+              <p className="text-xs text-red-400 font-semibold mt-1">{smartError}</p>
+            )}
+          </div>
+
+          <form onSubmit={handleSmartLookup} className="flex items-center gap-2 w-full sm:w-auto">
+            <input
+              type="text"
+              value={smartCode}
+              onChange={(e) => {
+                setSmartCode(e.target.value.toUpperCase());
+                if (smartError) setSmartError('');
+              }}
+              placeholder="6-CHAR CODE"
+              maxLength={8}
+              className="px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono font-bold tracking-widest text-sm focus:outline-none focus:border-gold-accent w-full sm:w-44 text-center placeholder-cream-text/40"
+            />
+            <button
+              type="submit"
+              disabled={smartLoading || !smartCode.trim()}
+              className="px-4 py-2.5 bg-gold-accent hover:bg-gold-light text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              {smartLoading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Open</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
         {/* Groups Grid */}
         {loading && groups.length === 0 ? (
@@ -312,10 +405,8 @@ const Dashboard = () => {
                   </div>
 
                   {group.invite_code && (
-                    <div className="flex items-center gap-1.5 text-xs text-cream-text/70 bg-felt-dark/80 px-3 py-1.5 rounded-lg border border-gold-accent/20 w-fit mb-4">
-                      <Key className="w-3.5 h-3.5 text-gold-accent" />
-                      <span>Code:</span>
-                      <span className="font-mono font-bold text-gold-accent">{group.invite_code}</span>
+                    <div className="mb-4">
+                      <GroupCodeChip code={group.invite_code} groupName={group.name} />
                     </div>
                   )}
                 </div>
@@ -637,6 +728,9 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Profile & Identity Modal */}
+      {isProfileOpen && <ProfileModal onClose={() => setIsProfileOpen(false)} />}
     </div>
   );
 };

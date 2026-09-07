@@ -17,6 +17,7 @@ import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
 import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
+import { UserBadge } from '../components/AvatarSystem';
 import {
   ArrowLeft,
   RefreshCw,
@@ -641,16 +642,16 @@ const TableDetail = () => {
                     key={p.id}
                     className="p-3.5 bg-felt-dark rounded-xl border border-gold-accent/20 flex items-center justify-between text-xs"
                   >
-                    <div>
-                      <div className="font-bold text-cream-text flex items-center gap-1.5 text-sm">
-                        <span>{p.name || p.username}</span>
-                        {p.name === user?.username && (
-                          <span className="text-[10px] text-gold-accent font-normal">(You)</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-cream-text/50 mt-0.5">
-                        Joined: {formatDate(p.createdAt || p.created_at)}
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <UserBadge
+                        avatarId={p.avatar_id || p.avatar}
+                        name={p.name || p.display_name || p.username}
+                        username={p.username}
+                        size="md"
+                      />
+                      {(p.name === user?.username || p.username === user?.username) && (
+                        <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">

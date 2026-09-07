@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { getPlayers, sendJoinRequest, getTableActivity } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { UserBadge } from './AvatarSystem';
 
 const TableDetailModal = ({
   isOpen,
@@ -459,16 +460,16 @@ const TableDetailModal = ({
                     key={p.id}
                     className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20 flex items-center justify-between text-xs"
                   >
-                    <div>
-                      <div className="font-bold text-cream-text flex items-center gap-1.5">
-                        <span>{p.name || p.username}</span>
-                        {p.name === user?.username && (
-                          <span className="text-[10px] text-gold-accent font-normal">(You)</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-cream-text/50">
-                        Joined: {formatDate(p.createdAt || p.created_at)}
-                      </div>
+                    <div className="flex items-center gap-2.5">
+                      <UserBadge
+                        avatarId={p.avatar_id || p.avatar}
+                        name={p.name || p.display_name || p.username}
+                        username={p.username}
+                        size="sm"
+                      />
+                      {(p.name === user?.username || p.username === user?.username) && (
+                        <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">

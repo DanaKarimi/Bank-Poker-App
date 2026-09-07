@@ -1,6 +1,7 @@
 import React from 'react';
 import { Users, DollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { UserBadge } from './AvatarSystem';
 
 const BalancesTab = ({ balances = [], loading = false }) => {
   const { user } = useAuth();
@@ -43,7 +44,10 @@ const BalancesTab = ({ balances = [], loading = false }) => {
           const isNegative = balance < 0;
           const isZero = balance === 0;
 
-          const isMe = (user && item.userId === user.id) || item.isMe || (user && item.username?.toLowerCase() === user.username?.toLowerCase());
+          const isMe =
+            (user && item.userId === user.id) ||
+            item.isMe ||
+            (user && item.username?.toLowerCase() === user.username?.toLowerCase());
 
           const balanceColor = isPositive
             ? 'text-[#10b981]'
@@ -60,30 +64,28 @@ const BalancesTab = ({ balances = [], loading = false }) => {
           return (
             <div
               key={item.userId || item.username || idx}
-              className={`bg-felt-card border ${isMe ? 'border-gold-accent shadow-gold-accent/20' : 'border-gold-accent/40'} hover:border-gold-accent/80 rounded-2xl p-4 shadow-lg transition-all duration-150 flex items-center justify-between`}
+              className={`bg-felt-card border ${
+                isMe ? 'border-gold-accent shadow-gold-accent/20' : 'border-gold-accent/40'
+              } hover:border-gold-accent/80 rounded-2xl p-4 shadow-lg transition-all duration-150 flex items-center justify-between gap-3`}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-felt-dark border border-gold-accent/30 flex items-center justify-center font-bold text-xs text-gold-accent">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-felt-dark border border-gold-accent/30 flex items-center justify-center font-bold text-xs text-gold-accent shrink-0">
                   #{idx + 1}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-base text-[#f5f5dc] tracking-tight">
-                      {item.username || item.name || 'Player'}
-                    </h3>
-                    {isMe && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gold-accent text-black shadow-sm">
-                        ME
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-cream-text/50">
-                    {isPositive ? 'In Profit' : isNegative ? 'Owes Money' : 'Settled'}
+                <UserBadge
+                  displayName={item.name || item.username || 'Player'}
+                  username={item.username}
+                  avatarId={item.avatarId || item.avatar_id}
+                  size={38}
+                />
+                {isMe && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gold-accent text-black shadow-sm shrink-0">
+                    ME
                   </span>
-                </div>
+                )}
               </div>
 
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <div className={`text-lg font-black font-mono tracking-tight ${balanceColor}`}>
                   {formattedBalance}
                 </div>

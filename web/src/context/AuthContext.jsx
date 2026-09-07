@@ -46,9 +46,81 @@ export const AuthProvider = ({ children }) => {
   /**
    * Register a new user
    */
-  const register = async (username, password) => {
-    const response = await api.post('/api/auth/register', { username, password });
+  const register = async (username, password, displayName = null, avatarId = null) => {
+    const response = await api.post('/api/auth/register', {
+      username,
+      password,
+      display_name: displayName,
+      avatar_id: avatarId
+    });
     return response.data;
+  };
+
+  /**
+   * Quick 1-tap Guest join
+   */
+  const guestJoin = async (displayName, avatarId = null) => {
+    const response = await api.post('/api/auth/guest', {
+      display_name: displayName,
+      avatar_id: avatarId
+    });
+    const { token: receivedToken, user: receivedUser } = response.data;
+
+    localStorage.setItem('token', receivedToken);
+    localStorage.setItem('user', JSON.stringify(receivedUser));
+
+    setToken(receivedToken);
+    setUser(receivedUser);
+
+    return receivedUser;
+  };
+
+  /**
+   * Permanently activate a guest account
+   */
+  const activateAccount = async (username, password) => {
+    const response = await api.post('/api/auth/activate', { username, password });
+    const { token: receivedToken, user: receivedUser } = response.data;
+
+    localStorage.setItem('token', receivedToken);
+    localStorage.setItem('user', JSON.stringify(receivedUser));
+
+    setToken(receivedToken);
+    setUser(receivedUser);
+
+    return receivedUser;
+  };
+
+  /**
+   * Update profile (display name, avatar, optional username)
+   */
+  const updateProfile = async (displayName, avatarId, username = null) => {
+    const response = await api.put('/api/auth/profile', {
+      display_name: displayName,
+      avatar_id: avatarId,
+      username
+    });
+    const updatedUser = response.data;
+
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+
+    return updatedUser;
+  };
+
+  /**
+   * Refresh current user profile from server
+   */
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await api.get('/api/auth/me');
+      const currentUser = response.data;
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      setUser(currentUser);
+      return currentUser;
+    } catch (err) {
+      console.error('Failed to fetch current user:', err);
+    }
   };
 
   /**
@@ -62,7 +134,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        register,
+        guestJoin,
+        activateAccount,
+        updateProfile,
+        fetchCurrentUser,
+        logout
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
