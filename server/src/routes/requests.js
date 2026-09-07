@@ -539,7 +539,7 @@ router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
         const { groupId, tableId } = req.query;
 
         let joinQuery = `
-            SELECT jr.*, u.username, g.name as group_name, t.name as table_name
+            SELECT jr.*, u.username, u.display_name, u.avatar_id, g.name as group_name, t.name as table_name
             FROM join_requests jr
             JOIN users u ON jr.user_id = u.id
             JOIN groups g ON jr.group_id = g.id
@@ -547,7 +547,7 @@ router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
             WHERE jr.status = 'PENDING'
         `;
         let buyInQuery = `
-            SELECT br.*, u.username, g.name as group_name, t.name as table_name
+            SELECT br.*, u.username, u.display_name, u.avatar_id, g.name as group_name, t.name as table_name
             FROM buy_in_requests br
             JOIN users u ON br.user_id = u.id
             JOIN groups g ON br.group_id = g.id
@@ -555,7 +555,7 @@ router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
             WHERE br.status = 'PENDING'
         `;
         let exitQuery = `
-            SELECT er.*, u.username, g.name as group_name, t.name as table_name
+            SELECT er.*, u.username, u.display_name, u.avatar_id, g.name as group_name, t.name as table_name
             FROM exit_requests er
             JOIN users u ON er.user_id = u.id
             JOIN groups g ON er.group_id = g.id

@@ -18,6 +18,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.DELETE
 import retrofit2.http.Path
 import retrofit2.http.Query
 import com.bankpoker.app.data.remote.dto.GuestRequest
@@ -216,4 +217,23 @@ interface ApiService {
         @Body request: com.google.gson.JsonObject,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @DELETE("api/tables/{tableId}/players/{playerId}")
+    suspend fun deleteTablePlayer(
+        @Path("tableId") tableId: String,
+        @Path("playerId") playerId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @POST("api/tables/quick")
+    suspend fun createQuickTable(
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
+
+    @POST("api/tables/{tableId}/publish")
+    suspend fun publishTable(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
 }

@@ -829,6 +829,64 @@ class RemoteRepository(
         }
     }
 
+    suspend fun deleteTablePlayer(tableId: String, playerId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteTablePlayer(tableId, playerId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to delete player (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createQuickTable(
+        name: String,
+        chipValue: Long?,
+        entryFee: Long?,
+        playerNames: List<String> = emptyList()
+    ): Result<JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("name", name)
+                if (chipValue != null) addProperty("chipValue", chipValue)
+                if (entryFee != null) addProperty("entryFee", entryFee)
+                val arr = com.google.gson.JsonArray()
+                playerNames.forEach { arr.add(it) }
+                add("playerNames", arr)
+            }
+            val response = apiService.createQuickTable(body, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to create quick table (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun publishTable(tableId: String): Result<JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.publishTable(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to publish table (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {

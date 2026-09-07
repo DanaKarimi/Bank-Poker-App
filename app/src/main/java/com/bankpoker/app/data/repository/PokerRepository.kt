@@ -84,6 +84,40 @@ class PokerRepository(
         playerDao.setAllPlayersExitedForTable(tableId)
     }
 
+    suspend fun updateTableCode(tableId: String, code: String, publishedAt: Long) {
+        pokerTableDao.updateTableCode(tableId, code, publishedAt)
+    }
+
+    suspend fun deletePlayer(playerId: String) {
+        playerDao.deletePlayer(playerId)
+    }
+
+    suspend fun enqueueOutbox(operationType: String, targetId: String, payloadJson: String) {
+        val outbox = database?.outboxDao() ?: return
+        val record = com.bankpoker.app.data.local.entity.OutboxRecord(
+            id = UUID.randomUUID().toString(),
+            operationType = operationType,
+            targetId = targetId,
+            payloadJson = payloadJson,
+            createdAt = System.currentTimeMillis(),
+            attempts = 0,
+            status = "PENDING"
+        )
+        outbox.insertOperation(record)
+    }
+
+    suspend fun getPendingOutbox(): List<com.bankpoker.app.data.local.entity.OutboxRecord> {
+        return database?.outboxDao()?.getPendingOperations() ?: emptyList()
+    }
+
+    suspend fun removeOutboxOperation(id: String) {
+        database?.outboxDao()?.deleteOperation(id)
+    }
+
+    suspend fun updateOutboxOperation(record: com.bankpoker.app.data.local.entity.OutboxRecord) {
+        database?.outboxDao()?.updateOperation(record)
+    }
+
 
     // Player operations
     fun getPlayersByTableId(tableId: String): Flow<List<Player>> = playerDao.getPlayersByTableId(tableId)

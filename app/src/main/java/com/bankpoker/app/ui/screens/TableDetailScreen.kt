@@ -117,6 +117,8 @@ fun TableDetailScreen(
     var showCloseTableDialog by remember { mutableStateOf(false) }
     var selectedPlayerForBuyIn by remember { mutableStateOf<Player?>(null) }
     var selectedPlayerForExit by remember { mutableStateOf<Player?>(null) }
+    var playerToDelete by remember { mutableStateOf<Player?>(null) }
+    var playerDeleteError by remember { mutableStateOf<String?>(null) }
     
     val coroutineScope = rememberCoroutineScope()
 
@@ -231,6 +233,50 @@ fun TableDetailScreen(
                     chipValue = uiState.table?.chipValue
                 )
 
+                if (!uiState.table?.code.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        GroupCodeChip(
+                            code = uiState.table!!.code!!,
+                            groupName = uiState.table?.name ?: "Table"
+                        )
+                    }
+                } else if (uiState.table?.status == "ACTIVE") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.publishTable { success, code, errorMsg ->
+                                    if (success) {
+                                        Toast.makeText(context, "Table published! Code: $code", Toast.LENGTH_SHORT).show()
+                                    } else if (errorMsg != null) {
+                                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = FeltCard,
+                                contentColor = Gold
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Publish / Share Table", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 HorizontalPagerTabs(
                     onAddPlayer = { showAddPlayerDialog = true },
                     onBuyInClick = { player ->
@@ -240,6 +286,14 @@ fun TableDetailScreen(
                     onExitClick = { player ->
                         selectedPlayerForExit = player
                         showExitDialog = true
+                    },
+                    onDeletePlayer = { player ->
+                        val playerBuyIns = buyIns.filter { it.playerId == player.id }.sumOf { it.amount }
+                        if (playerBuyIns > 0) {
+                            playerDeleteError = "Cannot remove player who has already bought in. Settle their stack with an Exit transaction first."
+                        } else {
+                            playerToDelete = player
+                        }
                     },
                     players = players,
                     buyIns = buyIns,
@@ -331,6 +385,62 @@ fun TableDetailScreen(
                 }
                 showCloseTableDialog = false
             }
+        )
+    }
+
+    if (playerDeleteError != null) {
+        AlertDialog(
+            onDismissRequest = { playerDeleteError = null },
+            title = {
+                Text("Cannot Remove Player", color = LoseRed, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(playerDeleteError!!, color = Cream)
+            },
+            confirmButton = {
+                TextButton(onClick = { playerDeleteError = null }) {
+                    Text("OK", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    if (playerToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { playerToDelete = null },
+            title = {
+                Text("Remove Player", color = Gold, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Are you sure you want to remove \"${playerToDelete!!.name}\" from this table? They have 0 buy-ins and will be completely removed.", color = Cream)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val p = playerToDelete!!
+                        playerToDelete = null
+                        viewModel.deletePlayer(p.id) { success, msg ->
+                            if (success) {
+                                Toast.makeText(context, "Player removed", Toast.LENGTH_SHORT).show()
+                            } else if (msg != null) {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LoseRed, contentColor = Color.White)
+                ) {
+                    Text("Remove", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { playerToDelete = null }) {
+                    Text("Cancel", color = Cream.copy(alpha = 0.7f))
+                }
+            },
+            containerColor = FeltCard,
+            shape = RoundedCornerShape(16.dp)
         )
     }
 }
@@ -439,7 +549,8 @@ fun HorizontalPagerTabs(
     viewModel: TableDetailViewModel,
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onDeletePlayer: ((Player) -> Unit)? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -485,6 +596,7 @@ fun HorizontalPagerTabs(
                     onAddPlayer = onAddPlayer,
                     onBuyInClick = onBuyInClick,
                     onExitClick = onExitClick,
+                    onDeletePlayer = onDeletePlayer,
                     isTableActive = isTableActive,
                     tableHasEntryFee = tableHasEntryFee,
                     viewModel = viewModel,
@@ -520,7 +632,8 @@ fun PlayersTab(
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
     viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onDeletePlayer: ((Player) -> Unit)? = null
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -642,7 +755,8 @@ fun PlayersTab(
                             onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
                                 { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
                             } else null,
-                            onPlayerClick = onPlayerClick
+                            onPlayerClick = onPlayerClick,
+                            onDeleteClick = if (isTableActive && onDeletePlayer != null) { { onDeletePlayer(player) } } else null
                         )
                     }
                 }
@@ -681,7 +795,8 @@ fun PlayerCard(
     rank: Int = 0,
     tableHasEntryFee: Boolean = false,
     onToggleEntryFee: (() -> Unit)? = null,
-    onPlayerClick: ((String) -> Unit)? = null
+    onPlayerClick: ((String) -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null
 ) {
     val rankBorderColor = when (rank) {
         1 -> Gold
@@ -828,6 +943,21 @@ fun PlayerCard(
                             text = "chips",
                             style = MaterialTheme.typography.labelSmall,
                             color = Cream.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+
+                if (isTableActive && onDeleteClick != null) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Remove Player",
+                            tint = LoseRed.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

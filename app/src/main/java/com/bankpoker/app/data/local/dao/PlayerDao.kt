@@ -45,6 +45,9 @@ interface PlayerDao {
     @Query("UPDATE players SET status = 'EXITED' WHERE tableId = :tableId")
     suspend fun setAllPlayersExitedForTable(tableId: String)
 
+    @Query("DELETE FROM players WHERE id = :playerId")
+    suspend fun deletePlayer(playerId: String)
+
     @Query("DELETE FROM players")
     suspend fun deleteAllPlayers()
 

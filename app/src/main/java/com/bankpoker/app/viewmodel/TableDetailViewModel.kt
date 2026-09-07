@@ -455,6 +455,67 @@ class TableDetailViewModel(
             }
         }
     }
+
+    fun deletePlayer(playerId: String, onResult: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            val buyInsTotal = repository.getTotalBuyInsForPlayer(playerId)
+            if (buyInsTotal > 0L) {
+                onResult?.invoke(false, "Cannot remove player who has already bought in. Settle their stack with an Exit transaction first.")
+                return@launch
+            }
+
+            if (isTableOnline()) {
+                val remoteResult = remoteRepository?.deleteTablePlayer(tableId, playerId)
+                if (remoteResult != null && remoteResult.isSuccess) {
+                    repository.deletePlayer(playerId)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                } else {
+                    val payload = com.google.gson.JsonObject().apply {
+                        addProperty("playerId", playerId)
+                    }
+                    repository.enqueueOutbox("DELETE_PLAYER", tableId, payload.toString())
+                    repository.deletePlayer(playerId)
+                    loadTableData()
+                    onRefreshCounts?.invoke()
+                    onResult?.invoke(true, null)
+                }
+            } else {
+                repository.deletePlayer(playerId)
+                loadTableData()
+                onRefreshCounts?.invoke()
+                onResult?.invoke(true, null)
+            }
+        }
+    }
+
+    fun publishTable(onResult: ((Boolean, String?, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            if (remoteRepository != null) {
+                val result = remoteRepository.publishTable(tableId)
+                if (result.isSuccess) {
+                    val resObj = result.getOrNull()
+                    val code = resObj?.get("code")?.asString
+                    val pubAt = resObj?.get("published_at")?.asLong ?: System.currentTimeMillis()
+                    if (!code.isNullOrBlank()) {
+                        repository.updateTableCode(tableId, code, pubAt)
+                        loadTableData()
+                        onResult?.invoke(true, code, null)
+                    } else {
+                        onResult?.invoke(false, null, "Server did not return a table code")
+                    }
+                } else {
+                    val err = result.exceptionOrNull()?.message ?: "Failed to publish table"
+                    repository.enqueueOutbox("PUBLISH_TABLE", tableId, "{}")
+                    onResult?.invoke(false, null, err)
+                }
+            } else {
+                repository.enqueueOutbox("PUBLISH_TABLE", tableId, "{}")
+                onResult?.invoke(false, null, "Offline: publish queued")
+            }
+        }
+    }
 }
 
 data class TableDetailUiState(
