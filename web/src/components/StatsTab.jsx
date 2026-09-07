@@ -10,16 +10,27 @@ const StatsTab = ({
   loading = false,
   onRefresh = null,
 }) => {
-  const [rows, setRows] = useState(settlement || []);
+  const deduplicateSettlement = (list) => {
+    if (!Array.isArray(list)) return [];
+    const map = new Map();
+    list.forEach((item) => {
+      const payer = (item.debtorName || item.payerName || item.fromPlayer || '').trim().toLowerCase();
+      const receiver = (item.creditorName || item.receiverName || item.toPlayer || '').trim().toLowerCase();
+      const key = item.id || `${payer}->${receiver}->${item.amount}`;
+      map.set(key, item);
+    });
+    return Array.from(map.values());
+  };
+
+  const [rows, setRows] = useState(() => deduplicateSettlement(settlement || []));
   const [fetchLoading, setFetchLoading] = useState(false);
 
   useEffect(() => {
-    setRows(settlement || []);
+    setRows(deduplicateSettlement(settlement || []));
   }, [settlement]);
 
   useEffect(() => {
     if (groupId) {
-      console.log("Fetching settlement for group:", groupId);
       setFetchLoading(true);
       Promise.allSettled([
         getGroupSettlementPlan(groupId),
@@ -27,8 +38,7 @@ const StatsTab = ({
       ]).then(([settleRes]) => {
         if (settleRes.status === 'fulfilled') {
           const list = settleRes.value.data?.settlement || [];
-          console.log("Received rows:", list.length);
-          setRows(list);
+          setRows(deduplicateSettlement(list));
         }
       }).catch((err) => {
         console.error("Failed to fetch settlement in StatsTab:", err);
@@ -38,7 +48,10 @@ const StatsTab = ({
     }
   }, [groupId]);
 
-  const activeSettlement = rows.length > 0 ? rows : settlement;
+  const activeSettlement = React.useMemo(() => {
+    const source = rows.length > 0 ? rows : settlement;
+    return deduplicateSettlement(source);
+  }, [rows, settlement]);
 
   if ((loading || fetchLoading) && !stats && activeSettlement.length === 0) {
     return (

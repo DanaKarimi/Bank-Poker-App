@@ -93,14 +93,28 @@ const GroupStats = () => {
       ]);
 
       if (statsRes.status === 'fulfilled') {
-        setStats(statsRes.value.data?.stats || statsRes.value.data || null);
+        const rawStats = statsRes.value.data?.stats || statsRes.value.data || null;
+        if (rawStats && Array.isArray(rawStats.recentTransactions)) {
+          const txMap = new Map();
+          rawStats.recentTransactions.forEach((tx) => {
+            const key = tx.id || `${tx.type}-${tx.timestamp}-${tx.amount}`;
+            txMap.set(key, tx);
+          });
+          rawStats.recentTransactions = Array.from(txMap.values());
+        }
+        setStats(rawStats);
         if (statsRes.value.data?.group) {
           setGroup(statsRes.value.data.group);
         }
       }
 
       if (tablesData.status === 'fulfilled') {
-        setTables(tablesData.value || []);
+        const rawTables = tablesData.value || [];
+        const tMap = new Map();
+        rawTables.forEach((t) => {
+          if (t.id) tMap.set(t.id, t);
+        });
+        setTables(Array.from(tMap.values()));
       }
 
       if (requestsRes.status === 'fulfilled') {
@@ -108,11 +122,23 @@ const GroupStats = () => {
       }
 
       if (balancesRes.status === 'fulfilled') {
-        setBalances(balancesRes.value.data?.balances || []);
+        const rawBalances = balancesRes.value.data?.balances || [];
+        const bMap = new Map();
+        rawBalances.forEach((b) => {
+          const key = b.userId || b.user_id || (b.username || b.name || '').toLowerCase().trim();
+          if (key) bMap.set(key, b);
+        });
+        setBalances(Array.from(bMap.values()));
       }
 
       if (settlementRes.status === 'fulfilled') {
-        setSettlementPlan(settlementRes.value.data?.settlement || []);
+        const rawSettlement = settlementRes.value.data?.settlement || [];
+        const sMap = new Map();
+        rawSettlement.forEach((s) => {
+          const key = s.id || `${s.debtorName || s.payerName}-${s.creditorName || s.receiverName}-${s.amount}`;
+          sMap.set(key, s);
+        });
+        setSettlementPlan(Array.from(sMap.values()));
       }
 
       if (groupStatsRes.status === 'fulfilled') {

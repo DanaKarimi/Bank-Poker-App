@@ -53,6 +53,7 @@ const ExitModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError('');
 
     const numAmount = Number(amount);

@@ -111,13 +111,33 @@ const TableDetail = () => {
       }
 
       if (playersRes.status === 'fulfilled') {
-        setPlayers(playersRes.value.data?.players || []);
+        const rawPlayers = playersRes.value.data?.players || [];
+        const playerMap = new Map();
+        rawPlayers.forEach((p) => {
+          if (p.id) playerMap.set(p.id, p);
+        });
+        setPlayers(Array.from(playerMap.values()));
       }
 
       if (activityRes.status === 'fulfilled') {
+        const rawBuyIns = activityRes.value.data?.buyIns || [];
+        const rawExits = activityRes.value.data?.exits || [];
+        
+        const buyInMap = new Map();
+        rawBuyIns.forEach((b) => {
+          const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+          buyInMap.set(key, b);
+        });
+
+        const exitMap = new Map();
+        rawExits.forEach((e) => {
+          const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+          exitMap.set(key, e);
+        });
+
         setActivity({
-          buyIns: activityRes.value.data?.buyIns || [],
-          exits: activityRes.value.data?.exits || [],
+          buyIns: Array.from(buyInMap.values()),
+          exits: Array.from(exitMap.values()),
         });
       }
 
@@ -172,31 +192,27 @@ const TableDetail = () => {
     tableBuyInRequests.filter((r) => r.status === 'PENDING' || r.status === 'APPROVED').length +
     tableExitRequests.filter((r) => r.status === 'PENDING' || r.status === 'APPROVED').length;
 
-  // Combine and sort all activity transactions
-  const allTransactions = [
-    ...(activity.buyIns || []).map((b) => ({ ...b, txType: 'buy-in' })),
-    ...(activity.exits || []).map((e) => ({ ...e, txType: 'exit' })),
-  ].sort((a, b) => {
+  // Combine, strictly deduplicate by ID, and sort all activity transactions
+  const txMap = new Map();
+  (activity.buyIns || []).forEach((b) => {
+    const key = b.id ? `buyin-${b.id}` : `buyin-${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+    txMap.set(key, { ...b, txType: 'buy-in' });
+  });
+  (activity.exits || []).forEach((e) => {
+    const key = e.id ? `exit-${e.id}` : `exit-${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+    txMap.set(key, { ...e, txType: 'exit' });
+  });
+
+  const allTransactions = Array.from(txMap.values()).sort((a, b) => {
     const timeA = a.timestamp || a.created_at || a.createdAt || 0;
     const timeB = b.timestamp || b.created_at || b.createdAt || 0;
     return timeB - timeA;
   });
 
-  // Calculate current user's session metrics for THIS table only
-  const myBuyIns = (activity.buyIns || []).filter(
-    (b) =>
-      (myPlayer && (b.player_id === myPlayer.id || b.playerId === myPlayer.id)) ||
-      b.playerName?.toLowerCase() === user?.username?.toLowerCase()
-  );
-  const myExits = (activity.exits || []).filter(
-    (e) =>
-      (myPlayer && (e.player_id === myPlayer.id || e.playerId === myPlayer.id)) ||
-      e.playerName?.toLowerCase() === user?.username?.toLowerCase()
-  );
-
-  const myTableBuyIns = myBuyIns.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
-  const myTableExits = myExits.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const myTableNetBalance = myTableExits - myTableBuyIns;
+  // Server is the ONLY balance authority. Clients MUST render server-computed balances; NEVER recompute client-side.
+  const myTableBuyIns = myPlayer?.totalBuyIns ?? myPlayer?.total_buy_ins ?? 0;
+  const myTableExits = myPlayer?.totalExits ?? myPlayer?.total_exits ?? 0;
+  const myTableNetBalance = myPlayer?.balance ?? 0;
 
   // Actions
   const handleJoinTable = async () => {

@@ -22,8 +22,18 @@ const BalancesTab = ({ balances = [], loading = false }) => {
     );
   }
 
-  // Sort by balance (highest first)
-  const sortedBalances = [...balances].sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+  // Strict deduplication by user ID / username, keeping server-computed balances
+  const sortedBalances = React.useMemo(() => {
+    if (!Array.isArray(balances)) return [];
+    const bMap = new Map();
+    balances.forEach((item) => {
+      const key = item.userId || item.user_id || (item.username || item.name || '').toLowerCase().trim();
+      if (key) {
+        bMap.set(key, item);
+      }
+    });
+    return Array.from(bMap.values()).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+  }, [balances]);
 
   return (
     <div className="space-y-3 animate-in fade-in duration-200">

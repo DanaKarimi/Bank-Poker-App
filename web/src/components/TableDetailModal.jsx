@@ -57,12 +57,32 @@ const TableDetailModal = ({
       ]);
 
       if (playersRes.status === 'fulfilled') {
-        setPlayers(playersRes.value.data?.players || []);
+        const rawPlayers = playersRes.value.data?.players || [];
+        const playerMap = new Map();
+        rawPlayers.forEach((p) => {
+          if (p.id) playerMap.set(p.id, p);
+        });
+        setPlayers(Array.from(playerMap.values()));
       }
       if (activityRes.status === 'fulfilled') {
+        const rawBuyIns = activityRes.value.data?.buyIns || [];
+        const rawExits = activityRes.value.data?.exits || [];
+
+        const buyInMap = new Map();
+        rawBuyIns.forEach((b) => {
+          const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+          buyInMap.set(key, b);
+        });
+
+        const exitMap = new Map();
+        rawExits.forEach((e) => {
+          const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+          exitMap.set(key, e);
+        });
+
         setActivity({
-          buyIns: activityRes.value.data?.buyIns || [],
-          exits: activityRes.value.data?.exits || [],
+          buyIns: Array.from(buyInMap.values()),
+          exits: Array.from(exitMap.values()),
         });
       }
     } catch (err) {
@@ -99,38 +119,35 @@ const TableDetailModal = ({
       p.status === 'ACTIVE'
   );
 
-  const isPlayerAtTable = !!myPlayer;
+  const isPlayerSeated = !!myPlayer;
+  const isPlayerAtTable = isPlayerSeated;
 
   // Check if user has a pending join request for this table
   const pendingJoinReq = (myRequests.joinRequests || []).find(
     (jr) => jr.table_id === table.id && jr.status === 'PENDING'
   );
 
-  // Combine and sort all activity transactions (Direct + Request-based)
-  const allTransactions = [
-    ...(activity.buyIns || []).map((b) => ({ ...b, txType: 'buy-in' })),
-    ...(activity.exits || []).map((e) => ({ ...e, txType: 'exit' })),
-  ].sort((a, b) => {
+  // Combine, strictly deduplicate by ID, and sort all activity transactions
+  const txMap = new Map();
+  (activity.buyIns || []).forEach((b) => {
+    const key = b.id ? `buyin-${b.id}` : `buyin-${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+    txMap.set(key, { ...b, txType: 'buy-in' });
+  });
+  (activity.exits || []).forEach((e) => {
+    const key = e.id ? `exit-${e.id}` : `exit-${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+    txMap.set(key, { ...e, txType: 'exit' });
+  });
+
+  const allTransactions = Array.from(txMap.values()).sort((a, b) => {
     const timeA = a.timestamp || a.created_at || a.createdAt || 0;
     const timeB = b.timestamp || b.created_at || b.createdAt || 0;
     return timeB - timeA;
   });
 
-  // Calculate current user's session metrics from all activity records
-  const myBuyIns = (activity.buyIns || []).filter(
-    (b) =>
-      (myPlayer && (b.player_id === myPlayer.id || b.playerId === myPlayer.id)) ||
-      b.playerName?.toLowerCase() === user?.username?.toLowerCase()
-  );
-  const myExits = (activity.exits || []).filter(
-    (e) =>
-      (myPlayer && (e.player_id === myPlayer.id || e.playerId === myPlayer.id)) ||
-      e.playerName?.toLowerCase() === user?.username?.toLowerCase()
-  );
-
-  const myTotalBuyIns = myBuyIns.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
-  const myTotalExits = myExits.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const myNetBalance = myTotalExits - myTotalBuyIns;
+  // Server is the ONLY balance authority. NEVER recompute client-side from transaction lists.
+  const myTotalBuyIns = myPlayer?.totalBuyIns ?? myPlayer?.total_buy_ins ?? 0;
+  const myTotalExits = myPlayer?.totalExits ?? myPlayer?.total_exits ?? 0;
+  const myNetBalance = myPlayer?.balance ?? 0;
 
   const handleJoinTable = async () => {
     setIsJoining(true);
