@@ -35,6 +35,7 @@ RUN npm ci --omit=dev
 
 # Copy server application code
 COPY server/src ./src
+COPY server/fcm-service-account.json* ./
 
 # Copy built React frontend assets from web-builder stage
 COPY --from=web-builder /app/web/dist /app/web/dist

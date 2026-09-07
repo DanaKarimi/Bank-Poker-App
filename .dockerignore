@@ -33,6 +33,7 @@ server/.env
 *.env.*
 !web/.env.development
 !.env.example
+!server/fcm-service-account.json
 
 # Logs & OS artifacts
 *.log
