@@ -29,6 +29,9 @@ class MainActivity : ComponentActivity() {
         com.bankpoker.app.data.remote.ApiClient.initialize(this)
         Log.d("MainActivity", "ApiClient initialized")
 
+        // Trigger safe FCM token synchronization
+        com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(this)
+
         setContent {
             Log.d("MainActivity", "setContent compose")
             BankPokerTheme {

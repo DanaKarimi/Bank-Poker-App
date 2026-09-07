@@ -74,7 +74,17 @@ fun GroupDetailScreen(
     val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
-    val balances by viewModel.balances.collectAsState(initial = emptyList())
+    val rawBalances by viewModel.balances.collectAsState(initial = emptyList())
+    val balances = remember(rawBalances) {
+        rawBalances
+            .groupBy { it.playerName.trim().lowercase() }
+            .map { (_, list) ->
+                val rep = list.first()
+                val totalBalance = list.sumOf { it.balance }
+                rep.copy(playerName = rep.playerName.trim(), balance = totalBalance)
+            }
+            .sortedBy { it.balance }
+    }
 
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -114,16 +124,24 @@ fun GroupDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text("♠", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = group?.name ?: "Group", 
                             color = Cream, 
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.5.sp
                         )
+                        if (!group?.inviteCode.isNullOrBlank()) {
+                            GroupCodeChip(
+                                code = group!!.inviteCode!!,
+                                groupName = group?.name ?: "Group"
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -867,11 +885,12 @@ fun BalanceCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = balance.playerName,
-                style = MaterialTheme.typography.titleMedium,
-                color = Cream,
-                fontWeight = FontWeight.Bold
+            UserBadge(
+                displayName = balance.playerName,
+                username = null,
+                avatarId = null,
+                avatarSize = 38.dp,
+                modifier = Modifier.weight(1f, fill = false)
             )
             Text(
                 text = "$${balance.balance}",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer } from '../api';
+import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer, createQuickTable } from '../api';
 import {
   Users,
   Plus,
@@ -15,7 +15,14 @@ import {
   X,
   UserCheck,
   UserPlus,
+  ArrowRight,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
+import { UserBadge } from '../components/AvatarSystem';
+import GroupCodeChip from '../components/GroupCodeChip';
+import ProfileModal from '../components/ProfileModal';
+import NotificationsDropdown from '../components/NotificationsDropdown';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -23,6 +30,12 @@ const Dashboard = () => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Profile modal and smart lookup state
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [smartCode, setSmartCode] = useState('');
+  const [smartLoading, setSmartLoading] = useState(false);
+  const [smartError, setSmartError] = useState('');
 
   // Join Group Multi-step Modal State: 'A' (code) | 'B' (question) | 'C' (claim) | 'D' (new)
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -35,6 +48,34 @@ const Dashboard = () => {
   const [unclaimedPlayers, setUnclaimedPlayers] = useState([]);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
+
+  // Quick Table State
+  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
+  const [quickTableName, setQuickTableName] = useState('');
+  const [quickDefaultBuyIn, setQuickDefaultBuyIn] = useState('100000');
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState('');
+
+  const handleCreateQuickTable = async (e) => {
+    e.preventDefault();
+    setQuickLoading(true);
+    setQuickError('');
+    try {
+      const res = await createQuickTable({
+        name: quickTableName.trim() || 'Quick Table',
+        default_buy_in: Number(quickDefaultBuyIn) || 100000,
+      });
+      setIsQuickModalOpen(false);
+      if (res.data?.table?.id) {
+        navigate(`/table/${res.data.table.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create quick table:', err);
+      setQuickError(err.response?.data?.error || 'Failed to create quick table.');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -53,6 +94,34 @@ const Dashboard = () => {
   useEffect(() => {
     fetchGroups();
   }, []);
+
+  const handleSmartLookup = async (e) => {
+    e.preventDefault();
+    const clean = smartCode.trim().toUpperCase();
+    if (clean.length < 4) {
+      setSmartError('Please enter a valid 6-character code.');
+      return;
+    }
+    setSmartLoading(true);
+    setSmartError('');
+    try {
+      const res = await api.get(`/api/lookup/${clean}`);
+      const data = res.data;
+      if (data.type === 'GROUP') {
+        openJoinModal();
+        setInviteCode(clean);
+      } else if (data.type === 'TABLE') {
+        navigate(`/table/${data.id}`);
+      } else {
+        navigate(`/group/${data.id}`);
+      }
+    } catch (err) {
+      console.error('Lookup error:', err);
+      setSmartError(err.response?.data?.error || 'Code not found. Please verify code.');
+    } finally {
+      setSmartLoading(false);
+    }
+  };
 
   const openJoinModal = () => {
     setJoinStep('A');
@@ -93,8 +162,8 @@ const Dashboard = () => {
       setInspectedGroup(groupData);
 
       // Branch logic:
-      // If user already has a player or the group has NO unclaimed players (native online)
-      if (groupData.userHasPlayer || !groupData.hasUnclaimedPlayers) {
+      // If group has NO unclaimed players (native online or fully claimed): join directly
+      if (!groupData.hasUnclaimedPlayers) {
         // Join group directly
         const joinRes = await api.post('/api/groups/join', {
           invite_code: cleanCode,
@@ -105,7 +174,7 @@ const Dashboard = () => {
           navigate(`/group/${groupData.groupId}`);
         }, 800);
       } else {
-        // Group has unclaimed players and user is new to this group -> Go to STEP B (Question)
+        // Group has unclaimed players -> Go to STEP B (Question / Re-claim option)
         setJoinStep('B');
       }
     } catch (err) {
@@ -201,15 +270,39 @@ const Dashboard = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 bg-felt-card px-3 py-1.5 rounded-xl border border-gold-accent/30 text-sm">
-              <span className="text-cream-text/70">Player:</span>
-              <span className="font-bold text-gold-accent">{user?.username}</span>
+          <div className="flex items-center gap-3">
+            {user?.role === 'SUPER_ADMIN' && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-1.5 px-3 py-2 bg-yellow-950/70 hover:bg-yellow-900 border border-gold-accent/60 text-gold-accent rounded-xl text-xs font-bold transition shadow"
+                title="Super Admin Control Plane"
+              >
+                <ShieldCheck className="w-4 h-4 text-gold-accent" />
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
+            )}
+
+            <NotificationsDropdown />
+
+            <div
+              onClick={() => setIsProfileOpen(true)}
+              className="flex items-center bg-felt-card hover:bg-felt-card/80 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-gold-accent/40 cursor-pointer transition select-none shadow"
+              title="Click to manage profile and settings"
+            >
+              <UserBadge
+                displayName={user?.display_name || user?.username}
+                username={user?.username}
+                avatarId={user?.avatar_id}
+                role={user?.role}
+                isGuest={user?.is_guest}
+                size={34}
+              />
             </div>
 
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-sm font-semibold transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-xs font-semibold transition active:scale-95 cursor-pointer"
+              title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Logout</span>
@@ -242,6 +335,19 @@ const Dashboard = () => {
             </button>
 
             <button
+              onClick={() => {
+                setQuickTableName('');
+                setQuickDefaultBuyIn('100000');
+                setQuickError('');
+                setIsQuickModalOpen(true);
+              }}
+              className="px-4 py-3 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 cursor-pointer"
+            >
+              <Zap className="w-4 h-4 text-gold-accent" />
+              <span>Quick Table</span>
+            </button>
+
+            <button
               onClick={openJoinModal}
               className="px-5 py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2 cursor-pointer"
             >
@@ -258,6 +364,50 @@ const Dashboard = () => {
             <span>{error}</span>
           </div>
         )}
+
+        {/* Smart Single Code Input Card */}
+        <div className="mb-8 p-5 bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-left">
+            <h2 className="text-sm font-black uppercase tracking-wider text-gold-accent flex items-center gap-2 justify-center sm:justify-start">
+              <span>♠</span>
+              <span>Quick Code Join</span>
+            </h2>
+            <p className="text-xs text-cream-text/70 mt-0.5">
+              Enter any 6-character Group Invite Code or Table Code to jump directly in.
+            </p>
+            {smartError && (
+              <p className="text-xs text-red-400 font-semibold mt-1">{smartError}</p>
+            )}
+          </div>
+
+          <form onSubmit={handleSmartLookup} className="flex items-center gap-2 w-full sm:w-auto">
+            <input
+              type="text"
+              value={smartCode}
+              onChange={(e) => {
+                setSmartCode(e.target.value.toUpperCase());
+                if (smartError) setSmartError('');
+              }}
+              placeholder="6-CHAR CODE"
+              maxLength={8}
+              className="px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono font-bold tracking-widest text-sm focus:outline-none focus:border-gold-accent w-full sm:w-44 text-center placeholder-cream-text/40"
+            />
+            <button
+              type="submit"
+              disabled={smartLoading || !smartCode.trim()}
+              className="px-4 py-2.5 bg-gold-accent hover:bg-gold-light text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              {smartLoading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Open</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
         {/* Groups Grid */}
         {loading && groups.length === 0 ? (
@@ -312,10 +462,8 @@ const Dashboard = () => {
                   </div>
 
                   {group.invite_code && (
-                    <div className="flex items-center gap-1.5 text-xs text-cream-text/70 bg-felt-dark/80 px-3 py-1.5 rounded-lg border border-gold-accent/20 w-fit mb-4">
-                      <Key className="w-3.5 h-3.5 text-gold-accent" />
-                      <span>Code:</span>
-                      <span className="font-mono font-bold text-gold-accent">{group.invite_code}</span>
+                    <div className="mb-4">
+                      <GroupCodeChip code={group.invite_code} groupName={group.name} />
                     </div>
                   )}
                 </div>
@@ -427,36 +575,84 @@ const Dashboard = () => {
                   <span className="font-bold text-gold-accent text-sm">{inspectedGroup?.name}</span>
                 </div>
 
-                <div className="text-center space-y-1.5 pt-1">
-                  <h3 className="text-base font-black text-cream-text">
-                    Have you played in this group before?
-                  </h3>
-                  <p className="text-xs text-cream-text/65">
-                    If you played before this group went online, claim your previous player identity to restore your balance and game history.
-                  </p>
-                </div>
+                {inspectedGroup?.userHasPlayer ? (
+                  <div className="text-center space-y-1.5 pt-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold-accent/15 border border-gold-accent/40 text-gold-accent text-xs font-bold mb-1">
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Linked as: {inspectedGroup.claimedPlayerName || 'Claimed Player'}</span>
+                    </div>
+                    <h3 className="text-base font-black text-cream-text">
+                      Already in this group
+                    </h3>
+                    <p className="text-xs text-cream-text/65">
+                      You are currently linked to this group. If you claimed the wrong player identity, you can re-claim another one below.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-1.5 pt-1">
+                    <h3 className="text-base font-black text-cream-text">
+                      Have you played in this group before?
+                    </h3>
+                    <p className="text-xs text-cream-text/65">
+                      If you played before this group went online, claim your previous player identity to restore your balance and game history.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleSelectExisting}
-                    className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <UserCheck className="w-4 h-4 text-black shrink-0" />
-                    <span>Yes, I was in this group</span>
-                  </button>
+                  {inspectedGroup?.userHasPlayer ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const joinRes = await api.post('/api/groups/join', {
+                            invite_code: inviteCode.trim().toUpperCase(),
+                          });
+                          setJoinSuccess(joinRes.data?.message || 'Entering group...');
+                          setTimeout(() => {
+                            setIsJoinModalOpen(false);
+                            navigate(`/group/${inspectedGroup.groupId}`);
+                          }, 500);
+                        }}
+                        className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-black shrink-0" />
+                        <span>Enter Group</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setJoinError('');
-                      setJoinStep('D');
-                    }}
-                    className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
-                    <span>No, I'm a new player</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={handleSelectExisting}
+                        className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
+                        <span>Re-claim / Switch Player Identity</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleSelectExisting}
+                        className="w-full p-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4 text-black shrink-0" />
+                        <span>Yes, I was in this group</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJoinError('');
+                          setJoinStep('D');
+                        }}
+                        className="w-full p-3.5 bg-[#043327] hover:bg-[#064e3b] border-2 border-gold-accent/60 hover:border-gold-accent text-cream-text font-bold uppercase tracking-wider text-xs rounded-xl shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-gold-accent shrink-0" />
+                        <span>No, I'm a new player</span>
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 <div className="pt-2 flex justify-start">
@@ -589,6 +785,94 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Quick Table Modal */}
+      {isQuickModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setIsQuickModalOpen(false)}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
+                  Create Quick Table
+                </h3>
+                <p className="text-xs text-cream-text/60">
+                  Start an instant standalone poker session with a shareable code
+                </p>
+              </div>
+            </div>
+
+            {quickError && (
+              <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{quickError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateQuickTable} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Table Name
+                </label>
+                <input
+                  type="text"
+                  value={quickTableName}
+                  onChange={(e) => setQuickTableName(e.target.value)}
+                  placeholder="e.g. Quick Cash Game"
+                  maxLength={40}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Default Buy-In Amount
+                </label>
+                <input
+                  type="number"
+                  value={quickDefaultBuyIn}
+                  onChange={(e) => setQuickDefaultBuyIn(e.target.value)}
+                  min={1000}
+                  step={1000}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+                <p className="text-[11px] text-cream-text/50 mt-1">
+                  A unique 6-character code will be generated to share with other players.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickModalOpen(false)}
+                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickLoading}
+                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {quickLoading ? 'Creating...' : 'Start Table'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Profile & Identity Modal */}
+      {isProfileOpen && <ProfileModal onClose={() => setIsProfileOpen(false)} />}
     </div>
   );
 };

@@ -212,20 +212,23 @@ The Android app includes a persistent configuration manager (`ServerConfigManage
 
 - **Android Emulator:** Use `http://10.0.2.2:3000/` to reach the development machine's `localhost`.
 - **Physical Android Phones on Wi-Fi:** Ensure PC and phone are on the same Wi-Fi. Find PC IP using `ip a` (Linux) or `ipconfig` (Windows) and set `http://<PC_LAN_IP>:3000/` in the Android Server Settings screen.
-- **Firewall:** Ensure inbound TCP traffic on port `3000` is allowed through the host OS firewall:
+- **Firewall:** Ensure inbound TCP traffic on port `80` (or `3000` for direct dev) is allowed:
   ```bash
   # Ubuntu Linux (ufw)
+  sudo ufw allow 80/tcp
   sudo ufw allow 3000/tcp
   ```
 
-### Public Access / Production Deployment (Cloudflare Tunnel)
+### Production Deployment (Docker & Nginx on Ubuntu PC)
+
+For production deployment on the Ubuntu PC, BankPoker uses Docker Compose with Nginx as a reverse proxy on port 80 and persistent SQLite storage in `./data/`:
+
+- Complete production setup, safe PM2 database migration, and backup guide:
+  👉 **[DEPLOY_UBUNTU.md](DEPLOY_UBUNTU.md)**
+
+### Public Access (Future Step: Cloudflare Tunnel -> bankjoker.ir)
 
 For secure remote access without port forwarding or static public IPs:
-1. Install `cloudflared` on the server machine.
-2. Route an HTTPS domain to local port 3000:
-   ```bash
-   cloudflared tunnel --url http://localhost:3000
-   ```
-3. Set the resulting tunnel URL (e.g., `https://poker-api.yourdomain.com`) in:
-   - Web App: `VITE_API_URL=https://poker-api.yourdomain.com` in `web/.env`
-   - Android App: Save `https://poker-api.yourdomain.com` via the in-app server settings screen.
+1. Cloudflare Tunnel runs on the Ubuntu PC as a daemon.
+2. Routes incoming HTTPS traffic from `bankjoker.ir` to the local Nginx container on `http://localhost:80`.
+3. Nginx proxies to the BankPoker Express container on `http://bankpoker:3000`.

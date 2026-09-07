@@ -14,6 +14,7 @@ import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
 import BalancesTab from '../components/BalancesTab';
 import StatsTab from '../components/StatsTab';
+import NotificationsDropdown from '../components/NotificationsDropdown';
 import {
   ArrowLeft,
   RefreshCw,
@@ -162,9 +163,10 @@ const GroupStats = () => {
           </Link>
 
           <div className="flex items-center gap-2">
+            <NotificationsDropdown />
             <button
               onClick={() => fetchData()}
-              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition"
+              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
               title="Refresh Group Data"
             >
               <RefreshCw className="w-4 h-4" />

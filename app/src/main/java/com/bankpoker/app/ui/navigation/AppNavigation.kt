@@ -39,6 +39,9 @@ import com.bankpoker.app.viewmodel.GroupHistoryViewModelFactory
 import com.bankpoker.app.ui.screens.ServerTestScreen
 import com.bankpoker.app.ui.screens.CreateGroupScreen
 import com.bankpoker.app.ui.screens.RequestsScreen
+import com.bankpoker.app.ui.screens.NotificationsScreen
+import com.bankpoker.app.ui.screens.SettingsScreen
+import com.bankpoker.app.ui.screens.AdminManagementScreen
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -81,6 +84,21 @@ fun AppNavigation(
                 },
                 onCreateGroupClick = {
                     navController.navigate(Screen.CreateGroup.route)
+                },
+                onNavigateToTable = { tableId ->
+                    navController.navigate(Screen.TableDetail.createRoute(tableId))
+                },
+                onNavigateToGroup = { groupId ->
+                    navController.navigate(Screen.GroupDetail.createRoute(groupId))
+                },
+                onNotificationsClick = {
+                    navController.navigate(Screen.Notifications.route)
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
+                },
+                onAdminManagementClick = {
+                    navController.navigate(Screen.AdminManagement.route)
                 }
             )
         }
@@ -282,6 +300,47 @@ fun AppNavigation(
             RequestsScreen(
                 groupId = groupId,
                 groupName = groupName,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.Notifications.route) {
+            NotificationsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToTable = { tableId ->
+                    navController.navigate(Screen.TableDetail.createRoute(tableId))
+                },
+                onNavigateToGroup = { groupId ->
+                    navController.navigate(Screen.GroupDetail.createRoute(groupId))
+                },
+                onNavigateToRequests = { groupId ->
+                    navController.navigate(Screen.Requests.createRoute(groupId))
+                }
+            )
+        }
+
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onLoggedOut = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                },
+                onAdminManagementClick = {
+                    navController.navigate(Screen.AdminManagement.route)
+                }
+            )
+        }
+
+        composable(Screen.AdminManagement.route) {
+            AdminManagementScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

@@ -14,9 +14,14 @@ import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
+  Share2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
-import { getPlayers, sendJoinRequest, getTableActivity } from '../api';
+import { getPlayers, sendJoinRequest, getTableActivity, publishTable, deleteTablePlayer } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { UserBadge } from './AvatarSystem';
+import GroupCodeChip from './GroupCodeChip';
 
 const TableDetailModal = ({
   isOpen,
@@ -36,6 +41,10 @@ const TableDetailModal = ({
   const [joinMessage, setJoinMessage] = useState('');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'activity' | 'players'
+  const [tableCode, setTableCode] = useState(table?.code || null);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [playerToDelete, setPlayerToDelete] = useState(null);
+  const [isDeletingPlayer, setIsDeletingPlayer] = useState(false);
 
   const fetchTableData = async () => {
     if (!table?.id) return;
@@ -66,15 +75,17 @@ const TableDetailModal = ({
 
   useEffect(() => {
     if (isOpen && table?.id) {
+      setTableCode(table.code || null);
       setJoinMessage('');
       setError('');
+      setPlayerToDelete(null);
       fetchTableData();
 
       // Poll table data every 8 seconds while open
       const interval = setInterval(fetchTableData, 8000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, table?.id]);
+  }, [isOpen, table?.id, table?.code]);
 
   if (!isOpen || !table) return null;
 
@@ -138,6 +149,47 @@ const TableDetailModal = ({
     }
   };
 
+  const handlePublishTable = async () => {
+    setIsPublishing(true);
+    try {
+      const res = await publishTable(table.id);
+      if (res.data?.code) {
+        setTableCode(res.data.code);
+        setJoinMessage(`Table published! Code: ${res.data.code}`);
+      }
+    } catch (err) {
+      console.error('Failed to publish table:', err);
+      setError(err.response?.data?.error || 'Failed to publish table code.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleDeletePlayerClick = (p) => {
+    const buyIns = Number(p.totalBuyIns || p.total_buy_ins || p.buy_ins || 0);
+    if (buyIns > 0) {
+      setError('Cannot remove player who has already bought in. Settle their stack with an Exit transaction first.');
+      return;
+    }
+    setPlayerToDelete(p);
+  };
+
+  const handleConfirmDeletePlayer = async () => {
+    if (!playerToDelete) return;
+    setIsDeletingPlayer(true);
+    try {
+      await deleteTablePlayer(table.id, playerToDelete.id);
+      setJoinMessage(`Player "${playerToDelete.name || playerToDelete.username}" removed.`);
+      setPlayerToDelete(null);
+      fetchTableData();
+    } catch (err) {
+      console.error('Failed to remove player:', err);
+      setError(err.response?.data?.error || 'Failed to remove player from table.');
+    } finally {
+      setIsDeletingPlayer(false);
+    }
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(Number(timestamp));
@@ -181,6 +233,21 @@ const TableDetailModal = ({
               </span>
             </div>
             <p className="text-xs text-cream-text/60">Table Details & Live Activity</p>
+
+            <div className="flex items-center gap-2 mt-2">
+              {tableCode ? (
+                <GroupCodeChip code={tableCode} label="Table Code" />
+              ) : table.status !== 'CLOSED' ? (
+                <button
+                  onClick={handlePublishTable}
+                  disabled={isPublishing}
+                  className="px-2.5 py-1 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 text-black font-extrabold text-[11px] uppercase tracking-wider rounded-lg shadow transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <Share2 className="w-3 h-3" />
+                  <span>{isPublishing ? 'Publishing...' : 'Share Table'}</span>
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -459,27 +526,69 @@ const TableDetailModal = ({
                     key={p.id}
                     className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20 flex items-center justify-between text-xs"
                   >
-                    <div>
-                      <div className="font-bold text-cream-text flex items-center gap-1.5">
-                        <span>{p.name || p.username}</span>
-                        {p.name === user?.username && (
-                          <span className="text-[10px] text-gold-accent font-normal">(You)</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-cream-text/50">
-                        Joined: {formatDate(p.createdAt || p.created_at)}
-                      </div>
+                    <div className="flex items-center gap-2.5">
+                      <UserBadge
+                        avatarId={p.avatar_id || p.avatar}
+                        name={p.name || p.display_name || p.username}
+                        username={p.username}
+                        size="sm"
+                      />
+                      {(p.name === user?.username || p.username === user?.username) && (
+                        <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
                         {p.status || 'ACTIVE'}
                       </span>
+                      {table.status !== 'CLOSED' && (
+                        <button
+                          onClick={() => handleDeletePlayerClick(p)}
+                          className="p-1 rounded bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-400 hover:text-white transition cursor-pointer"
+                          title="Remove player"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {playerToDelete && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-felt-card border-2 border-red-500 rounded-2xl w-full max-w-sm p-5 shadow-2xl relative">
+              <h3 className="text-sm font-black text-red-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span>Remove Player</span>
+              </h3>
+              <p className="text-xs text-cream-text/80 mb-4 leading-relaxed">
+                Are you sure you want to remove <strong>{playerToDelete.name || playerToDelete.username}</strong> from this table? This player has 0 buy-ins.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPlayerToDelete(null)}
+                  disabled={isDeletingPlayer}
+                  className="px-3 py-1.5 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-lg text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeletePlayer}
+                  disabled={isDeletingPlayer}
+                  className="px-3 py-1.5 bg-red-800 hover:bg-red-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow transition disabled:opacity-50"
+                >
+                  {isDeletingPlayer ? 'Removing...' : 'Confirm Remove'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -21,6 +21,10 @@ data class RequestDto(
     val amount: Int? = null,
     @SerializedName("status")
     val status: String = "PENDING",
+    @SerializedName("display_name")
+    val displayName: String? = null,
+    @SerializedName("avatar_id")
+    val avatarId: String? = null,
     @SerializedName("created_at")
     val createdAt: Long = 0,
     @SerializedName("updated_at")

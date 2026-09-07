@@ -36,6 +36,7 @@ import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.data.remote.dto.RequestDto
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
+import com.bankpoker.app.ui.components.UserBadge
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -468,39 +469,21 @@ private fun RequestAdminCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFF041C0E), CircleShape)
-                            .border(1.dp, Gold, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Gold,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Column {
+                Column(modifier = Modifier.weight(1f)) {
+                    UserBadge(
+                        avatarId = request.avatarId,
+                        displayName = request.displayName ?: request.username ?: "Player",
+                        username = request.username,
+                        avatarSize = 36.dp
+                    )
+                    if (!request.tableName.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = request.username ?: "Player",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Cream,
-                            fontWeight = FontWeight.Bold
+                            text = "Table: ${request.tableName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Cream.copy(alpha = 0.65f),
+                            modifier = Modifier.padding(start = 46.dp)
                         )
-                        if (!request.tableName.isNullOrBlank()) {
-                            Text(
-                                text = "Table: ${request.tableName}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Cream.copy(alpha = 0.65f)
-                            )
-                        }
                     }
                 }
 

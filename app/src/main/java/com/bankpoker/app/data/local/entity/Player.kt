@@ -11,5 +11,7 @@ data class Player(
     val name: String,
     val status: String,
     val createdAt: Long,
-    val entryFeePaid: Boolean = false
+    val entryFeePaid: Boolean = false,
+    val userId: String? = null,
+    val avatarId: String? = null
 )

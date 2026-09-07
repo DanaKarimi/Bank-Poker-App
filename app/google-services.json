@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "549411669855",
+    "project_id": "bankpoker",
+    "storage_bucket": "bankpoker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:549411669855:android:29a3607a3e1ee5a2ff58ea",
+        "android_client_info": {
+          "package_name": "com.bankpoker.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJCGz08V2_GProWAs0O141TKsjz91-9-c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -140,7 +140,7 @@ fun ServerTestScreen(
                         )
 
                         Text(
-                            text = "Enter your server IP (e.g. 192.168.1.50). It will be saved permanently.",
+                            text = "Enter your server URL (e.g. https://bankjoker.ir or 192.168.1.50). It will be saved permanently.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Cream.copy(alpha = 0.7f)
                         )
@@ -148,8 +148,8 @@ fun ServerTestScreen(
                         OutlinedTextField(
                             value = baseUrlInput,
                             onValueChange = { baseUrlInput = it },
-                            label = { Text("Server IP / Base URL", color = Cream.copy(alpha = 0.7f)) },
-                            placeholder = { Text("192.168.1.50 or http://10.0.2.2:3000/") },
+                            label = { Text("Server URL", color = Cream.copy(alpha = 0.7f)) },
+                            placeholder = { Text("https://bankjoker.ir or 192.168.1.50") },
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Cream,

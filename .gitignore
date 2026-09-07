@@ -4,6 +4,7 @@
 *.obj
 *.out
 build/
+app/build/
 target/
 
 # Dependencies
@@ -20,6 +21,7 @@ htmlcov/
 .env.local
 *.env.*
 !web/.env.development
+!.env.example
 
 # Editors
 .vscode/
@@ -35,12 +37,21 @@ Thumbs.db
 # Logs
 *.log
 
-# Server
+# Server & Persistent Data
 server/node_modules/
 server/.env
 server/*.db
 server/*.sqlite
+/data/
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Web
 web/node_modules/
 web/dist/
+
+# Firebase Service Account Key (Secret)
+server/fcm-service-account.json

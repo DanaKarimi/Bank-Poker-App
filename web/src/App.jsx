@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupStats from './pages/GroupStats';
 import TableDetail from './pages/TableDetail';
+import AdminDashboard from './pages/AdminDashboard';
 
 function App() {
   return (
@@ -41,6 +42,23 @@ function App() {
             element={
               <ProtectedRoute>
                 <TableDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/table/:tableId"
+            element={
+              <ProtectedRoute>
+                <TableDetail />
+              </ProtectedRoute>
+            }
+          />
+          {/* Protected Super Admin Route */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
               </ProtectedRoute>
             }
           />

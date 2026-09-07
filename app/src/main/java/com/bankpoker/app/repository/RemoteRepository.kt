@@ -23,6 +23,18 @@ import com.bankpoker.app.data.remote.dto.TableActivityResponse
 import com.bankpoker.app.data.remote.dto.TableBuyInDto
 import com.bankpoker.app.data.remote.dto.TableExitDto
 import com.bankpoker.app.data.remote.dto.TablePlayerDto
+import com.bankpoker.app.data.remote.dto.GuestRequest
+import com.bankpoker.app.data.remote.dto.ActivateRequest
+import com.bankpoker.app.data.remote.dto.UpdateProfileRequest
+import com.bankpoker.app.data.remote.dto.LookupResponse
+import com.bankpoker.app.data.remote.dto.UserDto
+import com.bankpoker.app.data.remote.dto.AdminOverviewResponse
+import com.bankpoker.app.data.remote.dto.AdminUserDto
+import com.bankpoker.app.data.remote.dto.AdminGroupDto
+import com.bankpoker.app.data.remote.dto.AdminTableDto
+import com.bankpoker.app.data.remote.dto.AdminTablePlayerDto
+import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
+import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -79,9 +91,10 @@ class RemoteRepository(
                 val body = response.body()!!
                 body.token?.let { token ->
                     tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
                 }
                 body.user?.let { user ->
-                    tokenManager.saveUser(user.username, user.role)
+                    tokenManager.saveUser(user)
                 }
                 Result.success(body)
             } else {
@@ -102,10 +115,12 @@ class RemoteRepository(
     suspend fun register(
         username: String,
         password: String,
+        displayName: String? = null,
+        avatarId: String? = null,
         role: String = "PLAYER"
     ): Result<RegisterResponse> = withContext(Dispatchers.IO) {
         try {
-            val request = RegisterRequest(username.trim(), password, role)
+            val request = RegisterRequest(username.trim(), password, displayName?.trim(), avatarId, role)
             val response = apiService.register(request)
 
             if (response.isSuccessful && response.body() != null) {
@@ -113,6 +128,120 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Registration failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Join instantly as a Guest
+     */
+    suspend fun guestJoin(
+        displayName: String,
+        avatarId: String? = null
+    ): Result<LoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = GuestRequest(displayName.trim(), avatarId)
+            val response = apiService.guestJoin(request)
+
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                body.token?.let { token ->
+                    tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
+                }
+                body.user?.let { user ->
+                    tokenManager.saveUser(user)
+                }
+                Result.success(body)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Guest join failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Activate a guest account permanently
+     */
+    suspend fun activateAccount(
+        username: String,
+        password: String
+    ): Result<LoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = ActivateRequest(username.trim(), password)
+            val response = apiService.activateAccount(request, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                body.token?.let { token ->
+                    tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
+                }
+                body.user?.let { user ->
+                    tokenManager.saveUser(user)
+                }
+                Result.success(body)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Account activation failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update user profile
+     */
+    suspend fun updateProfile(
+        displayName: String?,
+        avatarId: String?,
+        username: String? = null
+    ): Result<UserDto> = withContext(Dispatchers.IO) {
+        try {
+            val request = UpdateProfileRequest(displayName?.trim(), avatarId, username?.trim())
+            val response = apiService.updateProfile(request, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                val updatedUser = response.body()!!
+                tokenManager.saveUser(updatedUser)
+                Result.success(updatedUser)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Profile update failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Smart code lookup (group or table)
+     */
+    suspend fun lookupCode(code: String): Result<LookupResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.lookupCode(code.trim().uppercase(), getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Invalid code (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {
@@ -706,6 +835,331 @@ class RemoteRepository(
             }
         } catch (e: Exception) {
             android.util.Log.e("EntryFeeSync", "FAILED: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteTablePlayer(tableId: String, playerId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteTablePlayer(tableId, playerId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to delete player (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createQuickTable(
+        name: String,
+        chipValue: Long?,
+        entryFee: Long?,
+        playerNames: List<String> = emptyList()
+    ): Result<JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("name", name)
+                if (chipValue != null) addProperty("chipValue", chipValue)
+                if (entryFee != null) addProperty("entryFee", entryFee)
+                val arr = com.google.gson.JsonArray()
+                playerNames.forEach { arr.add(it) }
+                add("playerNames", arr)
+            }
+            val response = apiService.createQuickTable(body, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to create quick table (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun publishTable(tableId: String): Result<JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.publishTable(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to publish table (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getNotifications(): Result<com.bankpoker.app.data.remote.dto.NotificationListResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getNotifications(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to fetch notifications"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markNotificationRead(id: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.markNotificationRead(id, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to mark notification read"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markAllNotificationsRead(): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.markAllNotificationsRead(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to mark all read"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getNotificationSettings(): Result<Map<String, Boolean>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getNotificationSettings(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.settings)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get settings"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateNotificationSettings(settings: Map<String, Boolean>): Result<Map<String, Boolean>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateNotificationSettings(settings, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.settings)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update settings"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun registerFcmToken(fcmToken: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.registerFcmToken(
+                mapOf("token" to fcmToken, "platform" to "android"),
+                getAuthHeader()
+            )
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to register FCM token"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Admin Operations ---
+
+    suspend fun getAdminOverview(): Result<AdminOverviewResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminOverview(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin overview"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminUsers(): Result<List<AdminUserDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminUsers(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.users)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin users"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateAdminUserRole(userId: String, role: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateAdminUserRole(userId, mapOf("role" to role), getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update user role"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminUser(userId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminUser(userId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete user"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminGroups(): Result<List<AdminGroupDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminGroups(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.groups)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin groups"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminGroup(groupId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminGroup(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete group"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminTables(): Result<List<AdminTableDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminTables(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tables)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin tables"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminTable(tableId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminTable(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete table"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminTablePlayers(tableId: String): Result<List<AdminTablePlayerDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminTablePlayers(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.players)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get table players"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateAdminTablePlayer(
+        tableId: String,
+        playerId: String,
+        name: String? = null,
+        balanceAdjustment: Long? = null
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val body = mutableMapOf<String, Any>()
+            if (!name.isNullOrBlank()) body["name"] = name.trim()
+            if (balanceAdjustment != null) body["balanceAdjustment"] = balanceAdjustment
+            val response = apiService.updateAdminTablePlayer(tableId, playerId, body, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update table player"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Active Tables & My Groups ---
+
+    suspend fun getActiveTables(): Result<List<ActiveTableSummaryDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getActiveTables(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tables)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get active tables"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getMyGroups(): Result<List<UserGroupSummaryDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getMyGroups(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.groups)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get user groups"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

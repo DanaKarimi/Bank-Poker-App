@@ -15,6 +15,7 @@ import com.bankpoker.app.data.local.dao.PlayerGroupDao
 import com.bankpoker.app.data.local.dao.PokerTableDao
 import com.bankpoker.app.data.local.dao.SettlementRecordDao
 import com.bankpoker.app.data.local.dao.EntryFeeRecordDao
+import com.bankpoker.app.data.local.dao.OutboxDao
 import com.bankpoker.app.data.local.entity.BuyIn
 import com.bankpoker.app.data.local.entity.ExitRecord
 import com.bankpoker.app.data.local.entity.GroupBalance
@@ -24,10 +25,11 @@ import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.SettlementRecord
 import com.bankpoker.app.data.local.entity.EntryFeeRecord
+import com.bankpoker.app.data.local.entity.OutboxRecord
 
 @Database(
-    entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class, SettlementRecord::class, EntryFeeRecord::class],
-    version = 6,
+    entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class, SettlementRecord::class, EntryFeeRecord::class, OutboxRecord::class],
+    version = 7,
     exportSchema = false
 )
 abstract class BankPokerDatabase : RoomDatabase() {
@@ -40,6 +42,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
     abstract fun paymentDao(): PaymentDao
     abstract fun settlementRecordDao(): SettlementRecordDao
     abstract fun entryFeeRecordDao(): EntryFeeRecordDao
+    abstract fun outboxDao(): OutboxDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -104,6 +107,27 @@ abstract class BankPokerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `poker_tables` ADD COLUMN `code` TEXT")
+                database.execSQL("ALTER TABLE `poker_tables` ADD COLUMN `publishedAt` INTEGER")
+                database.execSQL("ALTER TABLE `players` ADD COLUMN `userId` TEXT")
+                database.execSQL("ALTER TABLE `players` ADD COLUMN `avatarId` TEXT")
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `outbox_operations` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`operationType` TEXT NOT NULL, " +
+                        "`targetId` TEXT NOT NULL, " +
+                        "`payloadJson` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`attempts` INTEGER NOT NULL DEFAULT 0, " +
+                        "`status` TEXT NOT NULL DEFAULT 'PENDING', " +
+                        "`lastError` TEXT, " +
+                        "PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: BankPokerDatabase? = null
 
@@ -113,7 +137,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankPokerDatabase::class.java,
                     "bank_poker_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
                 INSTANCE = instance
                 instance
             }

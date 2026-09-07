@@ -58,8 +58,6 @@ fun TablesScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showMenu by remember { mutableStateOf(false) }
-    var showConfirmRestoreDialog by remember { mutableStateOf(false) }
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var selectedTableForAction by remember { mutableStateOf<PokerTable?>(null) }
     var selectedTableForEdit by remember { mutableStateOf<PokerTable?>(null) }
@@ -82,46 +80,6 @@ fun TablesScreen(
                 else -> true
             }
             matchesQuery && matchesStatus
-        }
-    }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val json = viewModel.exportBackup()
-                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(json.toByteArray(Charsets.UTF_8))
-                    }
-                    snackbarHostState.showSnackbar("Backup exported successfully!")
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("Export failed: ${e.message ?: "Unknown error"}")
-                }
-            }
-        }
-    }
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val json = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        inputStream.bufferedReader(Charsets.UTF_8).readText()
-                    }
-                    if (!json.isNullOrBlank()) {
-                        viewModel.restoreBackup(json)
-                        snackbarHostState.showSnackbar("Backup restored successfully!")
-                    } else {
-                        snackbarHostState.showSnackbar("Failed to read backup file.")
-                    }
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("Import failed: ${e.message ?: "Invalid backup file"}")
-                }
-            }
         }
     }
 
@@ -153,36 +111,6 @@ fun TablesScreen(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
                         )
-                    }
-
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "More options",
-                                tint = Gold
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier.background(FeltCard)
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Export Backup", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    exportLauncher.launch("BankPoker_backup.json")
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Import Backup", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    showConfirmRestoreDialog = true
-                                }
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -449,37 +377,6 @@ fun TablesScreen(
             onConfirm = {
                 viewModel.deleteTable(table.id)
                 selectedTableForDelete = null
-            }
-        )
-    }
-
-    if (showConfirmRestoreDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmRestoreDialog = false },
-            containerColor = FeltCard,
-            title = { Text("Restore Backup?", color = Gold, fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    text = "This replaces ALL current data!",
-                    color = Cream,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConfirmRestoreDialog = false
-                        importLauncher.launch(arrayOf("application/json", "*/*"))
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Restore", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmRestoreDialog = false }) {
-                    Text("Cancel", color = Gold)
-                }
             }
         )
     }

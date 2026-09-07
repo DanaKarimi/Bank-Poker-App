@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GroupBalanceDao {
-    @Query("SELECT * FROM group_balances WHERE groupId = :groupId ORDER BY balance ASC")
+    @Query("SELECT MIN(id) AS id, groupId, TRIM(playerName) AS playerName, SUM(balance) AS balance FROM group_balances WHERE groupId = :groupId GROUP BY LOWER(TRIM(playerName)) ORDER BY balance ASC")
     fun getBalancesByGroupId(groupId: String): Flow<List<GroupBalance>>
 
-    @Query("SELECT * FROM group_balances WHERE groupId = :groupId ORDER BY balance ASC")
+    @Query("SELECT MIN(id) AS id, groupId, TRIM(playerName) AS playerName, SUM(balance) AS balance FROM group_balances WHERE groupId = :groupId GROUP BY LOWER(TRIM(playerName)) ORDER BY balance ASC")
     suspend fun getBalancesByGroupIdOnce(groupId: String): List<GroupBalance>
 
-    @Query("SELECT * FROM group_balances WHERE groupId = :groupId AND playerName = :name")
+    @Query("SELECT * FROM group_balances WHERE groupId = :groupId AND LOWER(TRIM(playerName)) = LOWER(TRIM(:name)) LIMIT 1")
     suspend fun getBalance(groupId: String, name: String): GroupBalance?
 
     @Insert

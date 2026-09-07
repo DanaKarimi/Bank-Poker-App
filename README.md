@@ -126,22 +126,37 @@ npm run dev
    - Enter your server IP (e.g. `10.0.2.2` for emulator, or your local LAN IP like `192.168.1.50`).
    - Tap **Save & Connect**. The indicator will turn **Green** upon successful connection.
 
+### 4. Docker Compose Deployment (Ubuntu PC Production)
+
+For self-hosted production deployment on the dedicated Ubuntu server (with Nginx reverse proxy and persistent SQLite storage):
+
+```bash
+# 1. Copy environment template
+cp .env.example .env
+
+# 2. Build and run the production stack
+docker compose up -d --build
+```
+
+- **Nginx Entrypoint:** Port `80` (`http://localhost/` or `http://<UBUNTU_IP>/`)
+- **Persistent Data:** Stored in `./data/bankpoker.db`
+- Complete migration from PM2 and safety instructions: 👉 **[DEPLOY_UBUNTU.md](DEPLOY_UBUNTU.md)**
+
 ---
 
 ## 👤 User Accounts & Registration
 
 BankPoker uses dynamic JWT authentication. You can create accounts directly through the application:
 
-- **Register via Web App:** Navigate to `http://localhost:5173/register` to create a player account.
+- **Register via Web App:** Navigate to `http://localhost:5173/register` (or `http://localhost/register` in Docker) to create a player account.
 - **Register / Test via Android App:** Open the Server Settings screen (tap the Globe icon) to test authentication, registration, and login.
 
 ---
 
-## ⚙️ Fresh Machine Setup & Detailed Requirements
+## ⚙️ Documentation & Deployment Guides
 
-For step-by-step dependency installation (Node.js, JDK 17, Android SDK, environment variables, and Cloudflare Tunnel deployment), see:
-
-👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**
+- **Ubuntu Production Deployment & Migration:** 👉 **[DEPLOY_UBUNTU.md](DEPLOY_UBUNTU.md)**
+- **System Requirements & Local Setup:** 👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**
 
 ---
 
