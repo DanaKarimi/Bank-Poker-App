@@ -787,7 +787,7 @@ fun PlayerCard(
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     } else {
-                        PokerChipAvatar(name = player.name, size = 52.dp)
+                        PokerAvatar(avatarId = null, name = player.name, size = 52.dp)
                     }
 
 
@@ -1495,7 +1495,8 @@ fun AddPlayerBottomSheet(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            PokerChipAvatar(
+            PokerAvatar(
+                avatarId = null,
                 name = playerName.ifBlank { "?" },
                 size = 76.dp
             )

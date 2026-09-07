@@ -17,8 +17,14 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import com.bankpoker.app.data.remote.dto.GuestRequest
+import com.bankpoker.app.data.remote.dto.ActivateRequest
+import com.bankpoker.app.data.remote.dto.UpdateProfileRequest
+import com.bankpoker.app.data.remote.dto.LookupResponse
+import com.bankpoker.app.data.remote.dto.UserDto
 
 /**
  * Retrofit API Service definition for communication with the Node.js backend.
@@ -30,6 +36,32 @@ interface ApiService {
 
     @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): Response<RegisterResponse>
+
+    @POST("api/auth/guest")
+    suspend fun guestJoin(@Body request: GuestRequest): Response<LoginResponse>
+
+    @POST("api/auth/activate")
+    suspend fun activateAccount(
+        @Body request: ActivateRequest,
+        @Header("Authorization") token: String
+    ): Response<LoginResponse>
+
+    @GET("api/auth/me")
+    suspend fun getCurrentUser(
+        @Header("Authorization") token: String
+    ): Response<UserDto>
+
+    @PUT("api/auth/profile")
+    suspend fun updateProfile(
+        @Body request: UpdateProfileRequest,
+        @Header("Authorization") token: String
+    ): Response<UserDto>
+
+    @GET("api/lookup/{code}")
+    suspend fun lookupCode(
+        @Path("code") code: String,
+        @Header("Authorization") token: String = ""
+    ): Response<LookupResponse>
 
     @GET("api/health")
     suspend fun healthCheck(): Response<HealthResponse>

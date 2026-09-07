@@ -23,6 +23,11 @@ import com.bankpoker.app.data.remote.dto.TableActivityResponse
 import com.bankpoker.app.data.remote.dto.TableBuyInDto
 import com.bankpoker.app.data.remote.dto.TableExitDto
 import com.bankpoker.app.data.remote.dto.TablePlayerDto
+import com.bankpoker.app.data.remote.dto.GuestRequest
+import com.bankpoker.app.data.remote.dto.ActivateRequest
+import com.bankpoker.app.data.remote.dto.UpdateProfileRequest
+import com.bankpoker.app.data.remote.dto.LookupResponse
+import com.bankpoker.app.data.remote.dto.UserDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +86,7 @@ class RemoteRepository(
                     tokenManager.saveToken(token)
                 }
                 body.user?.let { user ->
-                    tokenManager.saveUser(user.username, user.role)
+                    tokenManager.saveUser(user)
                 }
                 Result.success(body)
             } else {
@@ -102,10 +107,12 @@ class RemoteRepository(
     suspend fun register(
         username: String,
         password: String,
+        displayName: String? = null,
+        avatarId: String? = null,
         role: String = "PLAYER"
     ): Result<RegisterResponse> = withContext(Dispatchers.IO) {
         try {
-            val request = RegisterRequest(username.trim(), password, role)
+            val request = RegisterRequest(username.trim(), password, displayName?.trim(), avatarId, role)
             val response = apiService.register(request)
 
             if (response.isSuccessful && response.body() != null) {
@@ -113,6 +120,118 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Registration failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Join instantly as a Guest
+     */
+    suspend fun guestJoin(
+        displayName: String,
+        avatarId: String? = null
+    ): Result<LoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = GuestRequest(displayName.trim(), avatarId)
+            val response = apiService.guestJoin(request)
+
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                body.token?.let { token ->
+                    tokenManager.saveToken(token)
+                }
+                body.user?.let { user ->
+                    tokenManager.saveUser(user)
+                }
+                Result.success(body)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Guest join failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Activate a guest account permanently
+     */
+    suspend fun activateAccount(
+        username: String,
+        password: String
+    ): Result<LoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = ActivateRequest(username.trim(), password)
+            val response = apiService.activateAccount(request, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                body.token?.let { token ->
+                    tokenManager.saveToken(token)
+                }
+                body.user?.let { user ->
+                    tokenManager.saveUser(user)
+                }
+                Result.success(body)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Account activation failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update user profile
+     */
+    suspend fun updateProfile(
+        displayName: String?,
+        avatarId: String?,
+        username: String? = null
+    ): Result<UserDto> = withContext(Dispatchers.IO) {
+        try {
+            val request = UpdateProfileRequest(displayName?.trim(), avatarId, username?.trim())
+            val response = apiService.updateProfile(request, getAuthHeader())
+
+            if (response.isSuccessful && response.body() != null) {
+                val updatedUser = response.body()!!
+                tokenManager.saveUser(updatedUser)
+                Result.success(updatedUser)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Profile update failed (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Smart code lookup (group or table)
+     */
+    suspend fun lookupCode(code: String): Result<LookupResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.lookupCode(code.trim().uppercase(), getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Invalid code (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {

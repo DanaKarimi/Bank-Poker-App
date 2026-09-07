@@ -1,16 +1,18 @@
 package com.bankpoker.app.ui.screens
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,7 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -28,6 +35,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.PokerRepository
+import com.bankpoker.app.repository.RemoteRepository
+import com.bankpoker.app.ui.components.AuthDialog
+import com.bankpoker.app.ui.components.PokerAvatar
+import com.bankpoker.app.ui.components.ProfileDialog
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,22 +51,32 @@ fun HomeScreen(
     onQuickTableClick: () -> Unit,
     onGroupsClick: () -> Unit,
     onServerTestClick: () -> Unit = {},
-    onCreateGroupClick: () -> Unit = {}
+    onCreateGroupClick: () -> Unit = {},
+    onNavigateToTable: (String) -> Unit = {},
+    onNavigateToGroup: (String) -> Unit = {}
 ) {
-    android.util.Log.d("HomeScreen", "Rendering HomeScreen")
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    var showMenu by remember { mutableStateOf(false) }
-    var showConfirmRestoreDialog by remember { mutableStateOf(false) }
+    val tokenManager = remember { TokenManager.getInstance(context) }
+    val remoteRepository = remember {
+        val service = ApiClient.getApiService(context, tokenManager)
+        RemoteRepository(service, tokenManager)
+    }
+
     var isConnected by remember { mutableStateOf(false) }
+    var codeInput by remember { mutableStateOf("") }
+    var isLookingUpCode by remember { mutableStateOf(false) }
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var authStateVersion by remember { mutableIntStateOf(0) }
 
     suspend fun checkConnection() {
         withContext(Dispatchers.IO) {
             try {
-                val tokenManager = TokenManager.getInstance(context)
                 val service = ApiClient.getApiService(context, tokenManager)
                 val response = service.healthCheck()
                 val success = response.isSuccessful && response.body()?.status?.equals("ok", ignoreCase = true) == true
@@ -84,6 +105,7 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 refreshConnection()
+                authStateVersion++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -92,44 +114,47 @@ fun HomeScreen(
         }
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val json = repository.exportBackupJson()
-                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(json.toByteArray(Charsets.UTF_8))
-                    }
-                    snackbarHostState.showSnackbar("Backup exported successfully!")
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("Export failed: ${e.message ?: "Unknown error"}")
+    fun handleLookupCode() {
+        val trimmed = codeInput.trim().uppercase()
+        if (trimmed.length < 4) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Enter a valid 6-character code")
+            }
+            return
+        }
+
+        keyboardController?.hide()
+        isLookingUpCode = true
+        coroutineScope.launch {
+            val result = remoteRepository.lookupCode(trimmed)
+            isLookingUpCode = false
+            if (result.isSuccess) {
+                val lookup = result.getOrNull()!!
+                if (lookup.type == "GROUP") {
+                    onNavigateToGroup(lookup.id)
+                } else if (lookup.type == "TABLE") {
+                    onNavigateToTable(lookup.id)
+                } else {
+                    snackbarHostState.showSnackbar("Found ${lookup.name}")
                 }
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "Code not found"
+                snackbarHostState.showSnackbar("Error: $err")
             }
         }
     }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val json = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        inputStream.bufferedReader(Charsets.UTF_8).readText()
-                    }
-                    if (!json.isNullOrBlank()) {
-                        repository.restoreBackupJson(json)
-                        snackbarHostState.showSnackbar("Backup restored successfully!")
-                    } else {
-                        snackbarHostState.showSnackbar("Failed to read backup file.")
-                    }
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("Import failed: ${e.message ?: "Invalid backup file"}")
-                }
-            }
-        }
+    val isLoggedIn = remember(authStateVersion, tokenManager.getToken()) {
+        !tokenManager.getToken().isNullOrBlank()
+    }
+    val currentDisplayName = remember(authStateVersion, isLoggedIn) {
+        tokenManager.getDisplayName() ?: tokenManager.getUsername() ?: "Player"
+    }
+    val currentAvatarId = remember(authStateVersion, isLoggedIn) {
+        tokenManager.getAvatarId()
+    }
+    val isGuest = remember(authStateVersion, isLoggedIn) {
+        tokenManager.isGuest()
     }
 
     Scaffold(
@@ -145,7 +170,7 @@ fun HomeScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(32.dp)
                                 .background(
                                     color = if (isConnected) Color(0xFF10B981) else Color(0xFFEF4444),
                                     shape = CircleShape
@@ -166,33 +191,59 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Options",
-                                tint = Gold
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier.background(FeltCard)
+                    if (isLoggedIn) {
+                        Surface(
+                            modifier = Modifier
+                                .clickable { showProfileDialog = true }
+                                .padding(end = 8.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = FeltCard,
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Export Backup", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    exportLauncher.launch("BankPoker_backup.json")
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                PokerAvatar(
+                                    avatarId = currentAvatarId,
+                                    name = currentDisplayName,
+                                    size = 28.dp
+                                )
+                                Text(
+                                    text = currentDisplayName,
+                                    color = Cream,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                                if (isGuest) {
+                                    Surface(
+                                        color = Gold.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "GUEST",
+                                            color = Gold,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Import Backup", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    showConfirmRestoreDialog = true
-                                }
-                            )
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = { showAuthDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Gold,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 },
@@ -220,14 +271,15 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 // Hero Header
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
+                        .size(80.dp)
                         .background(
                             brush = Brush.radialGradient(
                                 colors = listOf(Gold.copy(alpha = 0.25f), Color.Transparent)
@@ -238,21 +290,22 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = "♠",
-                        fontSize = 72.sp,
+                        fontSize = 58.sp,
                         color = Gold
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                
+                Spacer(modifier = Modifier.height(2.dp))
+
                 Text(
                     text = "BANK POKER",
                     style = MaterialTheme.typography.displaySmall,
                     color = Cream,
                     fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 4.sp
+                    letterSpacing = 4.sp,
+                    fontSize = 32.sp
                 )
-                
+
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // Card suits row
@@ -266,7 +319,7 @@ fun HomeScreen(
                     Text(text = "♣", color = Gold, fontSize = 16.sp)
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Box(
                     modifier = Modifier
@@ -275,7 +328,104 @@ fun HomeScreen(
                         .background(Gold, RoundedCornerShape(2.dp))
                 )
 
-                Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // SMART SINGLE CODE INPUT
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = Gold.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(20.dp)
+                        ),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "JOIN BY CODE",
+                            color = Gold,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = codeInput,
+                                onValueChange = { if (it.length <= 8) codeInput = it.uppercase() },
+                                placeholder = {
+                                    Text(
+                                        "ENTER 6-CHAR CODE",
+                                        fontSize = 13.sp,
+                                        color = Cream.copy(alpha = 0.4f),
+                                        letterSpacing = 1.sp
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Characters,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { handleLookupCode() }
+                                ),
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = Cream,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 2.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Gold,
+                                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                                    cursorColor = Gold
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Button(
+                                onClick = { handleLookupCode() },
+                                enabled = !isLookingUpCode && codeInput.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Gold,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.height(56.dp)
+                            ) {
+                                if (isLookingUpCode) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black)
+                                } else {
+                                    Icon(Icons.Default.ArrowForward, contentDescription = "Lookup")
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Supports Group Invite Codes & Table Codes",
+                            color = Cream.copy(alpha = 0.5f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Two Side-By-Side Mode Cards
                 Row(
@@ -302,38 +452,33 @@ fun HomeScreen(
         }
     }
 
-    if (showConfirmRestoreDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmRestoreDialog = false },
-            containerColor = FeltCard,
-            title = { Text("Restore Backup?", color = Gold, fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    text = "This replaces ALL current data!",
-                    color = Cream,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+    if (showAuthDialog) {
+        AuthDialog(
+            remoteRepository = remoteRepository,
+            tokenManager = tokenManager,
+            onDismiss = { showAuthDialog = false },
+            onAuthSuccess = {
+                showAuthDialog = false
+                authStateVersion++
+            }
+        )
+    }
+
+    if (showProfileDialog) {
+        ProfileDialog(
+            remoteRepository = remoteRepository,
+            tokenManager = tokenManager,
+            onDismiss = { showProfileDialog = false },
+            onProfileUpdated = {
+                authStateVersion++
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConfirmRestoreDialog = false
-                        importLauncher.launch(arrayOf("application/json", "*/*"))
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Restore", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmRestoreDialog = false }) {
-                    Text("Cancel", color = Gold)
-                }
+            onLogout = {
+                showProfileDialog = false
+                authStateVersion++
             }
         )
     }
 }
-
 
 @Composable
 fun HomeOptionCard(
@@ -346,7 +491,7 @@ fun HomeOptionCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(210.dp)
+            .height(200.dp)
             .border(
                 width = 1.5.dp,
                 color = Gold.copy(alpha = 0.75f),
@@ -413,5 +558,3 @@ fun HomeOptionCard(
         }
     }
 }
-
-

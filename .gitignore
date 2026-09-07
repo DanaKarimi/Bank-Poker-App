@@ -41,7 +41,7 @@ server/node_modules/
 server/.env
 server/*.db
 server/*.sqlite
-data/
+/data/
 *.db
 *.sqlite
 *.db-wal

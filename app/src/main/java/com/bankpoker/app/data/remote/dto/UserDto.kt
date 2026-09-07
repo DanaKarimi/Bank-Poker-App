@@ -7,8 +7,14 @@ data class UserDto(
     val id: String,
     @SerializedName("username")
     val username: String,
+    @SerializedName("display_name")
+    val displayName: String? = null,
+    @SerializedName("avatar_id")
+    val avatarId: String? = null,
     @SerializedName("role")
-    val role: String,
+    val role: String = "PLAYER",
+    @SerializedName("is_guest")
+    val isGuest: Boolean = false,
     @SerializedName("created_at")
-    val createdAt: Long? = null
+    val createdAt: Any? = null
 )

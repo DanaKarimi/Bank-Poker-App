@@ -81,6 +81,12 @@ fun AppNavigation(
                 },
                 onCreateGroupClick = {
                     navController.navigate(Screen.CreateGroup.route)
+                },
+                onNavigateToTable = { tableId ->
+                    navController.navigate(Screen.TableDetail.createRoute(tableId))
+                },
+                onNavigateToGroup = { groupId ->
+                    navController.navigate(Screen.GroupDetail.createRoute(groupId))
                 }
             )
         }
