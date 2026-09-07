@@ -106,6 +106,32 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 /**
+ * PUT /api/admin/users/:id/role
+ * Update user role (USER, ADMIN, SUPER_ADMIN)
+ */
+router.put('/users/:id/role', async (req, res) => {
+    try {
+        const targetUserId = req.params.id;
+        const { role } = req.body;
+        const validRoles = ['USER', 'ADMIN', 'SUPER_ADMIN'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+        }
+
+        const user = await get('SELECT id, username FROM users WHERE id = ?', [targetUserId]);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?', [role, Date.now(), targetUserId]);
+        res.json({ message: `Role for ${user.username} updated to ${role}`, role });
+    } catch (err) {
+        console.error('Error updating user role:', err);
+        res.status(500).json({ error: 'Failed to update user role' });
+    }
+});
+
+/**
  * GET /api/admin/groups
  * List all groups
  */

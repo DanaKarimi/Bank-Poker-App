@@ -100,4 +100,17 @@ export const markAllNotificationsRead = () => api.put('/api/notifications/read-a
 export const getNotificationSettings = () => api.get('/api/notifications/settings');
 export const updateNotificationSettings = (settings) => api.put('/api/notifications/settings', { settings });
 
+// --- Admin APIs ---
+export const getAdminOverview = () => api.get('/api/admin/overview');
+export const getAdminUsers = () => api.get('/api/admin/users');
+export const updateAdminUserRole = (id, role) => api.put(`/api/admin/users/${id}/role`, { role });
+export const deleteAdminUser = (id) => api.delete(`/api/admin/users/${id}`);
+export const getAdminGroups = () => api.get('/api/admin/groups');
+export const deleteAdminGroup = (id) => api.delete(`/api/admin/groups/${id}`);
+export const getAdminTables = () => api.get('/api/admin/tables');
+export const deleteAdminTable = (id) => api.delete(`/api/admin/tables/${id}`);
+export const getAdminTablePlayers = (tableId) => api.get(`/api/admin/tables/${tableId}/players`);
+export const updateAdminTablePlayer = (tableId, playerId, data) => api.put(`/api/admin/tables/${tableId}/players/${playerId}`, data);
+export const getServerHealth = () => api.get('/api/health');
+
 export default api;

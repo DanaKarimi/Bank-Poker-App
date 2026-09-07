@@ -16,7 +16,8 @@ import {
   UserCheck,
   UserPlus,
   ArrowRight,
-  Zap
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
@@ -270,6 +271,17 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {user?.role === 'SUPER_ADMIN' && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-1.5 px-3 py-2 bg-yellow-950/70 hover:bg-yellow-900 border border-gold-accent/60 text-gold-accent rounded-xl text-xs font-bold transition shadow"
+                title="Super Admin Control Plane"
+              >
+                <ShieldCheck className="w-4 h-4 text-gold-accent" />
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
+            )}
+
             <NotificationsDropdown />
 
             <div
