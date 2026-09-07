@@ -12,12 +12,15 @@ import {
   sendExitRequest,
   confirmBuyInReceipt,
   confirmExitReceipt,
+  publishTable,
+  deleteTablePlayer,
 } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
 import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
 import { UserBadge } from '../components/AvatarSystem';
+import GroupCodeChip from '../components/GroupCodeChip';
 import {
   ArrowLeft,
   RefreshCw,
@@ -36,6 +39,8 @@ import {
   DollarSign,
   AlertTriangle,
   History,
+  Share2,
+  Trash2,
 } from 'lucide-react';
 
 const TableDetail = () => {
@@ -59,6 +64,9 @@ const TableDetail = () => {
   // Modal states
   const [isBuyInModalOpen, setIsBuyInModalOpen] = useState(false);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [playerToDelete, setPlayerToDelete] = useState(null);
+  const [isDeletingPlayer, setIsDeletingPlayer] = useState(false);
 
   const previousStatusRef = useRef(null);
 
@@ -256,6 +264,54 @@ const TableDetail = () => {
     }
   };
 
+  const handlePublishTable = async () => {
+    setIsPublishing(true);
+    try {
+      const res = await publishTable(tableId);
+      if (res.data?.code) {
+        setTable((prev) => ({
+          ...prev,
+          code: res.data.code,
+          published_at: res.data.published_at || Date.now(),
+        }));
+        setSuccessMessage(`Table published! Share code: ${res.data.code}`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to publish table:', err);
+      setError(err.response?.data?.error || 'Failed to publish table code.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleDeletePlayerClick = (p) => {
+    const buyIns = Number(p.totalBuyIns || p.total_buy_ins || p.buy_ins || 0);
+    if (buyIns > 0) {
+      setError('Cannot remove player who has already bought in. Settle their stack with an Exit transaction first.');
+      setTimeout(() => setError(''), 6000);
+      return;
+    }
+    setPlayerToDelete(p);
+  };
+
+  const handleConfirmDeletePlayer = async () => {
+    if (!playerToDelete) return;
+    setIsDeletingPlayer(true);
+    try {
+      await deleteTablePlayer(tableId, playerToDelete.id);
+      setSuccessMessage(`Player "${playerToDelete.name || playerToDelete.username}" removed from table.`);
+      setPlayerToDelete(null);
+      fetchTableData(true);
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err) {
+      console.error('Failed to delete player:', err);
+      setError(err.response?.data?.error || 'Failed to remove player from table.');
+    } finally {
+      setIsDeletingPlayer(false);
+    }
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(Number(timestamp));
@@ -283,16 +339,16 @@ const TableDetail = () => {
         {/* Navigation & Header */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate(`/group/${groupId}`)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition shadow-sm"
+            onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition shadow-sm cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Group Tables</span>
+            <span>{groupId ? 'Back to Group Tables' : 'Back to Dashboard'}</span>
           </button>
 
           <button
             onClick={() => fetchTableData()}
-            className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition"
+            className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
             title="Refresh Table Data"
           >
             <RefreshCw className="w-4 h-4" />
@@ -333,6 +389,22 @@ const TableDetail = () => {
                 <p className="text-xs text-cream-text/60 mt-0.5">
                   Live Table Session & Transaction Ledger
                 </p>
+
+                {/* Table Code / Publish Button */}
+                <div className="flex items-center gap-2 mt-2">
+                  {table?.code ? (
+                    <GroupCodeChip code={table.code} label="Table Code" />
+                  ) : !isClosed ? (
+                    <button
+                      onClick={handlePublishTable}
+                      disabled={isPublishing}
+                      className="px-3 py-1.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 active:scale-95 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>{isPublishing ? 'Publishing...' : 'Publish Table Code'}</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -669,6 +741,15 @@ const TableDetail = () => {
                       <span className="px-2.5 py-1 text-[10px] font-extrabold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
                         {p.status || 'ACTIVE'}
                       </span>
+                      {!isClosed && (
+                        <button
+                          onClick={() => handleDeletePlayerClick(p)}
+                          className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-400 hover:text-white transition cursor-pointer"
+                          title="Remove player from table"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -677,6 +758,39 @@ const TableDetail = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Player Modal */}
+      {playerToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-red-500/80 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-base font-black text-red-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <span>Remove Player</span>
+            </h3>
+            <p className="text-xs text-cream-text/80 mb-5 leading-relaxed">
+              Are you sure you want to remove <strong>{playerToDelete.name || playerToDelete.username}</strong> from this table? This player has 0 buy-ins.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPlayerToDelete(null)}
+                disabled={isDeletingPlayer}
+                className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePlayer}
+                disabled={isDeletingPlayer}
+                className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingPlayer ? 'Removing...' : 'Confirm Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Buy-In Modal */}
       <BuyInModal

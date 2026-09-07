@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, CheckCircle2, AlertCircle, Check, ArrowDownLeft, ArrowUpRight, UserPlus } from 'lucide-react';
+import { UserBadge } from './AvatarSystem';
 
 const RequestCard = ({ request, type, onConfirm }) => {
   const [isConfirming, setIsConfirming] = useState(false);
@@ -118,6 +119,17 @@ const RequestCard = ({ request, type, onConfirm }) => {
         {renderTypeHeader()}
         {getStatusBadge(request.status)}
       </div>
+
+      {(request.username || request.display_name) && (
+        <div className="flex items-center gap-2 py-1 px-2.5 bg-felt-dark/60 rounded-lg border border-gold-accent/20">
+          <UserBadge
+            displayName={request.display_name || request.username}
+            username={request.username}
+            avatarId={request.avatar_id}
+            size={24}
+          />
+        </div>
+      )}
 
       <div className="flex items-baseline justify-between border-t border-gold-accent/15 pt-3">
         {request.amount != null ? (

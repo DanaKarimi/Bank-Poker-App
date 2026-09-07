@@ -78,6 +78,10 @@ export const getPlayers = (tableId) => api.get(`/api/tables/${tableId}/players`)
 export const getTableActivity = (tableId) => api.get(`/api/tables/${tableId}/activity`);
 export const directBuyIn = (tableId, data) => api.post(`/api/tables/${tableId}/buy-in-direct`, data);
 export const directExit = (tableId, data) => api.post(`/api/tables/${tableId}/exit-direct`, data);
+export const createQuickTable = (data) => api.post('/api/tables/quick', data);
+export const publishTable = (tableId) => api.post(`/api/tables/${tableId}/publish`);
+export const deleteTablePlayer = (tableId, playerId) => api.delete(`/api/tables/${tableId}/players/${playerId}`);
+export const getTableByCode = (code) => api.get(`/api/tables/by-code/${encodeURIComponent(code)}`);
 
 export const getGroupTables = async (groupId) => {
   try {

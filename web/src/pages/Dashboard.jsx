@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer } from '../api';
+import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer, createQuickTable } from '../api';
 import {
   Users,
   Plus,
@@ -15,7 +15,8 @@ import {
   X,
   UserCheck,
   UserPlus,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from 'lucide-react';
 import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
@@ -45,6 +46,34 @@ const Dashboard = () => {
   const [unclaimedPlayers, setUnclaimedPlayers] = useState([]);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
+
+  // Quick Table State
+  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
+  const [quickTableName, setQuickTableName] = useState('');
+  const [quickDefaultBuyIn, setQuickDefaultBuyIn] = useState('100000');
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState('');
+
+  const handleCreateQuickTable = async (e) => {
+    e.preventDefault();
+    setQuickLoading(true);
+    setQuickError('');
+    try {
+      const res = await createQuickTable({
+        name: quickTableName.trim() || 'Quick Table',
+        default_buy_in: Number(quickDefaultBuyIn) || 100000,
+      });
+      setIsQuickModalOpen(false);
+      if (res.data?.table?.id) {
+        navigate(`/table/${res.data.table.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create quick table:', err);
+      setQuickError(err.response?.data?.error || 'Failed to create quick table.');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -288,6 +317,19 @@ const Dashboard = () => {
               className="p-3 bg-felt-dark hover:bg-felt-dark/80 text-gold-accent rounded-xl border border-gold-accent/40 shadow transition active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => {
+                setQuickTableName('');
+                setQuickDefaultBuyIn('100000');
+                setQuickError('');
+                setIsQuickModalOpen(true);
+              }}
+              className="px-4 py-3 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 cursor-pointer"
+            >
+              <Zap className="w-4 h-4 text-gold-accent" />
+              <span>Quick Table</span>
             </button>
 
             <button
@@ -725,6 +767,91 @@ const Dashboard = () => {
                 </form>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Table Modal */}
+      {isQuickModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setIsQuickModalOpen(false)}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
+                  Create Quick Table
+                </h3>
+                <p className="text-xs text-cream-text/60">
+                  Start an instant standalone poker session with a shareable code
+                </p>
+              </div>
+            </div>
+
+            {quickError && (
+              <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{quickError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateQuickTable} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Table Name
+                </label>
+                <input
+                  type="text"
+                  value={quickTableName}
+                  onChange={(e) => setQuickTableName(e.target.value)}
+                  placeholder="e.g. Quick Cash Game"
+                  maxLength={40}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Default Buy-In Amount
+                </label>
+                <input
+                  type="number"
+                  value={quickDefaultBuyIn}
+                  onChange={(e) => setQuickDefaultBuyIn(e.target.value)}
+                  min={1000}
+                  step={1000}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+                <p className="text-[11px] text-cream-text/50 mt-1">
+                  A unique 6-character code will be generated to share with other players.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickModalOpen(false)}
+                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickLoading}
+                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {quickLoading ? 'Creating...' : 'Start Table'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
