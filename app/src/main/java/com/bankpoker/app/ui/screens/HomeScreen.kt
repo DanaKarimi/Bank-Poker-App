@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,7 +55,9 @@ fun HomeScreen(
     onServerTestClick: () -> Unit = {},
     onCreateGroupClick: () -> Unit = {},
     onNavigateToTable: (String) -> Unit = {},
-    onNavigateToGroup: (String) -> Unit = {}
+    onNavigateToGroup: (String) -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -73,6 +77,7 @@ fun HomeScreen(
     var showAuthDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var authStateVersion by remember { mutableIntStateOf(0) }
+    var unreadNotifCount by remember { mutableIntStateOf(0) }
 
     suspend fun checkConnection() {
         withContext(Dispatchers.IO) {
@@ -82,6 +87,15 @@ fun HomeScreen(
                 val success = response.isSuccessful && response.body()?.status?.equals("ok", ignoreCase = true) == true
                 withContext(Dispatchers.Main) {
                     isConnected = success
+                }
+                if (success && tokenManager.isLoggedIn()) {
+                    val notifRes = remoteRepository.getNotifications()
+                    if (notifRes.isSuccess) {
+                        val count = notifRes.getOrNull()?.unreadCount ?: 0
+                        withContext(Dispatchers.Main) {
+                            unreadNotifCount = count
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -195,7 +209,7 @@ fun HomeScreen(
                         Surface(
                             modifier = Modifier
                                 .clickable { showProfileDialog = true }
-                                .padding(end = 8.dp),
+                                .padding(end = 4.dp),
                             shape = RoundedCornerShape(20.dp),
                             color = FeltCard,
                             border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
@@ -233,6 +247,27 @@ fun HomeScreen(
                                 }
                             }
                         }
+
+                        IconButton(onClick = onNotificationsClick) {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadNotifCount > 0) {
+                                        Badge(
+                                            containerColor = Gold,
+                                            contentColor = Color.Black
+                                        ) {
+                                            Text("$unreadNotifCount", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Notifications",
+                                    tint = Gold
+                                )
+                            }
+                        }
                     } else {
                         Button(
                             onClick = { showAuthDialog = true },
@@ -241,10 +276,18 @@ fun HomeScreen(
                                 contentColor = Color.Black
                             ),
                             shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 4.dp)
                         ) {
                             Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
+                    }
+
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = Gold
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

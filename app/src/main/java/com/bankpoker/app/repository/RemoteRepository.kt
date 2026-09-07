@@ -887,6 +887,76 @@ class RemoteRepository(
         }
     }
 
+    suspend fun getNotifications(): Result<com.bankpoker.app.data.remote.dto.NotificationListResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getNotifications(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to fetch notifications"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markNotificationRead(id: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.markNotificationRead(id, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to mark notification read"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markAllNotificationsRead(): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.markAllNotificationsRead(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to mark all read"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getNotificationSettings(): Result<Map<String, Boolean>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getNotificationSettings(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.settings)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get settings"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateNotificationSettings(settings: Map<String, Boolean>): Result<Map<String, Boolean>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateNotificationSettings(settings, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.settings)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update settings"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {

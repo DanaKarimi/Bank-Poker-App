@@ -21,6 +21,8 @@ class TokenManager(context: Context) {
         return prefs.getString(KEY_JWT_TOKEN, null)
     }
 
+    fun isLoggedIn(): Boolean = !getToken().isNullOrBlank()
+
     fun clearToken() {
         prefs.edit().remove(KEY_JWT_TOKEN).apply()
     }

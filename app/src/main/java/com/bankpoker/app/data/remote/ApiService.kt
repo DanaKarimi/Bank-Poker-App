@@ -236,4 +236,31 @@ interface ApiService {
         @Path("tableId") tableId: String,
         @Header("Authorization") token: String = ""
     ): Response<com.google.gson.JsonObject>
+
+    @GET("api/notifications")
+    suspend fun getNotifications(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.NotificationListResponse>
+
+    @PUT("api/notifications/{id}/read")
+    suspend fun markNotificationRead(
+        @Path("id") id: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @PUT("api/notifications/read-all")
+    suspend fun markAllNotificationsRead(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/notifications/settings")
+    suspend fun getNotificationSettings(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.NotificationSettingsResponse>
+
+    @PUT("api/notifications/settings")
+    suspend fun updateNotificationSettings(
+        @Body settings: Map<String, Boolean>,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.NotificationSettingsResponse>
 }
