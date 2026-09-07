@@ -41,6 +41,7 @@ import com.bankpoker.app.ui.screens.CreateGroupScreen
 import com.bankpoker.app.ui.screens.RequestsScreen
 import com.bankpoker.app.ui.screens.NotificationsScreen
 import com.bankpoker.app.ui.screens.SettingsScreen
+import com.bankpoker.app.ui.screens.AdminManagementScreen
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -95,6 +96,9 @@ fun AppNavigation(
                 },
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onAdminManagementClick = {
+                    navController.navigate(Screen.AdminManagement.route)
                 }
             )
         }
@@ -328,6 +332,17 @@ fun AppNavigation(
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
+                },
+                onAdminManagementClick = {
+                    navController.navigate(Screen.AdminManagement.route)
+                }
+            )
+        }
+
+        composable(Screen.AdminManagement.route) {
+            AdminManagementScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

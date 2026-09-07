@@ -39,7 +39,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    onLoggedOut: () -> Unit = {}
+    onLoggedOut: () -> Unit = {},
+    onAdminManagementClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -200,6 +201,48 @@ fun SettingsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
+                // Super Admin Management Entry (Visible ONLY when role == SUPER_ADMIN)
+                if (tokenManager.getRole() == "SUPER_ADMIN") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E1705)),
+                        border = BorderStroke(1.5.dp, Gold)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Shield, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                                Text(
+                                    text = "SUPER ADMIN MANAGEMENT",
+                                    color = Gold,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            Text(
+                                text = "Browse users, groups, and live tables. Rename seats, adjust player balances, and manage platform permissions.",
+                                color = Cream.copy(alpha = 0.8f),
+                                fontSize = 12.sp
+                            )
+                            Button(
+                                onClick = onAdminManagementClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Open Management Panel", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
                 // Section 1: Identity & Profile
                 Card(
                     modifier = Modifier.fillMaxWidth(),

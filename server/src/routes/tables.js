@@ -631,6 +631,63 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/tables/active
+ * Return active tables for the authenticated user (group tables + published quick tables)
+ */
+router.get('/active', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        // User's group IDs
+        const userGroups = await all('SELECT group_id FROM group_members WHERE user_id = ?', [userId]);
+        const groupIds = userGroups.map(g => g.group_id);
+
+        let query = `
+            SELECT t.*, g.name as group_name,
+                (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE') as playerCount
+            FROM tables t
+            LEFT JOIN groups g ON t.group_id = g.id
+            WHERE t.is_deleted = 0 AND (t.status = 'ACTIVE' OR t.status IS NULL)
+        `;
+        const params = [];
+        if (userRole === 'SUPER_ADMIN') {
+            // Super Admin sees all active tables
+        } else if (groupIds.length > 0) {
+            const placeholders = groupIds.map(() => '?').join(',');
+            query += ` AND (t.group_id IN (${placeholders}) OR t.creator_user_id = ? OR (t.group_id IS NULL AND t.published_at IS NOT NULL))`;
+            params.push(...groupIds, userId);
+        } else {
+            query += ` AND (t.creator_user_id = ? OR (t.group_id IS NULL AND t.published_at IS NOT NULL))`;
+            params.push(userId);
+        }
+        query += ` ORDER BY t.created_at DESC LIMIT 30`;
+
+        const rows = await all(query, params);
+        const tables = rows.map(t => ({
+            id: t.id,
+            groupId: t.group_id,
+            groupName: t.group_name || (t.group_id ? null : 'Quick Table'),
+            name: t.name,
+            code: t.code,
+            chipValue: t.chip_value,
+            gameType: "NL Hold'em",
+            hasEntryFee: Boolean(t.has_entry_fee),
+            entryFee: t.entry_fee,
+            isQuickTable: !t.group_id,
+            status: t.status || 'ACTIVE',
+            playerCount: Number(t.playerCount) || 0,
+            createdAt: t.created_at
+        }));
+
+        return res.json({ tables });
+    } catch (err) {
+        console.error('Error fetching active tables:', err);
+        return res.status(500).json({ error: 'Failed to fetch active tables' });
+    }
+});
+
+/**
  * GET /api/tables/:id
  * Return table details
  */

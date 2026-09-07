@@ -269,4 +269,75 @@ interface ApiService {
         @Body body: Map<String, String>,
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    // --- Admin Endpoints ---
+    @GET("api/admin/overview")
+    suspend fun getAdminOverview(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.AdminOverviewResponse>
+
+    @GET("api/admin/users")
+    suspend fun getAdminUsers(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.AdminUsersResponse>
+
+    @PUT("api/admin/users/{id}/role")
+    suspend fun updateAdminUserRole(
+        @Path("id") userId: String,
+        @Body body: Map<String, String>,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @DELETE("api/admin/users/{id}")
+    suspend fun deleteAdminUser(
+        @Path("id") userId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/admin/groups")
+    suspend fun getAdminGroups(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.AdminGroupsResponse>
+
+    @DELETE("api/admin/groups/{id}")
+    suspend fun deleteAdminGroup(
+        @Path("id") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/admin/tables")
+    suspend fun getAdminTables(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.AdminTablesResponse>
+
+    @DELETE("api/admin/tables/{id}")
+    suspend fun deleteAdminTable(
+        @Path("id") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/admin/tables/{tableId}/players")
+    suspend fun getAdminTablePlayers(
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.AdminTablePlayersResponse>
+
+    @PUT("api/admin/tables/{tableId}/players/{playerId}")
+    suspend fun updateAdminTablePlayer(
+        @Path("tableId") tableId: String,
+        @Path("playerId") playerId: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @GET("api/tables/active")
+    suspend fun getActiveTables(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.ActiveTablesResponse>
+
+    @GET("api/groups/my-groups")
+    suspend fun getMyGroups(
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MyGroupsResponse>
 }
+

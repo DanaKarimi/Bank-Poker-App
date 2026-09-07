@@ -669,26 +669,73 @@ router.get('/my-groups', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
+        const username = req.user.username;
 
         let groups;
-        if (userRole === 'ADMIN') {
+        if (userRole === 'SUPER_ADMIN') {
             groups = await all(
-                `SELECT DISTINCT g.id, g.name, g.invite_code, g.mode, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
+                `SELECT DISTINCT g.id, g.name, g.invite_code, g.mode, g.owner_user_id, g.created_by, g.created_at, g.server_id, g.updated_at,
+                    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+                    (g.owner_user_id = ? OR g.created_by = ?) as is_creator
+                 FROM groups g
+                 WHERE g.is_deleted = 0
+                 ORDER BY g.name ASC`,
+                [userId, userId]
+            );
+        } else if (userRole === 'ADMIN') {
+            groups = await all(
+                `SELECT DISTINCT g.id, g.name, g.invite_code, g.mode, g.owner_user_id, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at,
+                    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+                    (g.owner_user_id = ? OR g.created_by = ?) as is_creator
                  FROM groups g
                  LEFT JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
-                 WHERE (g.created_by = ? OR gm.user_id = ?) AND g.is_deleted = 0
+                 WHERE (g.owner_user_id = ? OR g.created_by = ? OR gm.user_id = ?) AND g.is_deleted = 0
                  ORDER BY g.name ASC`,
-                [userId, userId, userId]
+                [userId, userId, userId, userId, userId, userId]
             );
         } else {
             groups = await all(
-                `SELECT g.id, g.name, g.invite_code, g.mode, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at
+                `SELECT g.id, g.name, g.invite_code, g.mode, g.owner_user_id, g.created_by, g.created_at, g.server_id, g.updated_at, gm.joined_at,
+                    (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+                    (g.owner_user_id = ? OR g.created_by = ?) as is_creator
                  FROM groups g
                  INNER JOIN group_members gm ON g.id = gm.group_id
                  WHERE gm.user_id = ? AND g.is_deleted = 0
                  ORDER BY g.name ASC`,
-                [userId]
+                [userId, userId, userId]
             );
+        }
+
+        for (const g of groups) {
+            const buyIns = await get(
+                `SELECT COALESCE(SUM(b.amount), 0) as total
+                 FROM buy_ins b
+                 JOIN players p ON b.player_id = p.id
+                 JOIN tables t ON p.table_id = t.id
+                 WHERE t.group_id = ? AND (p.user_id = ? OR p.name = ?) AND b.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+                [g.id, userId, username]
+            );
+            const exits = await get(
+                `SELECT COALESCE(SUM(e.amount), 0) as total
+                 FROM exit_records e
+                 JOIN players p ON e.player_id = p.id
+                 JOIN tables t ON p.table_id = t.id
+                 WHERE t.group_id = ? AND (p.user_id = ? OR p.name = ?) AND e.is_deleted = 0 AND p.is_deleted = 0 AND t.is_deleted = 0`,
+                [g.id, userId, username]
+            );
+            const paid = await get(
+                `SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE group_id = ? AND from_player = ? AND is_deleted = 0`,
+                [g.id, username]
+            );
+            const received = await get(
+                `SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE group_id = ? AND to_player = ? AND is_deleted = 0`,
+                [g.id, username]
+            );
+            const netGame = (exits?.total || 0) - (buyIns?.total || 0);
+            const netPayments = (paid?.total || 0) - (received?.total || 0);
+            g.net_balance = netGame + netPayments;
+            g.member_count = Number(g.member_count) || 0;
+            g.is_creator = Boolean(g.is_creator);
         }
 
         return res.status(200).json({ groups });

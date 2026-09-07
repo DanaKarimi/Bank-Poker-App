@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -386,7 +387,8 @@ fun ProfileDialog(
     tokenManager: TokenManager,
     onDismiss: () -> Unit,
     onProfileUpdated: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onAdminManagementClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -581,6 +583,28 @@ fun ProfileDialog(
                                 }
                             }
                         }
+                    }
+                }
+
+                // Super Admin Management Entry (Visible ONLY when role == SUPER_ADMIN)
+                if (currentUser?.role == "SUPER_ADMIN" || tokenManager.getRole() == "SUPER_ADMIN") {
+                    HorizontalDivider(color = Gold.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onAdminManagementClick()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF422006),
+                            contentColor = Gold
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(18.dp), tint = Gold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Management", fontWeight = FontWeight.Bold)
                     }
                 }
 

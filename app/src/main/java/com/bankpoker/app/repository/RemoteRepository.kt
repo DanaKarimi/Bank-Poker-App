@@ -28,6 +28,13 @@ import com.bankpoker.app.data.remote.dto.ActivateRequest
 import com.bankpoker.app.data.remote.dto.UpdateProfileRequest
 import com.bankpoker.app.data.remote.dto.LookupResponse
 import com.bankpoker.app.data.remote.dto.UserDto
+import com.bankpoker.app.data.remote.dto.AdminOverviewResponse
+import com.bankpoker.app.data.remote.dto.AdminUserDto
+import com.bankpoker.app.data.remote.dto.AdminGroupDto
+import com.bankpoker.app.data.remote.dto.AdminTableDto
+import com.bankpoker.app.data.remote.dto.AdminTablePlayerDto
+import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
+import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -970,6 +977,186 @@ class RemoteRepository(
                 Result.success(true)
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to register FCM token"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Admin Operations ---
+
+    suspend fun getAdminOverview(): Result<AdminOverviewResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminOverview(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin overview"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminUsers(): Result<List<AdminUserDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminUsers(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.users)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin users"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateAdminUserRole(userId: String, role: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateAdminUserRole(userId, mapOf("role" to role), getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update user role"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminUser(userId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminUser(userId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete user"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminGroups(): Result<List<AdminGroupDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminGroups(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.groups)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin groups"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminGroup(groupId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminGroup(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete group"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminTables(): Result<List<AdminTableDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminTables(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tables)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get admin tables"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminTable(tableId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAdminTable(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to delete table"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminTablePlayers(tableId: String): Result<List<AdminTablePlayerDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAdminTablePlayers(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.players)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get table players"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateAdminTablePlayer(
+        tableId: String,
+        playerId: String,
+        name: String? = null,
+        balanceAdjustment: Long? = null
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val body = mutableMapOf<String, Any>()
+            if (!name.isNullOrBlank()) body["name"] = name.trim()
+            if (balanceAdjustment != null) body["balanceAdjustment"] = balanceAdjustment
+            val response = apiService.updateAdminTablePlayer(tableId, playerId, body, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update table player"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Active Tables & My Groups ---
+
+    suspend fun getActiveTables(): Result<List<ActiveTableSummaryDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getActiveTables(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tables)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get active tables"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getMyGroups(): Result<List<UserGroupSummaryDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getMyGroups(getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.groups)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get user groups"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
