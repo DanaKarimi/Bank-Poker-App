@@ -73,51 +73,55 @@ const initDb = async () => {
         await exec(schemaSql);
 
         // Safe column migrations for existing databases
+        const usersColumns = await all("PRAGMA table_info(users)");
+        const userColNames = usersColumns.map(c => c.name);
+        if (!userColNames.includes('display_name')) {
+            await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT ''");
+        }
+        if (!userColNames.includes('avatar_id')) {
+            await run("ALTER TABLE users ADD COLUMN avatar_id TEXT DEFAULT 'avatar_1'");
+        }
+        if (!userColNames.includes('updated_at')) {
+            await run("ALTER TABLE users ADD COLUMN updated_at INTEGER DEFAULT 0");
+        }
+
         const groupsColumns = await all("PRAGMA table_info(groups)");
-        const columnNames = groupsColumns.map(c => c.name);
-        if (!columnNames.includes('created_by')) {
-            await run("ALTER TABLE groups ADD COLUMN created_by TEXT");
-        }
-        if (!columnNames.includes('created_at')) {
-            await run("ALTER TABLE groups ADD COLUMN created_at INTEGER");
-        }
-        if (!columnNames.includes('mode')) {
-            await run("ALTER TABLE groups ADD COLUMN mode TEXT DEFAULT 'OFFLINE'");
-        }
-
-        const joinReqColumns = await all("PRAGMA table_info(join_requests)");
-        const joinReqColNames = joinReqColumns.map(c => c.name);
-        if (!joinReqColNames.includes('table_id')) {
-            await run("ALTER TABLE join_requests ADD COLUMN table_id TEXT");
-        }
-
-        const playersColumns = await all("PRAGMA table_info(players)");
-        const playerColNames = playersColumns.map(c => c.name);
-        if (!playerColNames.includes('user_id')) {
-            await run("ALTER TABLE players ADD COLUMN user_id TEXT");
-        }
-        if (!playerColNames.includes('entry_fee_paid')) {
-            await run("ALTER TABLE players ADD COLUMN entry_fee_paid INTEGER DEFAULT 0");
+        const groupColNames = groupsColumns.map(c => c.name);
+        if (!groupColNames.includes('owner_user_id')) {
+            await run("ALTER TABLE groups ADD COLUMN owner_user_id TEXT");
         }
 
         const tablesColumns = await all("PRAGMA table_info(tables)");
         const tableColNames = tablesColumns.map(c => c.name);
-        if (!tableColNames.includes('is_active')) {
-            await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
+        if (!tableColNames.includes('creator_user_id')) {
+            await run("ALTER TABLE tables ADD COLUMN creator_user_id TEXT");
+        }
+        if (!tableColNames.includes('code')) {
+            await run("ALTER TABLE tables ADD COLUMN code TEXT");
+        }
+        if (!tableColNames.includes('published_at')) {
+            await run("ALTER TABLE tables ADD COLUMN published_at INTEGER");
         }
 
-        await run(`
-            CREATE TABLE IF NOT EXISTS synced_balances (
-                id TEXT PRIMARY KEY,
-                group_id TEXT NOT NULL,
-                user_id TEXT,
-                username TEXT NOT NULL,
-                balance INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
-            )
-        `);
-        await run(`CREATE INDEX IF NOT EXISTS idx_synced_balances_group ON synced_balances(group_id)`);
+        const playersColumns = await all("PRAGMA table_info(players)");
+        const playerColNames = playersColumns.map(c => c.name);
+        if (!playerColNames.includes('user_linked_at')) {
+            await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
+        }
+
+        // Auto-generate VAPID keys into system_settings if not already present
+        const existingPubKey = await get("SELECT value FROM system_settings WHERE key = 'vapid_public_key'");
+        if (!existingPubKey) {
+            try {
+                const webpush = require('web-push');
+                const vapidKeys = webpush.generateVAPIDKeys();
+                await run("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('vapid_public_key', ?)", [vapidKeys.publicKey]);
+                await run("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('vapid_private_key', ?)", [vapidKeys.privateKey]);
+                console.log('Generated fresh VAPID keys for Web Push');
+            } catch (vapidErr) {
+                console.warn('Failed to generate VAPID keys:', vapidErr.message);
+            }
+        }
 
         console.log('Database schema initialized successfully');
     } catch (error) {

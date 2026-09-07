@@ -23,7 +23,7 @@ const authenticateToken = (req, res, next) => {
         req.user = {
             id: decoded.id,
             username: decoded.username,
-            role: decoded.role || 'PLAYER'
+            role: decoded.role || 'USER'
         };
         next();
     } catch (err) {
@@ -32,16 +32,27 @@ const authenticateToken = (req, res, next) => {
 };
 
 /**
- * Role-based authorization middleware: restricts access to ADMIN role
+ * Role-based authorization middleware: restricts access to ADMIN or SUPER_ADMIN
  */
 const requireAdmin = (req, res, next) => {
-    if (!req.user || req.user.role !== 'ADMIN') {
+    if (!req.user || (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN')) {
         return res.status(403).json({ error: 'Forbidden: Admin privileges required' });
+    }
+    next();
+};
+
+/**
+ * Role-based authorization middleware: restricts access to SUPER_ADMIN role only
+ */
+const requireSuperAdmin = (req, res, next) => {
+    if (!req.user || req.user.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Forbidden: Super Admin privileges required' });
     }
     next();
 };
 
 module.exports = {
     authenticateToken,
-    requireAdmin
+    requireAdmin,
+    requireSuperAdmin
 };

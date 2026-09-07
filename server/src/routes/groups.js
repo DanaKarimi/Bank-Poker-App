@@ -4,13 +4,15 @@ const crypto = require('crypto');
 const { run, get, all } = require('../database/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { generateInviteCode } = require('../utils/helpers');
+const { emitToGroup } = require('../socket');
+const { sendNotification } = require('../services/notifications');
 
 /**
  * POST /api/groups/create
- * (Requires Auth + role='ADMIN')
- * Create a new group with a unique 6-character invite code
+ * (Requires Auth)
+ * Create a new group with a unique 6-character invite code (creator = group ADMIN)
  */
-router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/create', authenticateToken, async (req, res) => {
     try {
         const { name, mode } = req.body;
 
@@ -19,10 +21,10 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
         }
 
         const trimmedName = name.trim();
-        const groupMode = (mode && typeof mode === 'string' && mode.trim().toUpperCase() === 'ONLINE') ? 'ONLINE' : 'OFFLINE';
+        const groupMode = (mode && typeof mode === 'string' && mode.trim().toUpperCase() === 'ONLINE') ? 'ONLINE' : 'ONLINE';
         const groupId = crypto.randomUUID();
         const now = Date.now();
-        const createdBy = req.user.id;
+        const ownerUserId = req.user.id;
 
         // Generate a unique 6-character invite code
         let inviteCode = generateInviteCode();
@@ -36,16 +38,16 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 
         // Insert into groups table
         await run(
-            `INSERT INTO groups (id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
-            [groupId, trimmedName, inviteCode, groupMode, createdBy, now, groupId, now]
+            `INSERT INTO groups (id, owner_user_id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [groupId, ownerUserId, trimmedName, inviteCode, groupMode, ownerUserId, now, groupId, now]
         );
 
-        // Also add the admin creator to group_members
+        // Add creator to group_members with role = 'ADMIN'
         await run(
-            `INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at)
-             VALUES (?, ?, ?)`,
-            [createdBy, groupId, now]
+            `INSERT OR REPLACE INTO group_members (user_id, group_id, role, joined_at)
+             VALUES (?, ?, 'ADMIN', ?)`,
+            [ownerUserId, groupId, now]
         );
 
         return res.status(201).json({
@@ -57,8 +59,8 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
                 id: groupId,
                 name: trimmedName,
                 invite_code: inviteCode,
+                owner_user_id: ownerUserId,
                 mode: groupMode,
-                created_by: createdBy,
                 created_at: now,
                 updated_at: now
             }
@@ -70,11 +72,12 @@ router.post('/create', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 /**
- * POST /api/groups/import
- * (Requires Auth + role='ADMIN')
- * Convert an offline group to online with bulk data sync and invite code generation
+ * POST /api/groups/import and POST /api/groups/publish
+ * (Requires Auth)
+ * Publish or re-link an offline/local group to the online server:
+ * Re-link by server_id first -> update; else invite_code exists -> link; else create new (NEVER duplicate).
  */
-router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
+const handleImportOrPublishGroup = async (req, res) => {
     try {
         const {
             group,
@@ -93,220 +96,350 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
 
         const now = Date.now();
         const createdBy = req.user.id;
-        const newGroupId = crypto.randomUUID();
         const idMapping = {};
 
-        if (group.id) {
-            idMapping[group.id] = newGroupId;
-        }
+        // 1. Re-link check: server_id first, then invite_code, else create new
+        let targetGroupId = null;
+        let inviteCode = null;
 
-        // Use provided invite code or generate unique 6-character invite code
-        const localCode = (group.inviteCode || group.invite_code || '').trim().toUpperCase();
-        let inviteCode = localCode;
-        if (!inviteCode) {
-            inviteCode = generateInviteCode();
-            let attempts = 0;
-            while (attempts < 10) {
-                const existing = await get('SELECT id FROM groups WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(?))', [inviteCode]);
-                if (!existing) break;
-                inviteCode = generateInviteCode();
-                attempts++;
+        const candidateServerId = group.server_id || group.serverId || group.id;
+        if (candidateServerId) {
+            const existingGroup = await get(
+                'SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0',
+                [candidateServerId, candidateServerId]
+            );
+            if (existingGroup) {
+                targetGroupId = existingGroup.id;
+                inviteCode = existingGroup.invite_code;
             }
         }
 
-        // 1. Insert Group with mode = ONLINE
+        const localCode = (group.inviteCode || group.invite_code || '').trim().toUpperCase();
+        if (!targetGroupId && localCode) {
+            const existingByCode = await get(
+                'SELECT * FROM groups WHERE UPPER(TRIM(invite_code)) = ? AND is_deleted = 0',
+                [localCode]
+            );
+            if (existingByCode) {
+                targetGroupId = existingByCode.id;
+                inviteCode = existingByCode.invite_code;
+            }
+        }
+
+        if (targetGroupId) {
+            // Update existing group (NEVER create duplicate)
+            await run(
+                `UPDATE groups 
+                 SET name = ?, mode = 'ONLINE', updated_at = ? 
+                 WHERE id = ?`,
+                [group.name.trim(), now, targetGroupId]
+            );
+        } else {
+            // Create new group
+            targetGroupId = crypto.randomUUID();
+            inviteCode = localCode;
+            if (!inviteCode) {
+                inviteCode = generateInviteCode();
+                let attempts = 0;
+                while (attempts < 10) {
+                    const existing = await get('SELECT id FROM groups WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(?))', [inviteCode]);
+                    if (!existing) break;
+                    inviteCode = generateInviteCode();
+                    attempts++;
+                }
+            }
+
+            await run(
+                `INSERT INTO groups (id, owner_user_id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'ONLINE', ?, ?, ?, ?, 1, 0)`,
+                [targetGroupId, createdBy, group.name.trim(), inviteCode, createdBy, group.createdAt || group.created_at || now, targetGroupId, now]
+            );
+        }
+
+        if (group.id) {
+            idMapping[group.id] = targetGroupId;
+        }
+
+        // Add creator to group_members with role = 'ADMIN'
         await run(
-            `INSERT INTO groups (id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, 'ONLINE', ?, ?, ?, ?, 1, 0)`,
-            [newGroupId, group.name.trim(), inviteCode, createdBy, group.createdAt || group.created_at || now, newGroupId, now]
+            `INSERT OR REPLACE INTO group_members (user_id, group_id, role, joined_at)
+             VALUES (?, ?, 'ADMIN', ?)`,
+            [createdBy, targetGroupId, now]
         );
 
-        console.log("Imported group:", newGroupId, "name:", group.name.trim(), "invite code:", inviteCode);
-
-        // 2. Add creator to group_members
-        await run(
-            `INSERT OR IGNORE INTO group_members (user_id, group_id, joined_at)
-             VALUES (?, ?, ?)`,
-            [createdBy, newGroupId, now]
-        );
-
-        // 3. Insert Tables
+        // 2. Insert or Re-link Tables
         for (const t of tables) {
-            const newTableId = crypto.randomUUID();
-            idMapping[t.id] = newTableId;
+            const tCandidateId = t.server_id || t.serverId || t.id;
+            let targetTable = null;
+            if (tCandidateId) {
+                targetTable = await get(
+                    'SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND group_id = ? AND is_deleted = 0',
+                    [tCandidateId, tCandidateId, targetGroupId]
+                );
+            }
+            if (!targetTable && t.name) {
+                targetTable = await get(
+                    'SELECT * FROM tables WHERE UPPER(TRIM(name)) = UPPER(TRIM(?)) AND group_id = ? AND is_deleted = 0',
+                    [t.name.trim(), targetGroupId]
+                );
+            }
+
+            let newTableId;
             const status = t.status || (t.isActive === false ? 'CLOSED' : 'ACTIVE');
-            const isActive = (status === 'ACTIVE' || t.isActive === true || t.is_active === 1) ? 1 : 0;
-
-            await run(
-                `INSERT INTO tables (id, group_id, name, chip_value, status, created_at, closed_at, has_entry_fee, entry_fee, server_id, updated_at, is_synced, is_deleted, is_active)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?)`,
-                [
-                    newTableId,
-                    newGroupId,
-                    t.name || 'Table',
-                    t.chipValue ?? t.chip_value ?? null,
-                    status,
-                    t.createdAt ?? t.created_at ?? now,
-                    t.closedAt ?? t.closed_at ?? null,
-                    t.hasEntryFee ? 1 : 0,
-                    t.entryFee ?? t.entry_fee ?? null,
-                    newTableId,
-                    now,
-                    isActive
-                ]
-            );
+            if (targetTable) {
+                newTableId = targetTable.id;
+                await run(
+                    `UPDATE tables 
+                     SET name = ?, chip_value = ?, status = ?, closed_at = ?, has_entry_fee = ?, entry_fee = ?, updated_at = ?
+                     WHERE id = ?`,
+                    [
+                        t.name || targetTable.name,
+                        t.chipValue ?? t.chip_value ?? targetTable.chip_value,
+                        status,
+                        t.closedAt ?? t.closed_at ?? targetTable.closed_at,
+                        t.hasEntryFee ? 1 : (targetTable.has_entry_fee ? 1 : 0),
+                        t.entryFee ?? t.entry_fee ?? targetTable.entry_fee,
+                        now,
+                        newTableId
+                    ]
+                );
+            } else {
+                newTableId = crypto.randomUUID();
+                const tableCode = await generateInviteCode();
+                await run(
+                    `INSERT INTO tables (id, group_id, creator_user_id, name, code, chip_value, status, created_at, closed_at, published_at, has_entry_fee, entry_fee, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newTableId,
+                        targetGroupId,
+                        createdBy,
+                        t.name || 'Table',
+                        tableCode,
+                        t.chipValue ?? t.chip_value ?? null,
+                        status,
+                        t.createdAt ?? t.created_at ?? now,
+                        t.closedAt ?? t.closed_at ?? null,
+                        now,
+                        t.hasEntryFee ? 1 : 0,
+                        t.entryFee ?? t.entry_fee ?? null,
+                        newTableId,
+                        now
+                    ]
+                );
+            }
+            idMapping[t.id] = newTableId;
         }
 
-        // 4. Insert Players (user_id = null so players can claim via invite code)
+        // 3. Insert or Re-link Players
         for (const p of players) {
-            const newPlayerId = crypto.randomUUID();
-            idMapping[p.id] = newPlayerId;
             const mappedTableId = idMapping[p.tableId || p.table_id] || p.tableId || p.table_id;
+            if (!mappedTableId) continue;
 
-            await run(
-                `INSERT INTO players (id, table_id, user_id, name, status, created_at, entry_fee_paid, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newPlayerId,
-                    mappedTableId,
-                    p.name.trim(),
-                    p.status || 'ACTIVE',
-                    p.createdAt ?? p.created_at ?? now,
-                    p.entryFeePaid ? 1 : 0,
-                    newPlayerId,
-                    now
-                ]
-            );
+            const pCandidateId = p.server_id || p.serverId || p.id;
+            let targetPlayer = null;
+            if (pCandidateId) {
+                targetPlayer = await get(
+                    'SELECT * FROM players WHERE (id = ? OR server_id = ?) AND table_id = ? AND is_deleted = 0',
+                    [pCandidateId, pCandidateId, mappedTableId]
+                );
+            }
+            if (!targetPlayer && p.name) {
+                targetPlayer = await get(
+                    'SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0',
+                    [p.name.trim(), mappedTableId]
+                );
+            }
+
+            let newPlayerId;
+            if (targetPlayer) {
+                newPlayerId = targetPlayer.id;
+                await run(
+                    `UPDATE players 
+                     SET name = ?, status = ?, entry_fee_paid = ?, updated_at = ?
+                     WHERE id = ?`,
+                    [p.name.trim(), p.status || targetPlayer.status, p.entryFeePaid ? 1 : targetPlayer.entry_fee_paid, now, newPlayerId]
+                );
+            } else {
+                newPlayerId = crypto.randomUUID();
+                await run(
+                    `INSERT INTO players (id, table_id, user_id, name, status, created_at, entry_fee_paid, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newPlayerId,
+                        mappedTableId,
+                        p.name.trim(),
+                        p.status || 'ACTIVE',
+                        p.createdAt ?? p.created_at ?? now,
+                        p.entryFeePaid ? 1 : 0,
+                        newPlayerId,
+                        now
+                    ]
+                );
+            }
+            idMapping[p.id] = newPlayerId;
         }
 
-        // 5. Insert BuyIns
+        // 4. Insert BuyIns (avoid duplicates)
         for (const b of buyIns) {
-            const newBuyInId = crypto.randomUUID();
-            idMapping[b.id] = newBuyInId;
             const mappedTableId = idMapping[b.tableId || b.table_id] || b.tableId || b.table_id;
             const mappedPlayerId = idMapping[b.playerId || b.player_id] || b.playerId || b.player_id;
+            if (!mappedTableId || !mappedPlayerId) continue;
 
-            await run(
-                `INSERT INTO buy_ins (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newBuyInId,
-                    mappedTableId,
-                    mappedPlayerId,
-                    Number(b.amount) || 0,
-                    b.note || null,
-                    b.createdAt ?? b.created_at ?? now,
-                    newBuyInId,
-                    now
-                ]
-            );
+            const bCandidateId = b.server_id || b.serverId || b.id;
+            const existingBuyIn = bCandidateId ? await get('SELECT id FROM buy_ins WHERE (id = ? OR server_id = ?)', [bCandidateId, bCandidateId]) : null;
+            if (!existingBuyIn) {
+                const newBuyInId = crypto.randomUUID();
+                idMapping[b.id] = newBuyInId;
+                await run(
+                    `INSERT INTO buy_ins (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newBuyInId,
+                        mappedTableId,
+                        mappedPlayerId,
+                        Number(b.amount) || 0,
+                        b.note || null,
+                        createdBy,
+                        b.createdAt ?? b.created_at ?? now,
+                        newBuyInId,
+                        now
+                    ]
+                );
+            }
         }
 
-        // 6. Insert Exits
+        // 5. Insert Exits (avoid duplicates)
         for (const e of exits) {
-            const newExitId = crypto.randomUUID();
-            idMapping[e.id] = newExitId;
             const mappedTableId = idMapping[e.tableId || e.table_id] || e.tableId || e.table_id;
             const mappedPlayerId = idMapping[e.playerId || e.player_id] || e.playerId || e.player_id;
+            if (!mappedTableId || !mappedPlayerId) continue;
 
-            await run(
-                `INSERT INTO exit_records (id, table_id, player_id, amount, note, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newExitId,
-                    mappedTableId,
-                    mappedPlayerId,
-                    Number(e.amount) || 0,
-                    e.note || null,
-                    e.createdAt ?? e.created_at ?? now,
-                    newExitId,
-                    now
-                ]
-            );
+            const eCandidateId = e.server_id || e.serverId || e.id;
+            const existingExit = eCandidateId ? await get('SELECT id FROM exit_records WHERE (id = ? OR server_id = ?)', [eCandidateId, eCandidateId]) : null;
+            if (!existingExit) {
+                const newExitId = crypto.randomUUID();
+                idMapping[e.id] = newExitId;
+                await run(
+                    `INSERT INTO exit_records (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newExitId,
+                        mappedTableId,
+                        mappedPlayerId,
+                        Number(e.amount) || 0,
+                        e.note || null,
+                        createdBy,
+                        e.createdAt ?? e.created_at ?? now,
+                        newExitId,
+                        now
+                    ]
+                );
+            }
         }
 
-        // 7. Insert Payments
+        // 6. Insert Payments
         for (const pm of payments) {
-            const newPaymentId = crypto.randomUUID();
-            idMapping[pm.id] = newPaymentId;
-
-            await run(
-                `INSERT INTO payments (id, group_id, from_player, to_player, amount, created_at, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newPaymentId,
-                    newGroupId,
-                    pm.fromPlayer || pm.from_player || '',
-                    pm.toPlayer || pm.to_player || '',
-                    Number(pm.amount) || 0,
-                    pm.createdAt ?? pm.created_at ?? now,
-                    newPaymentId,
-                    now
-                ]
-            );
+            const pmCandidateId = pm.server_id || pm.serverId || pm.id;
+            const existingPm = pmCandidateId ? await get('SELECT id FROM payments WHERE (id = ? OR server_id = ?)', [pmCandidateId, pmCandidateId]) : null;
+            if (!existingPm) {
+                const newPaymentId = crypto.randomUUID();
+                idMapping[pm.id] = newPaymentId;
+                await run(
+                    `INSERT INTO payments (id, group_id, from_player, to_player, amount, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newPaymentId,
+                        targetGroupId,
+                        pm.fromPlayer || pm.from_player || '',
+                        pm.toPlayer || pm.to_player || '',
+                        Number(pm.amount) || 0,
+                        createdBy,
+                        pm.createdAt ?? pm.created_at ?? now,
+                        newPaymentId,
+                        now
+                    ]
+                );
+            }
         }
 
-        // 8. Insert Settlements
+        // 7. Insert Settlements
         for (const s of settlements) {
-            const newSettlementId = crypto.randomUUID();
-            idMapping[s.id] = newSettlementId;
-            const mappedTableId = idMapping[s.tableId || s.table_id] || s.tableId || s.table_id || newGroupId;
+            const sCandidateId = s.server_id || s.serverId || s.id;
+            const existingS = sCandidateId ? await get('SELECT id FROM settlement_records WHERE (id = ? OR server_id = ?)', [sCandidateId, sCandidateId]) : null;
+            if (!existingS) {
+                const newSettlementId = crypto.randomUUID();
+                idMapping[s.id] = newSettlementId;
+                const mappedTableId = idMapping[s.tableId || s.table_id] || s.tableId || s.table_id || targetGroupId;
 
-            await run(
-                `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newSettlementId,
-                    newGroupId,
-                    mappedTableId,
-                    s.tableName || s.table_name || 'Table',
-                    s.payerName || s.payer_name || s.fromPlayer || '',
-                    s.receiverName || s.receiver_name || s.toPlayer || '',
-                    Number(s.amount) || 0,
-                    Number(s.initialAmount || s.initial_amount || s.amount) || 0,
-                    (s.paid || s.isPaid) ? 1 : 0,
-                    s.timestamp ?? s.created_at ?? now,
-                    newSettlementId,
-                    now
-                ]
-            );
+                await run(
+                    `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newSettlementId,
+                        targetGroupId,
+                        mappedTableId,
+                        s.tableName || s.table_name || 'Table',
+                        s.payerName || s.payer_name || s.fromPlayer || '',
+                        s.receiverName || s.receiver_name || s.toPlayer || '',
+                        Number(s.amount) || 0,
+                        Number(s.initialAmount || s.initial_amount || s.amount) || 0,
+                        (s.paid || s.isPaid) ? 1 : 0,
+                        s.timestamp ?? s.created_at ?? now,
+                        newSettlementId,
+                        now
+                    ]
+                );
+            }
         }
 
-        // 9. Insert Entry Fees
+        // 8. Insert Entry Fees
         for (const ef of entryFees) {
-            const newEfId = crypto.randomUUID();
-            idMapping[ef.id] = newEfId;
-            const mappedTableId = idMapping[ef.tableId || ef.table_id] || ef.tableId || ef.table_id || newGroupId;
+            const efCandidateId = ef.server_id || ef.serverId || ef.id;
+            const existingEf = efCandidateId ? await get('SELECT id FROM entry_fee_records WHERE (id = ? OR server_id = ?)', [efCandidateId, efCandidateId]) : null;
+            if (!existingEf) {
+                const newEfId = crypto.randomUUID();
+                idMapping[ef.id] = newEfId;
+                const mappedTableId = idMapping[ef.tableId || ef.table_id] || ef.tableId || ef.table_id || targetGroupId;
 
-            await run(
-                `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                [
-                    newEfId,
-                    newGroupId,
-                    mappedTableId,
-                    ef.tableName || ef.table_name || 'Table',
-                    ef.playerName || ef.player_name || '',
-                    Number(ef.amount) || 0,
-                    ef.paid ? 1 : 0,
-                    ef.timestamp ?? ef.created_at ?? now,
-                    newEfId,
-                    now
-                ]
-            );
+                await run(
+                    `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newEfId,
+                        targetGroupId,
+                        mappedTableId,
+                        ef.tableName || ef.table_name || 'Table',
+                        ef.playerName || ef.player_name || '',
+                        Number(ef.amount) || 0,
+                        ef.paid ? 1 : 0,
+                        ef.timestamp ?? ef.created_at ?? now,
+                        newEfId,
+                        now
+                    ]
+                );
+            }
         }
 
-        return res.status(201).json({
-            message: 'Group imported and converted to online successfully',
-            groupId: newGroupId,
+        emitToGroup(targetGroupId, 'group_updated', {
+            groupId: targetGroupId,
+            name: group.name.trim(),
+            inviteCode
+        });
+
+        return res.status(200).json({
+            message: 'Group published and synced successfully',
+            groupId: targetGroupId,
             inviteCode,
             idMapping
         });
     } catch (error) {
-        console.error('Error importing group to online:', error);
-        return res.status(500).json({ error: 'Internal server error while importing group' });
+        console.error('Error publishing group:', error);
+        return res.status(500).json({ error: 'Internal server error while publishing group' });
     }
-});
+};
+
+router.post('/import', authenticateToken, handleImportOrPublishGroup);
+router.post('/publish', authenticateToken, handleImportOrPublishGroup);
 
 /**
  * GET /api/groups/:id/invite-code
@@ -1451,10 +1584,29 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
 
         const now = Date.now();
 
+        // 10-minute re-claim check: if user already claimed an identity in this group, verify within 10 minutes
+        const existingClaimRow = await get(
+            `SELECT p.user_linked_at FROM players p
+             JOIN tables t ON p.table_id = t.id
+             WHERE t.group_id = ? AND p.user_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0
+             ORDER BY p.user_linked_at DESC LIMIT 1`,
+            [group.id, userId]
+        );
+
+        if (existingClaimRow && existingClaimRow.user_linked_at) {
+            const tenMinutesMs = 10 * 60 * 1000;
+            if (now - existingClaimRow.user_linked_at > tenMinutesMs) {
+                return res.status(400).json({ error: 'Re-claim window has expired (10 minutes limit)' });
+            }
+        }
+
+        const { newDisplayName } = req.body;
+        const finalName = (newDisplayName && newDisplayName.trim()) ? newDisplayName.trim() : targetName;
+
         // RE-CLAIM: If user already claimed another player identity in this group, unlink the old one
         await run(
             `UPDATE players
-             SET user_id = NULL, updated_at = ?
+             SET user_id = NULL, user_linked_at = NULL, updated_at = ?
              WHERE id IN (
                  SELECT p.id FROM players p
                  JOIN tables t ON p.table_id = t.id
@@ -1464,17 +1616,17 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
             [now, group.id, userId, targetName]
         );
 
-        // Set user_id on ALL rows of the new identity in this group
+        // Set user_id and user_linked_at on ALL rows of the new identity in this group
         await run(
             `UPDATE players
-             SET user_id = ?, updated_at = ?
+             SET user_id = ?, name = ?, user_linked_at = ?, updated_at = ?
              WHERE id IN (
                  SELECT p.id FROM players p
                  JOIN tables t ON p.table_id = t.id
                  WHERE t.group_id = ? AND LOWER(TRIM(p.name)) = LOWER(TRIM(?))
                    AND p.is_deleted = 0 AND t.is_deleted = 0
              )`,
-            [userId, now, group.id, targetName]
+            [userId, finalName, now, now, group.id, targetName]
         );
 
         // Also update synced_balances if present
@@ -1486,9 +1638,9 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
         );
         await run(
             `UPDATE synced_balances
-             SET user_id = ?, updated_at = ?
+             SET user_id = ?, username = ?, updated_at = ?
              WHERE group_id = ? AND LOWER(TRIM(username)) = LOWER(TRIM(?))`,
-            [userId, now, group.id, targetName]
+            [userId, finalName, now, group.id, targetName]
         );
 
         // Ensure user is in group_members
@@ -1498,11 +1650,19 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
             [userId, group.id, now]
         );
 
+        emitToGroup(group.id, 'claim_done', {
+            groupId: group.id,
+            userId,
+            playerName: finalName,
+            userLinkedAt: now
+        });
+
         return res.status(200).json({
             message: 'Player claimed successfully',
             playerId: targetPlayer.id,
-            playerName: targetName,
+            playerName: finalName,
             userId: userId,
+            userLinkedAt: now,
             isMe: true
         });
     } catch (error) {
