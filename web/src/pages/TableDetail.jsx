@@ -42,9 +42,11 @@ import {
   Share2,
   Trash2,
 } from 'lucide-react';
+import NotificationsDropdown from '../components/NotificationsDropdown';
 
 const TableDetail = () => {
-  const { groupId, tableId } = useParams();
+  const { groupId, tableId: pTableId, id } = useParams();
+  const tableId = pTableId || id;
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -346,13 +348,16 @@ const TableDetail = () => {
             <span>{groupId ? 'Back to Group Tables' : 'Back to Dashboard'}</span>
           </button>
 
-          <button
-            onClick={() => fetchTableData()}
-            className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
-            title="Refresh Table Data"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <NotificationsDropdown />
+            <button
+              onClick={() => fetchTableData()}
+              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
+              title="Refresh Table Data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Table Hero Card */}

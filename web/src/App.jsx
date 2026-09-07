@@ -44,6 +44,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/table/:tableId"
+            element={
+              <ProtectedRoute>
+                <TableDetail />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />

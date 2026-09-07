@@ -93,4 +93,11 @@ export const getGroupTables = async (groupId) => {
   }
 };
 
+// --- Notification APIs ---
+export const getNotifications = () => api.get('/api/notifications');
+export const markNotificationRead = (id) => api.put(`/api/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.put('/api/notifications/read-all');
+export const getNotificationSettings = () => api.get('/api/notifications/settings');
+export const updateNotificationSettings = (settings) => api.put('/api/notifications/settings', { settings });
+
 export default api;

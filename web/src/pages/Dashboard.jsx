@@ -21,6 +21,7 @@ import {
 import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
 import ProfileModal from '../components/ProfileModal';
+import NotificationsDropdown from '../components/NotificationsDropdown';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -269,10 +270,12 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <NotificationsDropdown />
+
             <div
               onClick={() => setIsProfileOpen(true)}
               className="flex items-center bg-felt-card hover:bg-felt-card/80 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-gold-accent/40 cursor-pointer transition select-none shadow"
-              title="Click to manage profile"
+              title="Click to manage profile and settings"
             >
               <UserBadge
                 displayName={user?.display_name || user?.username}
