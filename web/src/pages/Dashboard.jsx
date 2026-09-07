@@ -23,6 +23,7 @@ import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
 import ProfileModal from '../components/ProfileModal';
 import NotificationsDropdown from '../components/NotificationsDropdown';
+import { getSocket } from '../socket';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -93,6 +94,26 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchGroups();
+
+    const socket = getSocket();
+    const handleRefresh = () => {
+      fetchGroups();
+    };
+
+    socket.on('table_created', handleRefresh);
+    socket.on('table_closed', handleRefresh);
+    socket.on('table_updated', handleRefresh);
+    socket.on('group_updated', handleRefresh);
+
+    const interval = setInterval(fetchGroups, 5000);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('table_created', handleRefresh);
+      socket.off('table_closed', handleRefresh);
+      socket.off('table_updated', handleRefresh);
+      socket.off('group_updated', handleRefresh);
+    };
   }, []);
 
   const handleSmartLookup = async (e) => {

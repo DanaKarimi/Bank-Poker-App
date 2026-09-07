@@ -15,6 +15,7 @@ import RequestCard from '../components/RequestCard';
 import BalancesTab from '../components/BalancesTab';
 import StatsTab from '../components/StatsTab';
 import NotificationsDropdown from '../components/NotificationsDropdown';
+import { getSocket, joinGroup, leaveGroup } from '../socket';
 import {
   ArrowLeft,
   RefreshCw,
@@ -156,21 +157,76 @@ const GroupStats = () => {
     fetchGroupInfo();
     fetchData();
 
-    // Auto-poll every 12 seconds
+    // 1. Join Socket.IO group room and listen for real-time events
+    joinGroup(groupId);
+    const socket = getSocket();
+
+    const handleRefresh = () => {
+      fetchData(true);
+    };
+
+    const handleTableClosed = (payload) => {
+      if (payload?.tableId) {
+        setTables((prev) =>
+          prev.map((t) => (t.id === payload.tableId ? { ...t, status: 'CLOSED', isActive: false } : t))
+        );
+      }
+      fetchData(true);
+    };
+
+    socket.on('table_created', handleRefresh);
+    socket.on('table_closed', handleTableClosed);
+    socket.on('table_updated', handleRefresh);
+    socket.on('table_published', handleRefresh);
+    socket.on('buyin_recorded', handleRefresh);
+    socket.on('exit_recorded', handleRefresh);
+    socket.on('payment_created', handleRefresh);
+    socket.on('request_created', handleRefresh);
+    socket.on('request_resolved', handleRefresh);
+    socket.on('player_added', handleRefresh);
+    socket.on('player_deleted', handleRefresh);
+    socket.on('group_updated', handleRefresh);
+    socket.on('claim_done', handleRefresh);
+
+    // 2. High-frequency API polling fallback (3.5 seconds) ensuring real-time parity
     const interval = setInterval(() => {
       fetchData(true);
-    }, 12000);
+    }, 3500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      leaveGroup(groupId);
+      socket.off('table_created', handleRefresh);
+      socket.off('table_closed', handleTableClosed);
+      socket.off('table_updated', handleRefresh);
+      socket.off('table_published', handleRefresh);
+      socket.off('buyin_recorded', handleRefresh);
+      socket.off('exit_recorded', handleRefresh);
+      socket.off('payment_created', handleRefresh);
+      socket.off('request_created', handleRefresh);
+      socket.off('request_resolved', handleRefresh);
+      socket.off('player_added', handleRefresh);
+      socket.off('player_deleted', handleRefresh);
+      socket.off('group_updated', handleRefresh);
+      socket.off('claim_done', handleRefresh);
+    };
   }, [groupId]);
 
   const handleTableClick = (table) => {
     navigate(`/group/${groupId}/table/${table.id}`);
   };
 
-  const myBalance = stats?.myBalance ?? stats?.balance ?? stats?.currentBalance ?? 0;
-  const myBuyIns = stats?.myBuyIns ?? stats?.userTotalBuyIns ?? stats?.totalBuyIns ?? 0;
-  const myExits = stats?.myExits ?? stats?.userTotalExits ?? stats?.totalExits ?? 0;
+  // Server is the ONLY balance authority: read directly from server-computed groupBalances array
+  const myPlayerInBalances = balances.find((b) =>
+    (user && (b.userId === user.id || b.user_id === user.id)) ||
+    b.isMe ||
+    (user && (b.username || b.name)?.toLowerCase() === user.username?.toLowerCase())
+  );
+  const myBalance = myPlayerInBalances !== undefined
+    ? (myPlayerInBalances.balance ?? 0)
+    : (stats?.myBalance ?? stats?.balance ?? stats?.currentBalance ?? 0);
+  const myBuyIns = myPlayerInBalances?.totalBuyIns ?? stats?.myBuyIns ?? stats?.userTotalBuyIns ?? stats?.totalBuyIns ?? 0;
+  const myExits = myPlayerInBalances?.totalExits ?? stats?.myExits ?? stats?.userTotalExits ?? stats?.totalExits ?? 0;
   const isPositive = myBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
   const closedTablesCount = tables.filter((t) => t.status === 'CLOSED' || t.isActive === false).length;
@@ -375,7 +431,7 @@ const GroupStats = () => {
 
         {/* TAB 2: BALANCES */}
         {activeTab === 'balances' && (
-          <BalancesTab balances={balances} loading={loading} />
+          <BalancesTab balances={balances} groupBalances={balances} loading={loading} />
         )}
 
         {/* TAB 3: STATS & SETTLEMENT */}
@@ -386,6 +442,7 @@ const GroupStats = () => {
             settlement={settlementPlan}
             balances={balances}
             loading={loading}
+            onRefresh={() => fetchData(true)}
           />
         )}
       </div>

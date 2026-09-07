@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api';
 import { subscribeWebPush } from '../utils/webPush';
+import { updateSocketAuth } from '../socket';
 
 const AuthContext = createContext(null);
 
@@ -28,8 +29,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Web push silent registration on login or token change
+  // Sync socket authentication and web push on login or token change
   useEffect(() => {
+    updateSocketAuth(token);
     if (token) {
       subscribeWebPush();
     }

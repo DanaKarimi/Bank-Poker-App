@@ -3,10 +3,11 @@ import { Users, DollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserBadge } from './AvatarSystem';
 
-const BalancesTab = ({ balances = [], loading = false }) => {
+const BalancesTab = ({ balances = [], groupBalances = null, loading = false }) => {
   const { user } = useAuth();
+  const effectiveList = groupBalances || balances || [];
 
-  if (loading && balances.length === 0) {
+  if (loading && effectiveList.length === 0) {
     return (
       <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
         Loading player balances...
@@ -14,7 +15,7 @@ const BalancesTab = ({ balances = [], loading = false }) => {
     );
   }
 
-  if (!balances || balances.length === 0) {
+  if (!effectiveList || effectiveList.length === 0) {
     return (
       <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
         No player balances recorded in this group yet.
@@ -24,16 +25,16 @@ const BalancesTab = ({ balances = [], loading = false }) => {
 
   // Strict deduplication by user ID / username, keeping server-computed balances
   const sortedBalances = React.useMemo(() => {
-    if (!Array.isArray(balances)) return [];
+    if (!Array.isArray(effectiveList)) return [];
     const bMap = new Map();
-    balances.forEach((item) => {
+    effectiveList.forEach((item) => {
       const key = item.userId || item.user_id || (item.username || item.name || '').toLowerCase().trim();
       if (key) {
         bMap.set(key, item);
       }
     });
     return Array.from(bMap.values()).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
-  }, [balances]);
+  }, [effectiveList]);
 
   return (
     <div className="space-y-3 animate-in fade-in duration-200">

@@ -22,6 +22,7 @@ import { getPlayers, sendJoinRequest, getTableActivity, publishTable, deleteTabl
 import { useAuth } from '../context/AuthContext';
 import { UserBadge } from './AvatarSystem';
 import GroupCodeChip from './GroupCodeChip';
+import { getSocket, joinTable, leaveTable } from '../socket';
 
 const TableDetailModal = ({
   isOpen,
@@ -101,9 +102,36 @@ const TableDetailModal = ({
       setPlayerToDelete(null);
       fetchTableData();
 
-      // Poll table data every 8 seconds while open
-      const interval = setInterval(fetchTableData, 8000);
-      return () => clearInterval(interval);
+      // Join Socket.IO table room
+      joinTable(table.id);
+      const socket = getSocket();
+
+      const handleRefresh = () => {
+        fetchTableData();
+      };
+
+      socket.on('table_closed', handleRefresh);
+      socket.on('table_updated', handleRefresh);
+      socket.on('table_published', handleRefresh);
+      socket.on('buyin_recorded', handleRefresh);
+      socket.on('exit_recorded', handleRefresh);
+      socket.on('player_added', handleRefresh);
+      socket.on('player_deleted', handleRefresh);
+
+      // High-frequency polling fallback (3.5 seconds) while modal is open
+      const interval = setInterval(fetchTableData, 3500);
+
+      return () => {
+        clearInterval(interval);
+        leaveTable(table.id);
+        socket.off('table_closed', handleRefresh);
+        socket.off('table_updated', handleRefresh);
+        socket.off('table_published', handleRefresh);
+        socket.off('buyin_recorded', handleRefresh);
+        socket.off('exit_recorded', handleRefresh);
+        socket.off('player_added', handleRefresh);
+        socket.off('player_deleted', handleRefresh);
+      };
     }
   }, [isOpen, table?.id, table?.code]);
 

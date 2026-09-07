@@ -21,6 +21,7 @@ import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
 import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
+import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../socket';
 import {
   ArrowLeft,
   RefreshCw,
@@ -155,12 +156,55 @@ const TableDetail = () => {
   useEffect(() => {
     fetchTableData();
 
-    // Poll every 12 seconds
+    // 1. Join Socket.IO rooms for table and group
+    joinTable(tableId);
+    if (groupId) {
+      joinGroup(groupId);
+    }
+    const socket = getSocket();
+
+    const handleRefresh = () => {
+      fetchTableData(true);
+    };
+
+    const handleTableClosed = (payload) => {
+      if (!payload?.tableId || String(payload.tableId) === String(tableId)) {
+        setTable((prev) => (prev ? { ...prev, status: 'CLOSED', isActive: false } : null));
+        fetchTableData(true);
+      }
+    };
+
+    socket.on('table_closed', handleTableClosed);
+    socket.on('table_updated', handleRefresh);
+    socket.on('table_published', handleRefresh);
+    socket.on('buyin_recorded', handleRefresh);
+    socket.on('exit_recorded', handleRefresh);
+    socket.on('player_added', handleRefresh);
+    socket.on('player_deleted', handleRefresh);
+    socket.on('request_created', handleRefresh);
+    socket.on('request_resolved', handleRefresh);
+
+    // 2. High-frequency API polling fallback (3.5 seconds) ensuring realtime parity
     const interval = setInterval(() => {
       fetchTableData(true);
-    }, 12000);
+    }, 3500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      leaveTable(tableId);
+      if (groupId) {
+        leaveGroup(groupId);
+      }
+      socket.off('table_closed', handleTableClosed);
+      socket.off('table_updated', handleRefresh);
+      socket.off('table_published', handleRefresh);
+      socket.off('buyin_recorded', handleRefresh);
+      socket.off('exit_recorded', handleRefresh);
+      socket.off('player_added', handleRefresh);
+      socket.off('player_deleted', handleRefresh);
+      socket.off('request_created', handleRefresh);
+      socket.off('request_resolved', handleRefresh);
+    };
   }, [groupId, tableId]);
 
   // Derived user status at this table

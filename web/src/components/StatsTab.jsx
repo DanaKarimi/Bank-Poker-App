@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Trophy, TrendingDown, Layers, Users, CheckCircle2, Clock } from 'lucide-react';
-import { getGroupSettlementPlan, getGroupStats } from '../api';
+import { getGroupSettlementPlan, getGroupStats, recordGroupPayment } from '../api';
 
 const StatsTab = ({
   groupId = null,
@@ -24,6 +24,42 @@ const StatsTab = ({
 
   const [rows, setRows] = useState(() => deduplicateSettlement(settlement || []));
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [submittingKeys, setSubmittingKeys] = useState(new Set());
+
+  const handleMarkPaid = async (item) => {
+    const payer = item.debtorName || item.payerName || item.fromPlayer;
+    const receiver = item.creditorName || item.receiverName || item.toPlayer;
+    const key = item.id || `${payer}->${receiver}->${item.amount}`;
+    if (submittingKeys.has(key)) return; // Debounce rapid double-click
+
+    setSubmittingKeys((prev) => new Set(prev).add(key));
+    try {
+      if (groupId) {
+        await recordGroupPayment(groupId, {
+          fromPlayer: payer,
+          toPlayer: receiver,
+          amount: Number(item.amount) || 0,
+        });
+      }
+      setRows((prev) =>
+        prev.map((r) => {
+          const rPayer = r.debtorName || r.payerName || r.fromPlayer;
+          const rReceiver = r.creditorName || r.receiverName || r.toPlayer;
+          const rKey = r.id || `${rPayer}->${rReceiver}->${r.amount}`;
+          return rKey === key ? { ...r, paid: 1, isPaid: true } : r;
+        })
+      );
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to record payment:', err);
+    } finally {
+      setSubmittingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     setRows(deduplicateSettlement(settlement || []));
@@ -200,10 +236,25 @@ const StatsTab = ({
                         <span>PAID ✓</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-950 text-amber-300 border border-amber-500/50 shadow-sm">
-                        <Clock className="w-3.5 h-3.5 animate-pulse" />
-                        <span>PENDING</span>
-                      </span>
+                      <button
+                        type="button"
+                        disabled={submittingKeys.has(item.id || `${payer}->${receiver}->${amount}`)}
+                        onClick={() => handleMarkPaid(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-950 hover:bg-amber-900 active:scale-95 text-amber-300 border border-amber-500/50 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                        title="Mark this payment as paid"
+                      >
+                        {submittingKeys.has(item.id || `${payer}->${receiver}->${amount}`) ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
+                            <span>SAVING...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>MARK PAID</span>
+                          </>
+                        )}
+                      </button>
                     )}
                   </div>
                 </div>
