@@ -616,6 +616,7 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
         emitToTable(tableId, 'table_closed', { tableId, closedAt: now });
         if (table.group_id) {
             emitToGroup(table.group_id, 'table_closed', { tableId, closedAt: now });
+            emitToGroup(table.group_id, 'settlement_done', { groupId: table.group_id });
         }
 
         return res.status(200).json({

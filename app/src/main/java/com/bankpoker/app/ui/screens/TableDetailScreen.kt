@@ -2133,7 +2133,9 @@ fun formatTimestamp(timestamp: Long): String {
 data class Settlement(
     val fromPlayer: String,
     val toPlayer: String,
-    val amount: Long
+    val amount: Long,
+    val id: String = "",
+    val isPaid: Boolean = false
 )
 
 @Composable

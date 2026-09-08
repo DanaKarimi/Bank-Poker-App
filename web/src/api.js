@@ -64,7 +64,10 @@ export const confirmExitReceipt = (requestId) => api.post(`/api/requests/exit/${
 export const getMyGroups = () => api.get('/api/groups/my-groups');
 export const getGroupStats = (groupId) => api.get(`/api/groups/${groupId}/my-stats`);
 export const getGroupBalances = (groupId) => api.get(`/api/groups/${groupId}/balances`);
-export const getGroupSettlementPlan = (groupId) => api.get(`/api/groups/${groupId}/settlement-plan`);
+export const getGroupSettlement = (groupId) => api.get(`/api/groups/${groupId}/settlement`);
+export const getGroupSettlementPlan = (groupId) => api.get(`/api/groups/${groupId}/settlement`);
+export const toggleSettlementPaid = (groupId, recordId, paid) => api.post(`/api/groups/${groupId}/settlement/${recordId}/toggle-paid`, { paid });
+export const regenerateSettlementPlan = (groupId) => api.post(`/api/groups/${groupId}/settlement/regenerate`);
 export const getGroupStatsDetails = (groupId) => api.get(`/api/groups/${groupId}/stats`);
 export const getGroupByInvite = (code) => api.get(`/api/groups/by-invite/${encodeURIComponent(code)}`);
 export const getGroupPlayersList = (groupId) => api.get(`/api/groups/${groupId}/players-list`);

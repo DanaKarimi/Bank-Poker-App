@@ -692,6 +692,112 @@ class RemoteRepository(
     }
 
     /**
+     * Fetch server-computed settlement plan for an online group
+     */
+    suspend fun getGroupSettlement(
+        groupId: String
+    ): Result<List<com.bankpoker.app.ui.screens.Settlement>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupSettlement(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                val settlementsArr = body.getAsJsonArray("settlement") ?: com.google.gson.JsonArray()
+                val list = mutableListOf<com.bankpoker.app.ui.screens.Settlement>()
+                settlementsArr.forEach { elem ->
+                    if (elem.isJsonObject) {
+                        val obj = elem.asJsonObject
+                        val id = if (obj.has("id") && !obj.get("id").isJsonNull) obj.get("id").asString else ""
+                        val fromPlayer = if (obj.has("debtorName") && !obj.get("debtorName").isJsonNull) obj.get("debtorName").asString
+                            else if (obj.has("payerName") && !obj.get("payerName").isJsonNull) obj.get("payerName").asString
+                            else if (obj.has("fromPlayer") && !obj.get("fromPlayer").isJsonNull) obj.get("fromPlayer").asString
+                            else ""
+                        val toPlayer = if (obj.has("creditorName") && !obj.get("creditorName").isJsonNull) obj.get("creditorName").asString
+                            else if (obj.has("receiverName") && !obj.get("receiverName").isJsonNull) obj.get("receiverName").asString
+                            else if (obj.has("toPlayer") && !obj.get("toPlayer").isJsonNull) obj.get("toPlayer").asString
+                            else ""
+                        val amount = if (obj.has("amount") && !obj.get("amount").isJsonNull) obj.get("amount").asLong else 0L
+                        val isPaid = if (obj.has("isPaid") && !obj.get("isPaid").isJsonNull) {
+                            try { obj.get("isPaid").asBoolean } catch (_: Exception) { false }
+                        } else if (obj.has("paid") && !obj.get("paid").isJsonNull) {
+                            try {
+                                val p = obj.get("paid")
+                                if (p.isJsonPrimitive && p.asJsonPrimitive.isBoolean) p.asBoolean
+                                else p.asInt == 1
+                            } catch (_: Exception) { false }
+                        } else false
+
+                        if (fromPlayer.isNotBlank() && toPlayer.isNotBlank() && amount > 0) {
+                            list.add(com.bankpoker.app.ui.screens.Settlement(
+                                fromPlayer = fromPlayer,
+                                toPlayer = toPlayer,
+                                amount = amount,
+                                id = id,
+                                isPaid = isPaid
+                            ))
+                        }
+                    }
+                }
+                Result.success(list)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to get settlement plan (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettlementSync", "FAILED getGroupSettlement: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Toggle paid status for a settlement record on the server
+     */
+    suspend fun toggleSettlementPaid(
+        groupId: String,
+        recordId: String,
+        paid: Boolean
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val req = JsonObject().apply {
+                addProperty("paid", paid)
+                addProperty("recordId", recordId)
+            }
+            val response = apiService.toggleSettlementPaid(groupId, recordId, req, getAuthHeader())
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to toggle settlement status (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettlementSync", "FAILED toggleSettlementPaid: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Request server to regenerate settlement plan
+     */
+    suspend fun regenerateSettlementPlan(
+        groupId: String
+    ): Result<List<com.bankpoker.app.ui.screens.Settlement>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.regenerateSettlement(groupId, getAuthHeader())
+            if (response.isSuccessful) {
+                getGroupSettlement(groupId)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to regenerate settlement plan (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettlementSync", "FAILED regenerateSettlementPlan: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Sync group player balances snapshot to server for an online group
      */
     suspend fun syncGroupBalances(

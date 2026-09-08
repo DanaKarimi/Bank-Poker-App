@@ -184,6 +184,26 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 
+    @GET("api/groups/{groupId}/settlement")
+    suspend fun getGroupSettlement(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
+
+    @POST("api/groups/{groupId}/settlement/regenerate")
+    suspend fun regenerateSettlement(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
+
+    @POST("api/groups/{groupId}/settlement/{recordId}/toggle-paid")
+    suspend fun toggleSettlementPaid(
+        @Path("groupId") groupId: String,
+        @Path("recordId") recordId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
+
     @POST("api/groups/{groupId}/sync-balances")
     suspend fun syncGroupBalances(
         @Path("groupId") groupId: String,

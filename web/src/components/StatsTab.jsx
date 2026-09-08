@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, TrendingDown, Layers, Users, CheckCircle2, Clock } from 'lucide-react';
-import { getGroupSettlementPlan, getGroupStats, recordGroupPayment } from '../api';
+import { Trophy, TrendingDown, Layers, Users, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
+import {
+  getGroupSettlement,
+  getGroupSettlementPlan,
+  getGroupStats,
+  recordGroupPayment,
+  toggleSettlementPaid,
+  regenerateSettlementPlan
+} from '../api';
+import { getSocket } from '../socket';
 
 const StatsTab = ({
   groupId = null,
@@ -24,40 +32,61 @@ const StatsTab = ({
 
   const [rows, setRows] = useState(() => deduplicateSettlement(settlement || []));
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [submittingKeys, setSubmittingKeys] = useState(new Set());
 
-  const handleMarkPaid = async (item) => {
+  const handleTogglePaid = async (item) => {
     const payer = item.debtorName || item.payerName || item.fromPlayer;
     const receiver = item.creditorName || item.receiverName || item.toPlayer;
     const key = item.id || `${payer}->${receiver}->${item.amount}`;
     if (submittingKeys.has(key)) return; // Debounce rapid double-click
 
+    const nextPaid = !Boolean(item.isPaid || item.paid);
     setSubmittingKeys((prev) => new Set(prev).add(key));
     try {
       if (groupId) {
-        await recordGroupPayment(groupId, {
-          fromPlayer: payer,
-          toPlayer: receiver,
-          amount: Number(item.amount) || 0,
-        });
+        if (item.id) {
+          await toggleSettlementPaid(groupId, item.id, nextPaid);
+        } else if (nextPaid) {
+          await recordGroupPayment(groupId, {
+            fromPlayer: payer,
+            toPlayer: receiver,
+            amount: Number(item.amount) || 0,
+          });
+        }
       }
       setRows((prev) =>
         prev.map((r) => {
           const rPayer = r.debtorName || r.payerName || r.fromPlayer;
           const rReceiver = r.creditorName || r.receiverName || r.toPlayer;
           const rKey = r.id || `${rPayer}->${rReceiver}->${r.amount}`;
-          return rKey === key ? { ...r, paid: 1, isPaid: true } : r;
+          return rKey === key ? { ...r, paid: nextPaid ? 1 : 0, isPaid: nextPaid } : r;
         })
       );
       if (onRefresh) onRefresh();
     } catch (err) {
-      console.error('Failed to record payment:', err);
+      console.error('Failed to toggle settlement paid status:', err);
     } finally {
       setSubmittingKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!groupId || regenerating) return;
+    setRegenerating(true);
+    try {
+      const res = await regenerateSettlementPlan(groupId);
+      const list = res.data?.settlement || [];
+      setRows(deduplicateSettlement(list));
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to regenerate settlement plan:', err);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -82,7 +111,25 @@ const StatsTab = ({
         setFetchLoading(false);
       });
     }
-  }, [groupId]);
+
+    const socket = getSocket();
+    const handleSettlementDone = (payload) => {
+      if (groupId && (!payload?.groupId || payload.groupId === groupId)) {
+        getGroupSettlementPlan(groupId).then((res) => {
+          const list = res.data?.settlement || [];
+          setRows(deduplicateSettlement(list));
+        }).catch((err) => {
+          console.error("Failed to refresh settlement on settlement_done:", err);
+        });
+      }
+      if (onRefresh) onRefresh();
+    };
+
+    socket.on('settlement_done', handleSettlementDone);
+    return () => {
+      socket.off('settlement_done', handleSettlementDone);
+    };
+  }, [groupId, onRefresh]);
 
   const activeSettlement = React.useMemo(() => {
     const source = rows.length > 0 ? rows : settlement;
@@ -193,9 +240,18 @@ const StatsTab = ({
               SETTLEMENT PLAN
             </h3>
           </div>
-          <span className="text-[10px] text-cream-text/50 uppercase font-semibold bg-felt-dark px-2.5 py-1 rounded-lg border border-gold-accent/20">
-            Read-Only
-          </span>
+          {groupId && (
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={handleRegenerate}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg border border-gold-accent/30 bg-felt-dark hover:bg-gold-accent/10 text-gold-accent transition cursor-pointer disabled:opacity-50"
+              title="Regenerate minimal settlement plan"
+            >
+              <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} />
+              <span>{regenerating ? 'REGENERATING...' : 'REGENERATE'}</span>
+            </button>
+          )}
         </div>
 
         {balances.length === 0 && activeSettlement.length === 0 ? (
@@ -213,6 +269,8 @@ const StatsTab = ({
               const receiver = item.creditorName || item.receiverName || item.toPlayer || 'Player';
               const amount = item.amount || 0;
               const isPaid = Boolean(item.isPaid || item.paid);
+              const key = item.id || `${payer}->${receiver}->${amount}`;
+              const isSubmitting = submittingKeys.has(key);
 
               return (
                 <div
@@ -231,19 +289,29 @@ const StatsTab = ({
                     </span>
 
                     {isPaid ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-950 text-emerald-400 border border-emerald-500/50 shadow-sm">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => handleTogglePaid(item)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-950 hover:bg-emerald-900 active:scale-95 text-emerald-400 border border-emerald-500/50 shadow-sm transition cursor-pointer disabled:opacity-50"
+                        title="Click to mark unpaid"
+                      >
+                        {isSubmitting ? (
+                          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        )}
                         <span>PAID ✓</span>
-                      </span>
+                      </button>
                     ) : (
                       <button
                         type="button"
-                        disabled={submittingKeys.has(item.id || `${payer}->${receiver}->${amount}`)}
-                        onClick={() => handleMarkPaid(item)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-950 hover:bg-amber-900 active:scale-95 text-amber-300 border border-amber-500/50 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                        disabled={isSubmitting}
+                        onClick={() => handleTogglePaid(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-950 hover:bg-amber-900 active:scale-95 text-amber-300 border border-amber-500/50 shadow-sm transition cursor-pointer disabled:opacity-50"
                         title="Mark this payment as paid"
                       >
-                        {submittingKeys.has(item.id || `${payer}->${receiver}->${amount}`) ? (
+                        {isSubmitting ? (
                           <>
                             <div className="w-3.5 h-3.5 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
                             <span>SAVING...</span>

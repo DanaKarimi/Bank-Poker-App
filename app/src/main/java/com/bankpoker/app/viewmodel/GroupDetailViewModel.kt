@@ -34,9 +34,33 @@ class GroupDetailViewModel(
     val entryFeeDebtors: Flow<List<UnpaidEntryFeeInfo>> = repository.getUnpaidEntryFeeDebtorsByGroupId(groupId)
     val entryFeeHistory: Flow<List<EntryFeeHistoryInfo>> = repository.getEntryFeeHistoryByGroupId(groupId)
 
+    private val _serverSettlement = MutableStateFlow<List<com.bankpoker.app.ui.screens.Settlement>>(emptyList())
+    val serverSettlement: StateFlow<List<com.bankpoker.app.ui.screens.Settlement>> = _serverSettlement.asStateFlow()
+
     init {
         viewModelScope.launch {
             _group.value = repository.getGroupById(groupId)
+            fetchServerSettlement()
+        }
+    }
+
+    fun fetchServerSettlement() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                if (currentGroup?.mode == "ONLINE") {
+                    val serverGroupId = currentGroup.serverId ?: currentGroup.id
+                    val result = remoteRepository.getGroupSettlement(serverGroupId)
+                    result.onSuccess { list ->
+                        _serverSettlement.value = list
+                    }.onFailure { e ->
+                        Log.e("GroupDetailVM", "Failed to fetch server settlement: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("GroupDetailVM", "Error in fetchServerSettlement: ${e.message}")
+            }
         }
     }
 
@@ -160,28 +184,48 @@ class GroupDetailViewModel(
             val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
                 remoteRepository.recordPayment(serverGroupId, fromPlayer, toPlayer, amount)
-                syncSettlementToServer()
+                fetchServerSettlement()
                 syncGroupStatsToServer()
             }
         }
     }
 
-    fun syncSettlementToServer() {
-        if (remoteRepository == null) return
+    fun toggleSettlementPaid(settlement: com.bankpoker.app.ui.screens.Settlement) {
         viewModelScope.launch {
-            try {
-                val currentGroup = _group.value ?: repository.getGroupById(groupId)
-                if (currentGroup?.mode == "ONLINE") {
-                    val serverGroupId = currentGroup.serverId ?: currentGroup.id
-                    val currentBalances = repository.getBalancesByGroupIdOnce(groupId)
-                    val settlements = com.bankpoker.app.ui.screens.calculateGroupSettlement(currentBalances)
-                    android.util.Log.d("SettlementSync", "Pushing ${settlements.size} rows to server group: $serverGroupId")
-                    remoteRepository.syncSettlement(serverGroupId, settlements)
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+            val nextPaid = !settlement.isPaid
+            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                if (settlement.id.isNotBlank()) {
+                    remoteRepository.toggleSettlementPaid(serverGroupId, settlement.id, nextPaid)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("SettlementSync", "FAILED in syncSettlementToServer: ${e.message}", e)
+                if (nextPaid) {
+                    repository.recordPayment(groupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
+                    remoteRepository.recordPayment(serverGroupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
+                }
+                fetchServerSettlement()
+            } else {
+                repository.recordPayment(groupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
             }
         }
+    }
+
+    fun regenerateSettlement() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            if (currentGroup?.mode == "ONLINE") {
+                val serverGroupId = currentGroup.serverId ?: currentGroup.id
+                val result = remoteRepository.regenerateSettlementPlan(serverGroupId)
+                result.onSuccess { list ->
+                    _serverSettlement.value = list
+                }
+            }
+        }
+    }
+
+    fun syncSettlementToServer() {
+        fetchServerSettlement()
     }
 
     fun syncGroupStatsToServer() {
@@ -202,13 +246,7 @@ class GroupDetailViewModel(
     }
 
     fun syncSettlementPlan(settlements: List<com.bankpoker.app.ui.screens.Settlement>) {
-        viewModelScope.launch {
-            val currentGroup = _group.value ?: repository.getGroupById(groupId)
-            val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
-            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
-                remoteRepository.syncSettlement(serverGroupId, settlements)
-            }
-        }
+        fetchServerSettlement()
     }
 
     private val _isConverting = MutableStateFlow(false)

@@ -86,6 +86,8 @@ fun GroupDetailScreen(
             .sortedBy { it.balance }
     }
 
+    val serverSettlement by viewModel.serverSettlement.collectAsState()
+
     var showCreateTableSheet by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -103,13 +105,29 @@ fun GroupDetailScreen(
     var convertedInviteCode by remember { mutableStateOf("") }
     val isConverting by viewModel.isConverting.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
+
+    LaunchedEffect(socketManager, group?.id, group?.serverId) {
+        val sId = group?.serverId ?: group?.id
+        if (!sId.isNullOrBlank()) {
+            socketManager.joinGroup(sId)
+        }
+        socketManager.events.collect { event ->
+            when (event.event) {
+                "settlement_done", "payment_created", "buyin_recorded", "exit_recorded", "group_updated" -> {
+                    val eventGroupId = event.payload?.optString("groupId", "")
+                    if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
+                        viewModel.fetchServerSettlement()
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(selectedTab, balances, group?.mode, group?.serverId) {
         val currentGroup = group
         if (currentGroup?.mode == "ONLINE") {
-            val sId = currentGroup.serverId ?: currentGroup.id
-            android.util.Log.d("SettlementSync", "Stats tab opened, forcing sync for group: $sId")
-            viewModel.syncSettlementToServer()
+            viewModel.fetchServerSettlement()
             viewModel.syncGroupStatsToServer()
         }
     }
@@ -177,7 +195,11 @@ fun GroupDetailScreen(
                     }
 
                     IconButton(onClick = {
-                        val shareSettlements = calculateGroupSettlement(balances)
+                        val shareSettlements = if (group?.mode == "ONLINE" && serverSettlement.isNotEmpty()) {
+                            serverSettlement
+                        } else {
+                            calculateGroupSettlement(balances)
+                        }
                         val text = buildGroupShareResultsText(
                             groupName = group?.name ?: "Group",
                             balances = balances,
@@ -352,11 +374,16 @@ fun GroupDetailScreen(
                         2 -> GroupStatsTab(
                             tables = tables,
                             balances = balances,
+                            serverSettlement = serverSettlement,
+                            isOnline = group?.mode == "ONLINE",
                             onRecordManualPayment = { payer, receiver, amount ->
                                 viewModel.recordManualPayment(payer, receiver, amount)
                             },
-                            onMarkPaid = { from, to, amount ->
-                                viewModel.recordPayment(from, to, amount)
+                            onMarkPaid = { settlement ->
+                                viewModel.toggleSettlementPaid(settlement)
+                            },
+                            onRegenerateSettlement = {
+                                viewModel.regenerateSettlement()
                             },
                             onNavigateToHistory = onNavigateToHistory,
                             onPlayerClick = onPlayerClick
@@ -906,15 +933,24 @@ fun BalanceCard(
 fun GroupStatsTab(
     tables: List<PokerTable>,
     balances: List<GroupBalance>,
+    serverSettlement: List<Settlement> = emptyList(),
+    isOnline: Boolean = false,
     onRecordManualPayment: (String, String, Long) -> Unit = { _, _, _ -> },
-    onMarkPaid: (String, String, Long) -> Unit,
+    onMarkPaid: (Settlement) -> Unit,
+    onRegenerateSettlement: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onPlayerClick: ((String) -> Unit)? = null
 ) {
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
     val biggestDebtor = balances.minByOrNull { it.balance }
-    val settlements = calculateGroupSettlement(balances)
+    val settlements = if (isOnline && serverSettlement.isNotEmpty()) {
+        serverSettlement
+    } else if (isOnline) {
+        serverSettlement
+    } else {
+        calculateGroupSettlement(balances)
+    }
 
     var showManualPaymentSheet by remember { mutableStateOf(false) }
 
@@ -1069,29 +1105,45 @@ fun GroupStatsTab(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 2.sp
                         )
-                        Button(
-                            onClick = { showManualPaymentSheet = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Gold,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Manual Payment",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isOnline) {
+                                IconButton(
+                                    onClick = onRegenerateSettlement,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Regenerate Settlement",
+                                        tint = Gold,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Button(
+                                onClick = { showManualPaymentSheet = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Gold,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color.Black
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Manual Payment",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                            }
                         }
                     }
 
@@ -1148,11 +1200,26 @@ fun GroupStatsTab(
                                         style = MaterialTheme.typography.titleMedium
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    TextButton(
-                                        onClick = { onMarkPaid(s.fromPlayer, s.toPlayer, s.amount) },
-                                        colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
-                                    ) {
-                                        Text("PAID ✓")
+                                    if (s.isPaid) {
+                                        TextButton(
+                                            onClick = { onMarkPaid(s) },
+                                            colors = ButtonDefaults.textButtonColors(contentColor = WinGreen)
+                                        ) {
+                                            Text("PAID ✓", fontWeight = FontWeight.Bold)
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = { onMarkPaid(s) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Amber80.copy(alpha = 0.2f),
+                                                contentColor = Amber80
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Text("MARK PAID", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -1394,43 +1461,71 @@ fun ManualPaymentBottomSheet(
 }
 
 fun calculateGroupSettlement(balances: List<GroupBalance>): List<Settlement> {
+    data class Debtor(val name: String, var debt: Long)
+    data class Creditor(val name: String, var credit: Long)
 
-    val debtors = mutableListOf<Pair<String, Long>>()
-    val creditors = mutableListOf<Pair<String, Long>>()
-    
-    balances.forEach { balance ->
+    val debtors = mutableListOf<Debtor>()
+    val creditors = mutableListOf<Creditor>()
+
+    balances.forEach { b ->
         when {
-            balance.balance < 0 -> debtors.add(Pair(balance.playerName, -balance.balance))
-            balance.balance > 0 -> creditors.add(Pair(balance.playerName, balance.balance))
+            b.balance < 0 -> debtors.add(Debtor(b.playerName.trim(), -b.balance))
+            b.balance > 0 -> creditors.add(Creditor(b.playerName.trim(), b.balance))
         }
     }
-    
+
     val settlements = mutableListOf<Settlement>()
-    
-    var i = 0
-    var j = 0
-    
-    while (i < debtors.size && j < creditors.size) {
-        val debtor = debtors[i]
-        val creditor = creditors[j]
-        
-        val amount = minOf(debtor.second, creditor.second)
-        
-        settlements.add(
-            Settlement(
-                fromPlayer = debtor.first,
-                toPlayer = creditor.first,
-                amount = amount
-            )
-        )
-        
-        debtors[i] = Pair(debtor.first, debtor.second - amount)
-        creditors[j] = Pair(creditor.first, creditor.second - amount)
-        
-        if (debtors[i].second == 0L) i++
-        if (creditors[j].second == 0L) j++
+
+    while (debtors.isNotEmpty() && creditors.isNotEmpty()) {
+        debtors.sortByDescending { it.debt }
+        creditors.sortByDescending { it.credit }
+
+        // 1. Exact match
+        var matched = false
+        for (i in debtors.indices) {
+            val d = debtors[i]
+            val cIdx = creditors.indexOfFirst { it.credit == d.debt }
+            if (cIdx != -1) {
+                val c = creditors[cIdx]
+                settlements.add(Settlement(fromPlayer = d.name, toPlayer = c.name, amount = d.debt))
+                debtors.removeAt(i)
+                creditors.removeAt(cIdx)
+                matched = true
+                break
+            }
+        }
+        if (matched) continue
+
+        // 2. Debt absorption (never split debt while any single creditor can absorb it fully)
+        var absorbed = false
+        for (i in debtors.indices) {
+            val d = debtors[i]
+            val cIdx = creditors.indexOfFirst { it.credit >= d.debt }
+            if (cIdx != -1) {
+                val c = creditors[cIdx]
+                settlements.add(Settlement(fromPlayer = d.name, toPlayer = c.name, amount = d.debt))
+                c.credit -= d.debt
+                debtors.removeAt(i)
+                if (c.credit == 0L) {
+                    creditors.removeAt(cIdx)
+                }
+                absorbed = true
+                break
+            }
+        }
+        if (absorbed) continue
+
+        // 3. Greedy max-max
+        val d = debtors.first()
+        val c = creditors.first()
+        val amount = minOf(d.debt, c.credit)
+        settlements.add(Settlement(fromPlayer = d.name, toPlayer = c.name, amount = amount))
+        d.debt -= amount
+        c.credit -= amount
+        if (d.debt == 0L) debtors.removeAt(0)
+        if (c.credit == 0L) creditors.removeAt(0)
     }
-    
+
     return settlements
 }
 
