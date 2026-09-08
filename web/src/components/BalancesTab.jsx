@@ -23,17 +23,38 @@ const BalancesTab = ({ balances = [], groupBalances = null, loading = false }) =
     );
   }
 
-  // Strict deduplication by user ID / username, keeping server-computed balances
+  // Strict deduplication by player id (fallback: normalized name) using a Map
   const sortedBalances = React.useMemo(() => {
     if (!Array.isArray(effectiveList)) return [];
-    const bMap = new Map();
+    const idMap = new Map();
+    const nameMap = new Map();
+    const result = [];
+
     effectiveList.forEach((item) => {
-      const key = item.userId || item.user_id || (item.username || item.name || '').toLowerCase().trim();
-      if (key) {
-        bMap.set(key, item);
+      if (!item) return;
+      const playerId = item.playerId || item.player_id || item.id || item.userId || item.user_id;
+      const normalizedName = (item.playerName || item.username || item.name || '').trim().toLowerCase();
+
+      let existing = null;
+      if (playerId && idMap.has(String(playerId))) {
+        existing = idMap.get(String(playerId));
+      } else if (normalizedName && nameMap.has(normalizedName)) {
+        existing = nameMap.get(normalizedName);
+      }
+
+      if (existing) {
+        Object.assign(existing, item);
+        if (playerId) idMap.set(String(playerId), existing);
+        if (normalizedName) nameMap.set(normalizedName, existing);
+      } else {
+        const entry = { ...item };
+        result.push(entry);
+        if (playerId) idMap.set(String(playerId), entry);
+        if (normalizedName) nameMap.set(normalizedName, entry);
       }
     });
-    return Array.from(bMap.values()).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+
+    return result.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
   }, [effectiveList]);
 
   return (

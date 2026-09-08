@@ -124,12 +124,35 @@ const GroupStats = () => {
 
       if (balancesRes.status === 'fulfilled') {
         const rawBalances = balancesRes.value.data?.balances || [];
-        const bMap = new Map();
+        const idMap = new Map();
+        const nameMap = new Map();
+        const deduplicated = [];
+
         rawBalances.forEach((b) => {
-          const key = b.userId || b.user_id || (b.username || b.name || '').toLowerCase().trim();
-          if (key) bMap.set(key, b);
+          if (!b) return;
+          const playerId = b.playerId || b.player_id || b.id || b.userId || b.user_id;
+          const normalizedName = (b.playerName || b.username || b.name || '').trim().toLowerCase();
+
+          let existing = null;
+          if (playerId && idMap.has(String(playerId))) {
+            existing = idMap.get(String(playerId));
+          } else if (normalizedName && nameMap.has(normalizedName)) {
+            existing = nameMap.get(normalizedName);
+          }
+
+          if (existing) {
+            Object.assign(existing, b);
+            if (playerId) idMap.set(String(playerId), existing);
+            if (normalizedName) nameMap.set(normalizedName, existing);
+          } else {
+            const entry = { ...b };
+            deduplicated.push(entry);
+            if (playerId) idMap.set(String(playerId), entry);
+            if (normalizedName) nameMap.set(normalizedName, entry);
+          }
         });
-        setBalances(Array.from(bMap.values()));
+
+        setBalances(deduplicated.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0)));
       }
 
       if (settlementRes.status === 'fulfilled') {
