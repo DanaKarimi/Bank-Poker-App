@@ -202,10 +202,10 @@ router.get('/by-code/:code', async (req, res) => {
 });
 
 /**
- * POST /api/tables/create
+ * POST /api/tables/create & POST /api/tables
  * Create a new table inside a group with member player IDs and manual new player names
  */
-router.post('/create', authenticateToken, async (req, res) => {
+const handleCreateTable = async (req, res) => {
     try {
         const { groupId, name, chipValue, entryFee, memberPlayerIds = [], newPlayerNames = [] } = req.body;
         const userId = req.user.id;
@@ -315,7 +315,10 @@ router.post('/create', authenticateToken, async (req, res) => {
         console.error('Error creating table in group:', error);
         return res.status(500).json({ error: 'Failed to create table' });
     }
-});
+};
+
+router.post('/create', authenticateToken, handleCreateTable);
+router.post('/', authenticateToken, handleCreateTable);
 
 /**
  * DELETE /api/tables/:tableId/players/:playerId
@@ -329,6 +332,10 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
         const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
+        }
+
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Deleting players is forbidden.' });
         }
 
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
@@ -368,15 +375,17 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
 });
 
 /**
+/**
  * POST /api/tables/:id/players
  * Table creator or group owner manually adds player to table
  */
 router.post('/:id/players', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { name, userId } = req.body;
+        const { name, playerName, userId } = req.body;
+        const chosenName = (name || playerName || '').trim();
 
-        if (!name || !name.trim()) {
+        if (!chosenName) {
             return res.status(400).json({ error: 'Player name is required' });
         }
 
@@ -385,9 +394,38 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Table not found' });
         }
 
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Adding players is forbidden.' });
+        }
+
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
         if (!isAllowed) {
             return res.status(403).json({ error: 'Permission denied to add player' });
+        }
+
+        // Check if player with this name already exists in this table
+        const existing = await get(
+            'SELECT * FROM players WHERE table_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND is_deleted = 0',
+            [tableId, chosenName]
+        );
+
+        if (existing) {
+            const now = Date.now();
+            if (existing.status !== 'ACTIVE') {
+                await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, existing.id]);
+                existing.status = 'ACTIVE';
+            }
+            return res.status(200).json({
+                message: 'Player already seated in this table',
+                player: {
+                    id: existing.id,
+                    tableId,
+                    userId: existing.user_id,
+                    name: existing.name,
+                    status: existing.status,
+                    createdAt: existing.created_at
+                }
+            });
         }
 
         const playerId = crypto.randomUUID();
@@ -396,14 +434,14 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
         await run(
             `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
              VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-            [playerId, tableId, userId || null, name.trim(), now, playerId, now]
+            [playerId, tableId, userId || null, chosenName, now, playerId, now]
         );
 
         const newPlayer = {
             id: playerId,
             tableId,
             userId: userId || null,
-            name: name.trim(),
+            name: chosenName,
             status: 'ACTIVE',
             totalBuyIns: 0,
             totalExits: 0,
@@ -427,13 +465,13 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
 });
 
 /**
- * POST /api/tables/:id/buy-ins
- * Manual buy-in recorded by table manager
+ * POST /api/tables/:id/buy-ins and /buyins
+ * Manual buy-in with auto-seat capability
  */
-router.post('/:id/buy-ins', authenticateToken, async (req, res) => {
+const handleRecordBuyIn = async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { playerId, userId, username, amount, note } = req.body;
+        const { playerId, player_id, userId, user_id, username, name, playerName, amount, note } = req.body;
 
         const numAmount = Number(amount);
         if (isNaN(numAmount) || numAmount <= 0) {
@@ -445,29 +483,73 @@ router.post('/:id/buy-ins', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Table not found' });
         }
 
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Recording transactions is forbidden.' });
+        }
+
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
         if (!isAllowed) {
             return res.status(403).json({ error: 'Permission denied to record buy-in' });
         }
 
-        let player = null;
-        if (playerId) {
-            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [playerId, tableId]);
-        }
-        if (!player && userId) {
-            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [userId, tableId]);
-        }
-        if (!player && username) {
-            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [username, tableId]);
-        }
+        const targetPlayerId = playerId || player_id;
+        const targetUserId = userId || user_id;
+        const targetName = (name || playerName || username || '').trim();
 
-        if (!player) {
-            return res.status(404).json({ error: 'Player not found in this table' });
+        let player = null;
+        if (targetPlayerId) {
+            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, tableId]);
+        }
+        if (!player && targetUserId) {
+            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, tableId]);
+        }
+        if (!player && targetName) {
+            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, tableId]);
         }
 
         const now = Date.now();
-        if (player.status === 'EXITED') {
+
+        // AUTO-SEAT: if player not seated and name provided, seat them with ACTIVE status
+        if (!player) {
+            if (!targetName) {
+                return res.status(404).json({ error: 'Player not found in this table, and no name provided to auto-seat' });
+            }
+
+            const newPlayerId = crypto.randomUUID();
+            await run(
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
+                [newPlayerId, tableId, targetUserId || null, targetName, now, newPlayerId, now]
+            );
+
+            player = {
+                id: newPlayerId,
+                table_id: tableId,
+                user_id: targetUserId || null,
+                name: targetName,
+                status: 'ACTIVE',
+                created_at: now
+            };
+
+            const newPlayerPayload = {
+                id: newPlayerId,
+                tableId,
+                userId: targetUserId || null,
+                name: targetName,
+                status: 'ACTIVE',
+                totalBuyIns: 0,
+                totalExits: 0,
+                balance: 0,
+                createdAt: now
+            };
+
+            emitToTable(tableId, 'player_added', newPlayerPayload);
+            if (table.group_id) {
+                emitToGroup(table.group_id, 'player_added', newPlayerPayload);
+            }
+        } else if (player.status === 'EXITED') {
             await run('UPDATE players SET status = "ACTIVE", updated_at = ? WHERE id = ?', [now, player.id]);
+            player.status = 'ACTIVE';
         }
 
         const buyInId = crypto.randomUUID();
@@ -494,28 +576,28 @@ router.post('/:id/buy-ins', authenticateToken, async (req, res) => {
         return res.status(201).json({
             message: 'Buy-in recorded',
             buyInId,
+            playerId: player.id,
+            playerName: player.name,
             amount: numAmount
         });
     } catch (err) {
         console.error('Error recording buy-in:', err);
         return res.status(500).json({ error: 'Failed to record buy-in' });
     }
-});
+};
 
-// Backward-compatible alias
-router.post('/:id/buy-in-direct', authenticateToken, async (req, res, next) => {
-    req.url = `/${req.params.id}/buy-ins`;
-    router.handle(req, res, next);
-});
+router.post('/:id/buy-ins', authenticateToken, handleRecordBuyIn);
+router.post('/:id/buyins', authenticateToken, handleRecordBuyIn);
+router.post('/:id/buy-in-direct', authenticateToken, handleRecordBuyIn);
 
 /**
  * POST /api/tables/:id/exits
- * Manual exit recorded by table manager
+ * Manual exit with auto-seat capability
  */
-router.post('/:id/exits', authenticateToken, async (req, res) => {
+const handleRecordExit = async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { playerId, userId, username, amount, note } = req.body;
+        const { playerId, player_id, userId, user_id, username, name, playerName, amount, note } = req.body;
 
         const numAmount = Number(amount);
         if (isNaN(numAmount) || numAmount < 0) {
@@ -527,28 +609,74 @@ router.post('/:id/exits', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Table not found' });
         }
 
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Recording transactions is forbidden.' });
+        }
+
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
         if (!isAllowed) {
             return res.status(403).json({ error: 'Permission denied to record exit' });
         }
 
-        let player = null;
-        if (playerId) {
-            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [playerId, tableId]);
-        }
-        if (!player && userId) {
-            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [userId, tableId]);
-        }
-        if (!player && username) {
-            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [username, tableId]);
-        }
+        const targetPlayerId = playerId || player_id;
+        const targetUserId = userId || user_id;
+        const targetName = (name || playerName || username || '').trim();
 
-        if (!player) {
-            return res.status(404).json({ error: 'Player not found in this table' });
+        let player = null;
+        if (targetPlayerId) {
+            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, tableId]);
+        }
+        if (!player && targetUserId) {
+            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, tableId]);
+        }
+        if (!player && targetName) {
+            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, tableId]);
         }
 
         const now = Date.now();
-        await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
+
+        // AUTO-SEAT: if player not seated and name provided, seat them with EXITED status
+        if (!player) {
+            if (!targetName) {
+                return res.status(404).json({ error: 'Player not found in this table, and no name provided to auto-seat' });
+            }
+
+            const newPlayerId = crypto.randomUUID();
+            await run(
+                `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
+                [newPlayerId, tableId, targetUserId || null, targetName, now, newPlayerId, now]
+            );
+
+            player = {
+                id: newPlayerId,
+                table_id: tableId,
+                user_id: targetUserId || null,
+                name: targetName,
+                status: 'EXITED',
+                created_at: now
+            };
+
+            const newPlayerPayload = {
+                id: newPlayerId,
+                tableId,
+                userId: targetUserId || null,
+                name: targetName,
+                status: 'EXITED',
+                totalBuyIns: 0,
+                totalExits: 0,
+                balance: 0,
+                createdAt: now
+            };
+
+            emitToTable(tableId, 'player_added', newPlayerPayload);
+            if (table.group_id) {
+                emitToGroup(table.group_id, 'player_added', newPlayerPayload);
+            }
+        } else {
+            await run('UPDATE players SET status = "EXITED", updated_at = ? WHERE id = ?', [now, player.id]);
+            player.status = 'EXITED';
+        }
 
         const exitId = crypto.randomUUID();
         await run(
@@ -574,19 +702,18 @@ router.post('/:id/exits', authenticateToken, async (req, res) => {
         return res.status(201).json({
             message: 'Exit recorded',
             exitId,
+            playerId: player.id,
+            playerName: player.name,
             amount: numAmount
         });
     } catch (err) {
         console.error('Error recording exit:', err);
         return res.status(500).json({ error: 'Failed to record exit' });
     }
-});
+};
 
-// Backward-compatible alias
-router.post('/:id/exit-direct', authenticateToken, async (req, res, next) => {
-    req.url = `/${req.params.id}/exits`;
-    router.handle(req, res, next);
-});
+router.post('/:id/exits', authenticateToken, handleRecordExit);
+router.post('/:id/exit-direct', authenticateToken, handleRecordExit);
 
 /**
  * POST /api/tables/:id/close

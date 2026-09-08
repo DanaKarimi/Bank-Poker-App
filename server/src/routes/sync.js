@@ -31,7 +31,7 @@ const normalizeRecord = (table, raw) => {
                 id,
                 name: raw.name || 'Unnamed Group',
                 invite_code: raw.invite_code || raw.inviteCode || null,
-                mode: raw.mode || 'OFFLINE',
+                mode: raw.mode || 'ONLINE',
                 created_by: raw.created_by || raw.createdBy || null,
                 created_at: Number(raw.created_at || raw.createdAt || now),
                 server_id,

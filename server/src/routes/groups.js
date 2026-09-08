@@ -582,7 +582,7 @@ router.get('/by-invite/:code', authenticateToken, async (req, res) => {
         return res.status(200).json({
             groupId: group.id,
             name: group.name,
-            mode: group.mode || 'OFFLINE',
+            mode: group.mode || 'ONLINE',
             hasUnclaimedPlayers,
             userHasPlayer,
             claimedPlayerName: claimedPlayer ? claimedPlayer.name : null
@@ -631,7 +631,7 @@ router.post('/join', authenticateToken, async (req, res) => {
                     id: group.id,
                     name: group.name,
                     invite_code: group.invite_code,
-                    mode: group.mode || 'OFFLINE',
+                    mode: group.mode || 'ONLINE',
                     joined_at: existingMembership.joined_at
                 }
             });
@@ -649,7 +649,7 @@ router.post('/join', authenticateToken, async (req, res) => {
                 id: group.id,
                 name: group.name,
                 invite_code: group.invite_code,
-                mode: group.mode || 'OFFLINE',
+                mode: group.mode || 'ONLINE',
                 joined_at: joinedAt
             }
         });
@@ -851,15 +851,7 @@ router.get('/:id/my-stats', authenticateToken, async (req, res) => {
         const netGameBalance = totalExits - totalBuyIns;
         let currentBalance = netGameBalance + paymentsSent - paymentsReceived;
 
-        // Check if there is a direct snapshot in synced_balances
-        const syncedUserBalance = await get(
-            `SELECT balance FROM synced_balances WHERE group_id = ? AND (user_id = ? OR username IN (${placeholders})) ORDER BY updated_at DESC LIMIT 1`,
-            [groupId, userId, ...nameList]
-        );
-        if (syncedUserBalance && syncedUserBalance.balance !== undefined && syncedUserBalance.balance !== null) {
-            currentBalance = Number(syncedUserBalance.balance);
-        }
-
+        // Server-calculated live balance
         const myBalance = currentBalance;
         const myBuyIns = totalBuyIns;
         const myExits = totalExits;
@@ -1212,31 +1204,6 @@ router.get('/:id/balances', authenticateToken, async (req, res) => {
         const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
-        }
-
-        const synced = await all(
-            'SELECT * FROM synced_balances WHERE group_id = ? ORDER BY balance DESC',
-            [group.id]
-        );
-
-        if (synced && synced.length > 0) {
-            // Deduplicate synced_balances by COALESCE(user_id, lower(trim(username)))
-            const syncedMap = new Map();
-            for (const s of synced) {
-                const nameKey = (s.username || '').trim().toLowerCase();
-                const key = s.user_id ? `user:${s.user_id}` : `name:${nameKey}`;
-                if (!syncedMap.has(key)) {
-                    syncedMap.set(key, {
-                        userId: s.user_id,
-                        username: (s.username || '').trim(),
-                        name: (s.username || '').trim(),
-                        balance: Number(s.balance) || 0,
-                        isMe: Boolean(userId && s.user_id && String(s.user_id) === String(userId))
-                    });
-                }
-            }
-            const balances = Array.from(syncedMap.values()).sort((a, b) => b.balance - a.balance);
-            return res.status(200).json({ balances });
         }
 
         const balances = await calculateGroupBalances(group.id, userId);
