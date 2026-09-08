@@ -133,6 +133,13 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.TablePlayersResponse>
 
+    @POST("api/tables/{tableId}/players")
+    suspend fun addTablePlayer(
+        @Path("tableId") tableId: String,
+        @Body body: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.google.gson.JsonObject>
+
     @GET("api/tables/{tableId}/buy-ins")
     suspend fun getTableBuyIns(
         @Path("tableId") tableId: String,
@@ -203,6 +210,12 @@ interface ApiService {
         @Body request: com.google.gson.JsonObject,
         @Header("Authorization") token: String = ""
     ): Response<com.google.gson.JsonObject>
+
+    @GET("api/groups/{groupId}/balances")
+    suspend fun getGroupBalances(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.GroupBalancesResponse>
 
     @POST("api/groups/{groupId}/sync-balances")
     suspend fun syncGroupBalances(

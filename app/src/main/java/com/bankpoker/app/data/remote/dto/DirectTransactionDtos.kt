@@ -12,6 +12,9 @@ data class DirectBuyInRequest(
     @SerializedName("username")
     val username: String? = null,
 
+    @SerializedName("name")
+    val name: String? = null,
+
     @SerializedName("amount")
     val amount: Long,
 
@@ -25,6 +28,12 @@ data class DirectBuyInResponse(
 
     @SerializedName("buyInId")
     val buyInId: String,
+
+    @SerializedName("playerId")
+    val playerId: String? = null,
+
+    @SerializedName("playerName")
+    val playerName: String? = null,
 
     @SerializedName("amount")
     val amount: Long = 0L
@@ -40,6 +49,9 @@ data class DirectExitRequest(
     @SerializedName("username")
     val username: String? = null,
 
+    @SerializedName("name")
+    val name: String? = null,
+
     @SerializedName("amount")
     val amount: Long,
 
@@ -53,6 +65,12 @@ data class DirectExitResponse(
 
     @SerializedName("exitId")
     val exitId: String,
+
+    @SerializedName("playerId")
+    val playerId: String? = null,
+
+    @SerializedName("playerName")
+    val playerName: String? = null,
 
     @SerializedName("amount")
     val amount: Long = 0L

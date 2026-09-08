@@ -57,3 +57,20 @@ data class UserGroupSummaryDto(
     val isStale: Boolean = false
 )
 
+data class GroupBalancesResponse(
+    val balances: List<ServerPlayerBalanceDto> = emptyList()
+)
+
+data class ServerPlayerBalanceDto(
+    val id: String? = null,
+    val playerId: String? = null,
+    val userId: String? = null,
+    val username: String? = null,
+    val name: String,
+    val totalBuyIns: Long = 0L,
+    val totalExits: Long = 0L,
+    val paymentsSent: Long = 0L,
+    val paymentsReceived: Long = 0L,
+    val balance: Long = 0L,
+    val isMe: Boolean = false
+)

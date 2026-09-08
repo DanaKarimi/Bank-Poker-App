@@ -306,6 +306,11 @@ class PokerRepository(
 
     suspend fun getBalancesByGroupIdOnce(groupId: String): List<GroupBalance> = groupBalanceDao.getBalancesByGroupIdOnce(groupId)
 
+    suspend fun replaceGroupBalances(groupId: String, balances: List<GroupBalance>) {
+        groupBalanceDao.deleteBalancesByGroupId(groupId)
+        groupBalanceDao.insertBalances(balances)
+    }
+
     fun getPaymentsByGroupId(groupId: String): Flow<List<Payment>> = paymentDao.getPaymentsByGroupId(groupId)
 
     fun getSettlementsByGroupId(groupId: String): Flow<List<SettlementRecord>> = settlementRecordDao.getSettlementsByGroupId(groupId)

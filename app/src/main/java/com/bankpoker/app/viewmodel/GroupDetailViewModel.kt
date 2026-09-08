@@ -37,10 +37,44 @@ class GroupDetailViewModel(
     private val _serverSettlement = MutableStateFlow<List<com.bankpoker.app.ui.screens.Settlement>>(emptyList())
     val serverSettlement: StateFlow<List<com.bankpoker.app.ui.screens.Settlement>> = _serverSettlement.asStateFlow()
 
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
+
     init {
         viewModelScope.launch {
             _group.value = repository.getGroupById(groupId)
+            fetchServerBalances()
             fetchServerSettlement()
+        }
+    }
+
+    fun fetchServerBalances() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+                val result = remoteRepository.getGroupBalances(serverGroupId)
+                if (result.isSuccess) {
+                    val serverList = result.getOrNull() ?: emptyList()
+                    val mapped = serverList.map { dto ->
+                        GroupBalance(
+                            id = "${groupId}_${dto.name.trim().lowercase()}",
+                            groupId = groupId,
+                            playerName = dto.name.trim(),
+                            balance = dto.balance
+                        )
+                    }
+                    repository.replaceGroupBalances(groupId, mapped)
+                    _isOffline.value = false
+                } else {
+                    _isOffline.value = true
+                    Log.w("GroupDetailVM", "Failed to fetch server balances: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                _isOffline.value = true
+                Log.e("GroupDetailVM", "Error in fetchServerBalances: ${e.message}")
+            }
         }
     }
 
@@ -49,14 +83,12 @@ class GroupDetailViewModel(
         viewModelScope.launch {
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
-                if (currentGroup?.mode == "ONLINE") {
-                    val serverGroupId = currentGroup.serverId ?: currentGroup.id
-                    val result = remoteRepository.getGroupSettlement(serverGroupId)
-                    result.onSuccess { list ->
-                        _serverSettlement.value = list
-                    }.onFailure { e ->
-                        Log.e("GroupDetailVM", "Failed to fetch server settlement: ${e.message}")
-                    }
+                val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+                val result = remoteRepository.getGroupSettlement(serverGroupId)
+                result.onSuccess { list ->
+                    _serverSettlement.value = list
+                }.onFailure { e ->
+                    Log.e("GroupDetailVM", "Failed to fetch server settlement: ${e.message}")
                 }
             } catch (e: Exception) {
                 Log.e("GroupDetailVM", "Error in fetchServerSettlement: ${e.message}")

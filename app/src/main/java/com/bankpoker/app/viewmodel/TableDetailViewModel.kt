@@ -218,26 +218,53 @@ class TableDetailViewModel(
         }
     }
 
-    fun addPlayer(name: String) {
+    fun addPlayer(name: String, onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
-            Log.d("TableDetail", "Adding player locally to table $tableId: $name")
-            repository.addPlayer(tableId, name.trim().uppercase())
+            val cleanName = name.trim().uppercase()
+            Log.d("TableDetail", "Adding player to table $tableId: $cleanName")
+            repository.addPlayer(tableId, cleanName)
             onRefreshCounts?.invoke()
+
+            if (isTableOnline()) {
+                val remoteResult = remoteRepository?.addTablePlayer(tableId, cleanName)
+                if (remoteResult != null && remoteResult.isSuccess) {
+                    onResult?.invoke(true, null)
+                } else {
+                    val errorMsg = remoteResult?.exceptionOrNull()?.message
+                    Log.w("TableDetail", "Server addTablePlayer note: $errorMsg (saved locally)")
+                    onResult?.invoke(true, null)
+                }
+            } else {
+                onResult?.invoke(true, null)
+            }
         }
     }
 
     /**
-     * Add Buy-In (OFFLINE = local Room only, ONLINE = API first then local Room)
+     * Add Buy-In (with optional playerName auto-seat support)
      */
-    fun addBuyIn(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
+    fun addBuyIn(
+        playerId: String? = null,
+        amount: Long,
+        note: String? = null,
+        playerName: String? = null,
+        onResult: ((Boolean, String?) -> Unit)? = null
+    ) {
         viewModelScope.launch {
+            var targetPlayerId = playerId
+            var targetName = playerName?.trim()
+            if (targetPlayerId != null && targetName == null) {
+                val player = repository.getPlayerById(targetPlayerId)
+                targetName = player?.name
+            }
+
             if (isTableOnline()) {
-                Log.d("TableDetail", "ONLINE mode: performing direct online buy-in for player: $playerId, amount: $amount")
-                val player = repository.getPlayerById(playerId)
+                Log.d("TableDetail", "ONLINE mode: performing direct online buy-in for player: $targetPlayerId / $targetName, amount: $amount")
                 val remoteResult = remoteRepository?.directBuyIn(
                     tableId = tableId,
-                    playerId = playerId,
-                    username = player?.name,
+                    playerId = targetPlayerId,
+                    username = targetName,
+                    name = targetName,
                     amount = amount,
                     note = note
                 )
@@ -245,12 +272,37 @@ class TableDetailViewModel(
                 if (remoteResult != null && remoteResult.isSuccess) {
                     val directRes = remoteResult.getOrNull()
                     val buyInId = directRes?.buyInId ?: UUID.randomUUID().toString()
-                    Log.d("TableDetail", "Direct online buy-in success: $buyInId. Saving to Room.")
+                    val effectivePlayerId = directRes?.playerId ?: targetPlayerId ?: UUID.randomUUID().toString()
+                    val effectivePlayerName = directRes?.playerName ?: targetName ?: "Player"
+
+                    // Ensure player exists in Room with status PLAYING
+                    var existingPlayer = repository.getPlayerById(effectivePlayerId)
+                    if (existingPlayer == null && targetName != null) {
+                        existingPlayer = repository.getPlayersForTableOnce(tableId).find {
+                            it.name.equals(targetName, ignoreCase = true)
+                        }
+                    }
+                    val finalPlayerId = if (existingPlayer == null) {
+                        val newP = Player(
+                            id = effectivePlayerId,
+                            tableId = tableId,
+                            name = effectivePlayerName,
+                            status = "PLAYING",
+                            createdAt = System.currentTimeMillis()
+                        )
+                        repository.insertOrUpdatePlayers(listOf(newP))
+                        effectivePlayerId
+                    } else {
+                        if (existingPlayer.status != "PLAYING") {
+                            repository.updatePlayerStatus(existingPlayer.id, "PLAYING")
+                        }
+                        existingPlayer.id
+                    }
 
                     val buyIn = BuyIn(
                         id = buyInId,
                         tableId = tableId,
-                        playerId = playerId,
+                        playerId = finalPlayerId,
                         amount = amount,
                         note = note ?: "Direct Buy-In",
                         createdAt = System.currentTimeMillis()
@@ -265,9 +317,13 @@ class TableDetailViewModel(
                     onResult?.invoke(false, error)
                 }
             } else {
-                Log.d("TableDetail", "Using local only for OFFLINE group: addBuyIn for player: $playerId, amount: $amount")
+                Log.d("TableDetail", "Using local addBuyIn for player: $targetPlayerId / $targetName, amount: $amount")
                 try {
-                    repository.addBuyIn(tableId, playerId, amount, note)
+                    val pId = targetPlayerId ?: run {
+                        val p = repository.addPlayer(tableId, targetName ?: "Player")
+                        p.id
+                    }
+                    repository.addBuyIn(tableId, pId, amount, note)
                     loadTableData()
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)
@@ -280,17 +336,30 @@ class TableDetailViewModel(
     }
 
     /**
-     * Add Exit (OFFLINE = local Room only, ONLINE = API first then local Room)
+     * Add Exit (with optional playerName auto-seat support)
      */
-    fun addExitRecord(playerId: String, amount: Long, note: String?, onResult: ((Boolean, String?) -> Unit)? = null) {
+    fun addExitRecord(
+        playerId: String? = null,
+        amount: Long,
+        note: String? = null,
+        playerName: String? = null,
+        onResult: ((Boolean, String?) -> Unit)? = null
+    ) {
         viewModelScope.launch {
+            var targetPlayerId = playerId
+            var targetName = playerName?.trim()
+            if (targetPlayerId != null && targetName == null) {
+                val player = repository.getPlayerById(targetPlayerId)
+                targetName = player?.name
+            }
+
             if (isTableOnline()) {
-                Log.d("TableDetail", "ONLINE mode: performing direct online exit for player: $playerId, amount: $amount")
-                val player = repository.getPlayerById(playerId)
+                Log.d("TableDetail", "ONLINE mode: performing direct online exit for player: $targetPlayerId / $targetName, amount: $amount")
                 val remoteResult = remoteRepository?.directExit(
                     tableId = tableId,
-                    playerId = playerId,
-                    username = player?.name,
+                    playerId = targetPlayerId,
+                    username = targetName,
+                    name = targetName,
                     amount = amount,
                     note = note
                 )
@@ -298,18 +367,41 @@ class TableDetailViewModel(
                 if (remoteResult != null && remoteResult.isSuccess) {
                     val directRes = remoteResult.getOrNull()
                     val exitId = directRes?.exitId ?: UUID.randomUUID().toString()
-                    Log.d("TableDetail", "Direct online exit success: $exitId. Saving to Room.")
+                    val effectivePlayerId = directRes?.playerId ?: targetPlayerId ?: UUID.randomUUID().toString()
+                    val effectivePlayerName = directRes?.playerName ?: targetName ?: "Player"
+
+                    // Ensure player exists in Room with status EXITED
+                    var existingPlayer = repository.getPlayerById(effectivePlayerId)
+                    if (existingPlayer == null && targetName != null) {
+                        existingPlayer = repository.getPlayersForTableOnce(tableId).find {
+                            it.name.equals(targetName, ignoreCase = true)
+                        }
+                    }
+                    val finalPlayerId = if (existingPlayer == null) {
+                        val newP = Player(
+                            id = effectivePlayerId,
+                            tableId = tableId,
+                            name = effectivePlayerName,
+                            status = "EXITED",
+                            createdAt = System.currentTimeMillis()
+                        )
+                        repository.insertOrUpdatePlayers(listOf(newP))
+                        effectivePlayerId
+                    } else {
+                        repository.updatePlayerStatus(existingPlayer.id, "EXITED")
+                        existingPlayer.id
+                    }
 
                     val exitRecord = ExitRecord(
                         id = exitId,
                         tableId = tableId,
-                        playerId = playerId,
+                        playerId = finalPlayerId,
                         amount = amount,
                         note = note ?: "Direct Exit",
                         createdAt = System.currentTimeMillis()
                     )
                     repository.insertOrUpdateExitRecords(listOf(exitRecord))
-                    repository.updatePlayerStatus(playerId, "EXITED")
+                    repository.updatePlayerStatus(finalPlayerId, "EXITED")
                     loadTableData()
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)
@@ -319,9 +411,14 @@ class TableDetailViewModel(
                     onResult?.invoke(false, error)
                 }
             } else {
-                Log.d("TableDetail", "Using local only for OFFLINE group: addExitRecord for player: $playerId, amount: $amount")
+                Log.d("TableDetail", "Using local addExitRecord for player: $targetPlayerId / $targetName, amount: $amount")
                 try {
-                    repository.addExitRecord(tableId, playerId, amount, note)
+                    val pId = targetPlayerId ?: run {
+                        val p = repository.addPlayer(tableId, targetName ?: "Player")
+                        p.id
+                    }
+                    repository.addExitRecord(tableId, pId, amount, note)
+                    repository.updatePlayerStatus(pId, "EXITED")
                     loadTableData()
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)

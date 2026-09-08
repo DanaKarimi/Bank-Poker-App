@@ -233,6 +233,38 @@ fun TableDetailScreen(
                     chipValue = uiState.table?.chipValue
                 )
 
+                if (uiState.table?.status == "CLOSED") {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        color = LoseRed.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, LoseRed.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = null,
+                                tint = LoseRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "TABLE CLOSED • HISTORY LOCKED",
+                                color = LoseRed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                }
+
                 if (!uiState.table?.code.isNullOrBlank()) {
                     Row(
                         modifier = Modifier
@@ -287,6 +319,14 @@ fun TableDetailScreen(
                         selectedPlayerForExit = player
                         showExitDialog = true
                     },
+                    onDirectBuyInClick = {
+                        selectedPlayerForBuyIn = null
+                        showBuyInDialog = true
+                    },
+                    onDirectExitClick = {
+                        selectedPlayerForExit = null
+                        showExitDialog = true
+                    },
                     onDeletePlayer = { player ->
                         val playerBuyIns = buyIns.filter { it.playerId == player.id }.sumOf { it.amount }
                         if (playerBuyIns > 0) {
@@ -322,17 +362,23 @@ fun TableDetailScreen(
         )
     }
 
-    if (showBuyInDialog && selectedPlayerForBuyIn != null) {
-        val currentPlayer = selectedPlayerForBuyIn!!
+    if (showBuyInDialog) {
+        val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
         BuyInBottomSheet(
-            playerName = currentPlayer.name,
+            initialPlayer = selectedPlayerForBuyIn,
+            availablePlayers = players,
+            savedNames = savedNames,
             onDismiss = {
                 showBuyInDialog = false
                 selectedPlayerForBuyIn = null
             },
-            onConfirm = { amount, note ->
-                val playerId = currentPlayer.id
-                viewModel.addBuyIn(playerId, amount, note) { success, errorMsg ->
+            onConfirm = { targetPlayerId, targetPlayerName, amount, note ->
+                viewModel.addBuyIn(
+                    playerId = targetPlayerId,
+                    amount = amount,
+                    note = note,
+                    playerName = targetPlayerName
+                ) { success, errorMsg ->
                     if (success) {
                         Toast.makeText(context, "Buy-in recorded successfully", Toast.LENGTH_SHORT).show()
                     } else if (errorMsg != null) {
@@ -342,22 +388,27 @@ fun TableDetailScreen(
                 showBuyInDialog = false
                 selectedPlayerForBuyIn = null
             },
-            viewModel = viewModel,
-            playerId = currentPlayer.id
+            viewModel = viewModel
         )
     }
 
-    if (showExitDialog && selectedPlayerForExit != null) {
-        val currentPlayer = selectedPlayerForExit!!
+    if (showExitDialog) {
+        val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
         ExitBottomSheet(
-            playerName = currentPlayer.name,
+            initialPlayer = selectedPlayerForExit,
+            availablePlayers = players,
+            savedNames = savedNames,
             onDismiss = {
                 showExitDialog = false
                 selectedPlayerForExit = null
             },
-            onConfirm = { amount, note ->
-                val playerId = currentPlayer.id
-                viewModel.addExitRecord(playerId, amount, note) { success, errorMsg ->
+            onConfirm = { targetPlayerId, targetPlayerName, amount, note ->
+                viewModel.addExitRecord(
+                    playerId = targetPlayerId,
+                    amount = amount,
+                    note = note,
+                    playerName = targetPlayerName
+                ) { success, errorMsg ->
                     if (success) {
                         Toast.makeText(context, "Exit recorded successfully", Toast.LENGTH_SHORT).show()
                     } else if (errorMsg != null) {
@@ -367,8 +418,7 @@ fun TableDetailScreen(
                 showExitDialog = false
                 selectedPlayerForExit = null
             },
-            viewModel = viewModel,
-            playerId = currentPlayer.id
+            viewModel = viewModel
         )
     }
     
@@ -542,6 +592,8 @@ fun HorizontalPagerTabs(
     onAddPlayer: () -> Unit,
     onBuyInClick: (Player) -> Unit,
     onExitClick: (Player) -> Unit,
+    onDirectBuyInClick: () -> Unit = {},
+    onDirectExitClick: () -> Unit = {},
     players: List<Player>,
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
@@ -596,6 +648,8 @@ fun HorizontalPagerTabs(
                     onAddPlayer = onAddPlayer,
                     onBuyInClick = onBuyInClick,
                     onExitClick = onExitClick,
+                    onDirectBuyInClick = onDirectBuyInClick,
+                    onDirectExitClick = onDirectExitClick,
                     onDeletePlayer = onDeletePlayer,
                     isTableActive = isTableActive,
                     tableHasEntryFee = tableHasEntryFee,
@@ -629,6 +683,8 @@ fun PlayersTab(
     onAddPlayer: () -> Unit,
     onBuyInClick: (Player) -> Unit,
     onExitClick: (Player) -> Unit,
+    onDirectBuyInClick: () -> Unit = {},
+    onDirectExitClick: () -> Unit = {},
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
     viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
@@ -657,6 +713,45 @@ fun PlayersTab(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+            if (isTableActive) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onDirectBuyInClick,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Gold,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Record Buy-in", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onDirectExitClick,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = FeltCard,
+                            contentColor = Gold
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Record Exit", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             if (players.isNotEmpty()) {
                 OutlinedTextField(
                     value = searchQuery,
@@ -988,6 +1083,24 @@ fun PlayerCard(
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
+                }
+
+                if (isTableActive) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onBuyInClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Gold,
+                            contentColor = Color.Black
+                        ),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Rebuy / Buy-in", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -1720,12 +1833,15 @@ fun AddPlayerBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BuyInBottomSheet(
-    playerName: String,
+    initialPlayer: Player? = null,
+    availablePlayers: List<Player> = emptyList(),
+    savedNames: List<String> = emptyList(),
     onDismiss: () -> Unit,
-    onConfirm: (Long, String?) -> Unit,
-    viewModel: TableDetailViewModel,
-    playerId: String
+    onConfirm: (targetPlayerId: String?, targetPlayerName: String, amount: Long, note: String?) -> Unit,
+    viewModel: TableDetailViewModel
 ) {
+    var selectedPlayer by remember(initialPlayer) { mutableStateOf(initialPlayer) }
+    var playerNameInput by remember(initialPlayer) { mutableStateOf(initialPlayer?.name ?: "") }
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1733,12 +1849,30 @@ fun BuyInBottomSheet(
     var playerExits by remember { mutableStateOf(0L) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    LaunchedEffect(playerId) {
-        playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
-        playerExits = viewModel.getPlayerTotalExits(playerId)
+    LaunchedEffect(selectedPlayer?.id) {
+        val pId = selectedPlayer?.id
+        if (pId != null) {
+            playerBuyIns = viewModel.getPlayerTotalBuyIns(pId)
+            playerExits = viewModel.getPlayerTotalExits(pId)
+        } else {
+            playerBuyIns = 0L
+            playerExits = 0L
+        }
     }
 
     val currentBal = playerBuyIns - playerExits
+
+    val filteredSuggestions = remember(playerNameInput, availablePlayers, savedNames) {
+        val seatedNames = availablePlayers.map { it.name }
+        val allNames = (seatedNames + savedNames).distinct()
+        if (playerNameInput.isBlank()) {
+            availablePlayers.map { it.name }
+        } else {
+            allNames.filter {
+                it.contains(playerNameInput, ignoreCase = true) && !it.equals(playerNameInput, ignoreCase = true)
+            }.take(6)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1754,57 +1888,143 @@ fun BuyInBottomSheet(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SectionHeader(title = "ADD BUY-IN: ${playerName.uppercase()}", suit = "♠")
+            val titleText = if (selectedPlayer != null) {
+                "ADD BUY-IN: ${selectedPlayer!!.name.uppercase()}"
+            } else if (playerNameInput.isNotBlank()) {
+                "ADD BUY-IN: ${playerNameInput.uppercase()}"
+            } else {
+                "RECORD BUY-IN"
+            }
+            SectionHeader(title = titleText, suit = "♠")
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Player balance card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltBackground)
-            ) {
-                Row(
+            if (initialPlayer == null) {
+                OutlinedTextField(
+                    value = playerNameInput,
+                    onValueChange = { input ->
+                        playerNameInput = input
+                        val match = availablePlayers.find { it.name.equals(input.trim(), ignoreCase = true) }
+                        selectedPlayer = match
+                        if (error != null) error = null
+                    },
+                    label = { Text("Player Name", color = Cream.copy(alpha = 0.7f)) },
+                    placeholder = { Text("Enter name or pick below", color = Cream.copy(alpha = 0.4f)) },
+                    singleLine = true,
+                    isError = error != null && playerNameInput.isBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedTextColor = Cream,
+                        unfocusedTextColor = Cream,
+                        cursorColor = Gold,
+                        focusedContainerColor = FeltBackground,
+                        unfocusedContainerColor = FeltBackground
+                    )
+                )
+
+                if (filteredSuggestions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        filteredSuggestions.forEach { name ->
+                            val isSeated = availablePlayers.any { it.name.equals(name, ignoreCase = true) }
+                            SuggestionChip(
+                                onClick = {
+                                    playerNameInput = name
+                                    selectedPlayer = availablePlayers.find { it.name.equals(name, ignoreCase = true) }
+                                },
+                                label = {
+                                    Text(
+                                        text = if (isSeated) name else "$name (new)",
+                                        color = if (isSeated) Cream else Gold
+                                    )
+                                },
+                                colors = SuggestionChipDefaults.suggestionChipColors(containerColor = FeltBackground),
+                                border = SuggestionChipDefaults.suggestionChipBorder(
+                                    enabled = true,
+                                    borderColor = if (isSeated) Gold.copy(alpha = 0.4f) else Gold.copy(alpha = 0.7f)
+                                )
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (selectedPlayer != null) {
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltBackground)
                 ) {
-                    Column {
-                        Text(
-                            text = "PLAYER",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Cream.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            text = playerName,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Cream,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "PLAYER",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = selectedPlayer!!.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Cream,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "CURRENT BALANCE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = "$currentBal chips",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Gold,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "CURRENT BALANCE",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Cream.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            text = "$currentBal chips",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Gold,
-                            fontWeight = FontWeight.Bold
-                        )
+                }
+            } else if (playerNameInput.isNotBlank()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltBackground)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PokerAvatar(avatarId = null, name = playerNameInput.trim(), size = 36.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(playerNameInput.trim(), color = Cream, fontWeight = FontWeight.Bold)
+                            Text("New player • Will auto-seat at table", color = Gold, style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Big Total Display
             Text(
                 text = "TOTAL BUY-IN",
                 style = MaterialTheme.typography.labelSmall,
@@ -1821,7 +2041,6 @@ fun BuyInBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Poker Chip Selector
             Text(
                 text = "TAP CHIPS TO ADD",
                 style = MaterialTheme.typography.labelSmall,
@@ -1905,12 +2124,17 @@ fun BuyInBottomSheet(
             GoldGradientButton(
                 text = "CONFIRM BUY-IN",
                 onClick = {
+                    val targetName = (selectedPlayer?.name ?: playerNameInput).trim()
+                    if (targetName.isBlank()) {
+                        error = "Please enter or select a player name"
+                        return@GoldGradientButton
+                    }
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong <= 0) {
                         error = "Amount must be greater than zero"
                         return@GoldGradientButton
                     }
-                    onConfirm(amountLong, note.ifBlank { null })
+                    onConfirm(selectedPlayer?.id, targetName, amountLong, note.ifBlank { null })
                 }
             )
         }
@@ -1920,12 +2144,15 @@ fun BuyInBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExitBottomSheet(
-    playerName: String,
+    initialPlayer: Player? = null,
+    availablePlayers: List<Player> = emptyList(),
+    savedNames: List<String> = emptyList(),
     onDismiss: () -> Unit,
-    onConfirm: (Long, String?) -> Unit,
-    viewModel: TableDetailViewModel,
-    playerId: String
+    onConfirm: (targetPlayerId: String?, targetPlayerName: String, amount: Long, note: String?) -> Unit,
+    viewModel: TableDetailViewModel
 ) {
+    var selectedPlayer by remember(initialPlayer) { mutableStateOf(initialPlayer) }
+    var playerNameInput by remember(initialPlayer) { mutableStateOf(initialPlayer?.name ?: "") }
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1933,14 +2160,32 @@ fun ExitBottomSheet(
     var playerExits by remember { mutableStateOf(0L) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
-    LaunchedEffect(playerId) {
-        playerBuyIns = viewModel.getPlayerTotalBuyIns(playerId)
-        playerExits = viewModel.getPlayerTotalExits(playerId)
+    LaunchedEffect(selectedPlayer?.id) {
+        val pId = selectedPlayer?.id
+        if (pId != null) {
+            playerBuyIns = viewModel.getPlayerTotalBuyIns(pId)
+            playerExits = viewModel.getPlayerTotalExits(pId)
+        } else {
+            playerBuyIns = 0L
+            playerExits = 0L
+        }
     }
     
     val currentBal = playerBuyIns - playerExits
     val exitAmountNum = amount.toLongOrNull() ?: 0L
     val simulatedNet = (playerExits + exitAmountNum) - playerBuyIns
+
+    val filteredSuggestions = remember(playerNameInput, availablePlayers, savedNames) {
+        val seatedNames = availablePlayers.map { it.name }
+        val allNames = (seatedNames + savedNames).distinct()
+        if (playerNameInput.isBlank()) {
+            availablePlayers.map { it.name }
+        } else {
+            allNames.filter {
+                it.contains(playerNameInput, ignoreCase = true) && !it.equals(playerNameInput, ignoreCase = true)
+            }.take(6)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1956,63 +2201,149 @@ fun ExitBottomSheet(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SectionHeader(title = "RECORD EXIT: ${playerName.uppercase()}", suit = "♠")
+            val titleText = if (selectedPlayer != null) {
+                "RECORD EXIT: ${selectedPlayer!!.name.uppercase()}"
+            } else if (playerNameInput.isNotBlank()) {
+                "RECORD EXIT: ${playerNameInput.uppercase()}"
+            } else {
+                "RECORD EXIT"
+            }
+            SectionHeader(title = titleText, suit = "♠")
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Player career & exit summary card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltBackground)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Total Buy-ins: $playerBuyIns",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Cream.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = "Previous Exits: $playerExits",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Cream.copy(alpha = 0.7f)
-                        )
-                    }
+            if (initialPlayer == null) {
+                OutlinedTextField(
+                    value = playerNameInput,
+                    onValueChange = { input ->
+                        playerNameInput = input
+                        val match = availablePlayers.find { it.name.equals(input.trim(), ignoreCase = true) }
+                        selectedPlayer = match
+                        if (error != null) error = null
+                    },
+                    label = { Text("Player Name", color = Cream.copy(alpha = 0.7f)) },
+                    placeholder = { Text("Enter name or pick below", color = Cream.copy(alpha = 0.4f)) },
+                    singleLine = true,
+                    isError = error != null && playerNameInput.isBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Gold,
+                        unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                        focusedTextColor = Cream,
+                        unfocusedTextColor = Cream,
+                        cursorColor = Gold,
+                        focusedContainerColor = FeltBackground,
+                        unfocusedContainerColor = FeltBackground
+                    )
+                )
+
+                if (filteredSuggestions.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        filteredSuggestions.forEach { name ->
+                            val isSeated = availablePlayers.any { it.name.equals(name, ignoreCase = true) }
+                            SuggestionChip(
+                                onClick = {
+                                    playerNameInput = name
+                                    selectedPlayer = availablePlayers.find { it.name.equals(name, ignoreCase = true) }
+                                },
+                                label = {
+                                    Text(
+                                        text = if (isSeated) name else "$name (new)",
+                                        color = if (isSeated) Cream else Gold
+                                    )
+                                },
+                                colors = SuggestionChipDefaults.suggestionChipColors(containerColor = FeltBackground),
+                                border = SuggestionChipDefaults.suggestionChipBorder(
+                                    enabled = true,
+                                    borderColor = if (isSeated) Gold.copy(alpha = 0.4f) else Gold.copy(alpha = 0.7f)
+                                )
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (selectedPlayer != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltBackground)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Total Buy-ins: $playerBuyIns",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Cream.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = "Previous Exits: $playerExits",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Cream.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Current Chips: $currentBal",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Gold,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Net: ${if (simulatedNet >= 0) "+" else ""}$simulatedNet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (simulatedNet >= 0) WinGreen else LoseRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            } else if (playerNameInput.isNotBlank()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = FeltBackground)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Current Chips: $currentBal",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Gold,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Net: ${if (simulatedNet >= 0) "+" else ""}$simulatedNet",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (simulatedNet >= 0) WinGreen else LoseRed,
-                            fontWeight = FontWeight.Bold
-                        )
+                        PokerAvatar(avatarId = null, name = playerNameInput.trim(), size = 36.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(playerNameInput.trim(), color = Cream, fontWeight = FontWeight.Bold)
+                            Text("New player • Will auto-seat & record exit", color = Gold, style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Big Exit Display
             Text(
                 text = "EXIT AMOUNT",
                 style = MaterialTheme.typography.labelSmall,
@@ -2029,7 +2360,6 @@ fun ExitBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Chip Selector for exit
             ChipSelector(
                 onAddAmount = { add ->
                     val current = amount.toLongOrNull() ?: 0L
@@ -2105,12 +2435,17 @@ fun ExitBottomSheet(
             GoldGradientButton(
                 text = "SAVE EXIT",
                 onClick = {
+                    val targetName = (selectedPlayer?.name ?: playerNameInput).trim()
+                    if (targetName.isBlank()) {
+                        error = "Please enter or select a player name"
+                        return@GoldGradientButton
+                    }
                     val amountLong = amount.toLongOrNull()
                     if (amountLong == null || amountLong < 0) {
                         error = "Amount must be zero or positive"
                         return@GoldGradientButton
                     }
-                    onConfirm(amountLong, note.ifBlank { null })
+                    onConfirm(selectedPlayer?.id, targetName, amountLong, note.ifBlank { null })
                 }
             )
         }

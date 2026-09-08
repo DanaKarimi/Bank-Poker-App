@@ -554,6 +554,29 @@ class RemoteRepository(
     }
 
     /**
+     * Add player to an online table by name
+     */
+    suspend fun addTablePlayer(tableId: String, name: String): Result<com.google.gson.JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val body = com.google.gson.JsonObject().apply {
+                addProperty("name", name.trim())
+            }
+            val response = apiService.addTablePlayer(tableId, body, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to add player (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Direct Buy-In recorded by Admin (without player request)
      */
     suspend fun directBuyIn(
@@ -561,14 +584,17 @@ class RemoteRepository(
         playerId: String? = null,
         userId: String? = null,
         username: String? = null,
+        name: String? = null,
         amount: Long,
         note: String? = null
     ): Result<DirectBuyInResponse> = withContext(Dispatchers.IO) {
         try {
+            val targetName = (name ?: username)?.trim()
             val request = DirectBuyInRequest(
                 userId = userId,
                 playerId = playerId,
-                username = username,
+                username = targetName,
+                name = targetName,
                 amount = amount,
                 note = note
             )
@@ -597,14 +623,17 @@ class RemoteRepository(
         playerId: String? = null,
         userId: String? = null,
         username: String? = null,
+        name: String? = null,
         amount: Long,
         note: String? = null
     ): Result<DirectExitResponse> = withContext(Dispatchers.IO) {
         try {
+            val targetName = (name ?: username)?.trim()
             val request = DirectExitRequest(
                 userId = userId,
                 playerId = playerId,
-                username = username,
+                username = targetName,
+                name = targetName,
                 amount = amount,
                 note = note
             )
@@ -793,6 +822,26 @@ class RemoteRepository(
             }
         } catch (e: Exception) {
             android.util.Log.e("SettlementSync", "FAILED regenerateSettlementPlan: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch server-computed balances for a group
+     */
+    suspend fun getGroupBalances(groupId: String): Result<List<com.bankpoker.app.data.remote.dto.ServerPlayerBalanceDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupBalances(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.balances)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch group balances (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

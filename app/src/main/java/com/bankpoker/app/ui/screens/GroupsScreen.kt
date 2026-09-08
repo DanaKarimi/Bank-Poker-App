@@ -276,15 +276,13 @@ fun GroupCard(
     serverGroup: UserGroupSummaryDto? = null,
     onClick: () -> Unit
 ) {
-    val isOnline = group.mode == "ONLINE"
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .border(
                 width = 1.5.dp,
-                color = if (isOnline) Gold else Gold.copy(alpha = 0.75f),
+                color = Gold.copy(alpha = 0.75f),
                 shape = RoundedCornerShape(20.dp)
             )
             .animateContentSize(),
@@ -313,7 +311,7 @@ fun GroupCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (isOnline) "🌐" else "👥",
+                    text = "👥",
                     fontSize = 24.sp
                 )
             }
@@ -329,22 +327,24 @@ fun GroupCard(
                 maxLines = 2
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Surface(
-                color = if (isOnline) WinGreen.copy(alpha = 0.2f) else Gold.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, if (isOnline) WinGreen.copy(alpha = 0.5f) else Gold.copy(alpha = 0.3f))
-            ) {
-                Text(
-                    text = if (isOnline) "ONLINE GROUP" else "OFFLINE GROUP",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isOnline) WinGreen else Gold,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 9.sp,
-                    letterSpacing = 1.sp
-                )
+            if (!group.inviteCode.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    color = FeltDark,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+                ) {
+                    Text(
+                        text = group.inviteCode!!,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    )
+                }
             }
 
             if (serverGroup != null) {
@@ -416,7 +416,6 @@ fun CreateGroupBottomSheet(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var groupName by remember { mutableStateOf("") }
-    var selectedMode by remember { mutableStateOf("OFFLINE") } // "OFFLINE" or "ONLINE"
     var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -484,7 +483,7 @@ fun CreateGroupBottomSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (selectedMode == "ONLINE") "🌐" else "👥",
+                            text = "👥",
                             fontSize = 20.sp
                         )
                     }
@@ -496,13 +495,6 @@ fun CreateGroupBottomSheet(
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         maxLines = 1
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = if (selectedMode == "ONLINE") "ONLINE" else "OFFLINE",
-                        color = if (selectedMode == "ONLINE") WinGreen else Gold,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -533,94 +525,6 @@ fun CreateGroupBottomSheet(
                 )
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Online / Offline Mode Toggle directly in dialog
-            Text(
-                text = "GROUP TYPE",
-                style = MaterialTheme.typography.labelSmall,
-                color = Gold,
-                letterSpacing = 1.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Start)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // OFFLINE Option
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedMode = "OFFLINE" }
-                        .border(
-                            width = if (selectedMode == "OFFLINE") 2.dp else 1.dp,
-                            color = if (selectedMode == "OFFLINE") Gold else Gold.copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(12.dp)
-                        ),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedMode == "OFFLINE") Color(0xFF041C0E) else FeltBackground
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "🎲 Offline (Local)",
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedMode == "OFFLINE") Gold else Cream.copy(alpha = 0.7f),
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Admin manages all tables",
-                            fontSize = 10.sp,
-                            color = Cream.copy(alpha = 0.5f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                // ONLINE Option
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedMode = "ONLINE" }
-                        .border(
-                            width = if (selectedMode == "ONLINE") 2.dp else 1.dp,
-                            color = if (selectedMode == "ONLINE") Gold else Gold.copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(12.dp)
-                        ),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedMode == "ONLINE") Color(0xFF041C0E) else FeltBackground
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "🌐 Online (Server Sync)",
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedMode == "ONLINE") Gold else Cream.copy(alpha = 0.7f),
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Live requests + invite code",
-                            fontSize = 10.sp,
-                            color = Cream.copy(alpha = 0.5f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
             if (error != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -646,10 +550,10 @@ fun CreateGroupBottomSheet(
 
                     onCreate(
                         trimmed,
-                        selectedMode,
+                        "ONLINE",
                         { createdGroup ->
                             isSubmitting = false
-                            if (selectedMode == "ONLINE" && createdGroup.inviteCode != null) {
+                            if (createdGroup.inviteCode != null) {
                                 createdInviteCode = createdGroup.inviteCode
                                 createdGroupName = createdGroup.name
                                 showInviteDialog = true

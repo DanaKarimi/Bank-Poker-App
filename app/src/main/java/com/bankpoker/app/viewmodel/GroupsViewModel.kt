@@ -46,34 +46,40 @@ class GroupsViewModel(
 
     fun createGroup(
         name: String,
-        mode: String = "OFFLINE",
+        mode: String = "ONLINE",
         onSuccess: ((PlayerGroup) -> Unit)? = null,
         onError: ((String) -> Unit)? = null
     ) {
         viewModelScope.launch {
-            if (mode == "ONLINE" && remoteRepository != null) {
-                val result = remoteRepository.createGroup(name.trim(), "ONLINE")
+            val trimmed = name.trim()
+            if (remoteRepository != null) {
+                val result = remoteRepository.createGroup(trimmed, "ONLINE")
                 if (result.isSuccess) {
                     val response = result.getOrNull()
                     val serverGroupId = response?.groupId
                     val inviteCode = response?.inviteCode
                     val created = repository.createGroup(
-                        name = name.trim(),
+                        name = trimmed,
                         mode = "ONLINE",
                         serverId = serverGroupId,
                         inviteCode = inviteCode,
                         customId = serverGroupId
                     )
                     onSuccess?.invoke(created)
+                    return@launch
                 } else {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "Failed to create online group on server."
-                    onError?.invoke(errorMsg)
+                    android.util.Log.w("GroupsVM", "Server group creation failed; falling back to local creation", result.exceptionOrNull())
                 }
-            } else {
-                // Offline group
-                val created = repository.createGroup(name = name.trim(), mode = "OFFLINE")
-                onSuccess?.invoke(created)
             }
+            // Local creation (with outbox if offline)
+            val localId = java.util.UUID.randomUUID().toString()
+            val created = repository.createGroup(
+                name = trimmed,
+                mode = "ONLINE",
+                customId = localId
+            )
+            repository.enqueueOutbox("create_group", localId, "{\"name\":\"$trimmed\"}")
+            onSuccess?.invoke(created)
         }
     }
 }
