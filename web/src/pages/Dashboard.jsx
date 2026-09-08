@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer, createQuickTable } from '../api';
+import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer, createQuickTable, createGroup } from '../api';
 import {
   Users,
   Plus,
@@ -49,6 +49,34 @@ const Dashboard = () => {
   const [unclaimedPlayers, setUnclaimedPlayers] = useState([]);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
+
+  // Create Group Modal State
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [createGroupLoading, setCreateGroupLoading] = useState(false);
+  const [createGroupError, setCreateGroupError] = useState('');
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    setCreateGroupLoading(true);
+    setCreateGroupError('');
+    try {
+      const res = await createGroup({ name: trimmed });
+      setIsCreateGroupOpen(false);
+      setNewGroupName('');
+      fetchGroups();
+      if (res.data?.group?.id) {
+        navigate(`/group/${res.data.group.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create group:', err);
+      setCreateGroupError(err.response?.data?.error || 'Failed to create group.');
+    } finally {
+      setCreateGroupLoading(false);
+    }
+  };
 
   // Quick Table State
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
@@ -357,6 +385,18 @@ const Dashboard = () => {
 
             <button
               onClick={() => {
+                setNewGroupName('');
+                setCreateGroupError('');
+                setIsCreateGroupOpen(true);
+              }}
+              className="px-4 py-3 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-gold-accent" />
+              <span>Create Group</span>
+            </button>
+
+            <button
+              onClick={() => {
                 setQuickTableName('');
                 setQuickDefaultBuyIn('100000');
                 setQuickError('');
@@ -441,14 +481,26 @@ const Dashboard = () => {
             <Users className="w-16 h-16 text-gold-accent/40 mx-auto mb-3" />
             <h3 className="text-xl font-bold text-cream-text">No Groups Joined Yet</h3>
             <p className="text-sm text-cream-text/60 max-w-md mx-auto mt-1 mb-6">
-              You haven't joined any poker groups yet. Ask your group admin for an invite code or join an existing group.
+              You haven't joined or created any poker groups yet. Create your own group or join with an invite code.
             </p>
-            <button
-              onClick={openJoinModal}
-              className="px-6 py-2.5 bg-gold-accent text-black font-bold rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
-            >
-              Join with Invite Code
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  setNewGroupName('');
+                  setCreateGroupError('');
+                  setIsCreateGroupOpen(true);
+                }}
+                className="px-6 py-2.5 bg-gold-accent text-black font-bold rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
+              >
+                Create Group
+              </button>
+              <button
+                onClick={openJoinModal}
+                className="px-6 py-2.5 bg-felt-dark border border-gold-accent/40 text-gold-accent font-bold rounded-xl shadow hover:bg-gold-accent/10 transition cursor-pointer"
+              >
+                Join with Invite Code
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -465,21 +517,6 @@ const Dashboard = () => {
                         {group.name}
                       </h3>
                     </div>
-
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
-                        group.mode === 'ONLINE'
-                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
-                          : 'bg-felt-dark text-cream-text/60 border-gold-accent/20'
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          group.mode === 'ONLINE' ? 'bg-emerald-400 animate-pulse' : 'bg-cream-text/40'
-                        }`}
-                      />
-                      <span>{group.mode || 'OFFLINE'}</span>
-                    </span>
                   </div>
 
                   {group.invite_code && (
@@ -495,7 +532,7 @@ const Dashboard = () => {
                     state={{ group }}
                     className="w-full py-2.5 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/50 shadow flex items-center justify-center gap-1.5 transition active:scale-95"
                   >
-                    <span>{group.mode === 'ONLINE' ? 'Enter Table & Requests' : 'View Stats'}</span>
+                    <span>Enter Group</span>
                     <ChevronRight className="w-4 h-4" />
                   </Link>
                 </div>
@@ -803,6 +840,73 @@ const Dashboard = () => {
                 </form>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Create Group Modal */}
+      {isCreateGroupOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setIsCreateGroupOpen(false)}
+              disabled={createGroupLoading}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
+                  Create New Group
+                </h3>
+                <p className="text-xs text-cream-text/60">
+                  Enter a name for your poker group. You will become the group host.
+                </p>
+              </div>
+            </div>
+            {createGroupError && (
+              <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{createGroupError}</span>
+              </div>
+            )}
+            <form onSubmit={handleCreateGroup} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Group Name
+                </label>
+                <input
+                  type="text"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="e.g. Friday Night Poker"
+                  autoFocus
+                  maxLength={50}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text placeholder-cream-text/40 font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateGroupOpen(false)}
+                  disabled={createGroupLoading}
+                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createGroupLoading || !newGroupName.trim()}
+                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {createGroupLoading ? 'Creating...' : 'Create Group'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -14,6 +14,9 @@ import {
   confirmExitReceipt,
   publishTable,
   deleteTablePlayer,
+  addTablePlayer,
+  directBuyIn,
+  directExit,
 } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
@@ -70,6 +73,11 @@ const TableDetail = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [isDeletingPlayer, setIsDeletingPlayer] = useState(false);
+  const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [isAddingPlayer, setIsAddingPlayer] = useState(false);
+  const [selectedPlayerForBuyIn, setSelectedPlayerForBuyIn] = useState(null);
+  const [selectedPlayerForExit, setSelectedPlayerForExit] = useState(null);
 
   const previousStatusRef = useRef(null);
 
@@ -275,37 +283,95 @@ const TableDetail = () => {
     }
   };
 
-  const handleOpenBuyInModal = () => {
+  const handleOpenBuyInModal = (p = null) => {
     if (isClosed) return;
+    setSelectedPlayerForBuyIn(p || (isPlayerSeated ? myPlayer : null));
     setIsBuyInModalOpen(true);
   };
 
-  const handleOpenExitModal = () => {
+  const handleOpenExitModal = (p = null) => {
     if (isClosed) return;
+    setSelectedPlayerForExit(p || (isPlayerSeated ? myPlayer : null));
     setIsExitModalOpen(true);
   };
 
-  const handleBuyInSubmit = async (amount, note) => {
+  const handleAddPlayerSubmit = async (e) => {
+    e.preventDefault();
+    const cleanName = newPlayerName.trim();
+    if (!cleanName) {
+      setError('Please enter a player name');
+      return;
+    }
+    setIsAddingPlayer(true);
+    setError('');
     try {
-      await sendBuyInRequest(groupId, tableId, amount, note);
-      setSuccessMessage(`Buy-in request for ${Number(amount).toLocaleString()} chips submitted successfully!`);
+      await addTablePlayer(tableId, { name: cleanName });
+      setSuccessMessage(`Player "${cleanName}" added to table.`);
+      setIsAddPlayerModalOpen(false);
+      setNewPlayerName('');
       fetchTableData(true);
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err) {
-      console.error('Failed to submit buy-in request:', err);
-      setError(err.response?.data?.error || 'Failed to submit buy-in request.');
+      console.error('Failed to add player:', err);
+      setError(err.response?.data?.error || 'Failed to add player to table.');
+    } finally {
+      setIsAddingPlayer(false);
     }
   };
 
-  const handleExitSubmit = async (amount, note) => {
+  const handleBuyInSubmit = async (payload, legacyAmount, legacyNote) => {
     try {
-      await sendExitRequest(groupId, tableId, amount, note);
-      setSuccessMessage(`Exit cashout request for ${Number(amount).toLocaleString()} chips submitted successfully!`);
+      const pId = typeof payload === 'object' ? payload.playerId : null;
+      const targetName = typeof payload === 'object' ? payload.name : (myPlayer?.name || user?.username);
+      const amt = Number(typeof payload === 'object' ? payload.amount : payload);
+      const nt = typeof payload === 'object' ? payload.note : legacyNote;
+
+      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || table?.host_id === user?.id || table?.isHost;
+      if (isHostOrAdmin || targetName !== user?.username) {
+        await directBuyIn(tableId, {
+          playerId: pId,
+          name: targetName,
+          amount: amt,
+          note: nt,
+        });
+        setSuccessMessage(`Buy-in of ${amt.toLocaleString()} chips recorded for ${targetName}!`);
+      } else {
+        await sendBuyInRequest(groupId, tableId, amt, nt);
+        setSuccessMessage(`Buy-in request for ${amt.toLocaleString()} chips submitted successfully!`);
+      }
       fetchTableData(true);
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err) {
-      console.error('Failed to submit exit request:', err);
-      setError(err.response?.data?.error || 'Failed to submit exit request.');
+      console.error('Failed to submit buy-in:', err);
+      setError(err.response?.data?.error || 'Failed to record buy-in.');
+    }
+  };
+
+  const handleExitSubmit = async (payload, legacyAmount, legacyNote) => {
+    try {
+      const pId = typeof payload === 'object' ? payload.playerId : null;
+      const targetName = typeof payload === 'object' ? payload.name : (myPlayer?.name || user?.username);
+      const amt = Number(typeof payload === 'object' ? payload.amount : payload);
+      const nt = typeof payload === 'object' ? payload.note : legacyNote;
+
+      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || table?.host_id === user?.id || table?.isHost;
+      if (isHostOrAdmin || targetName !== user?.username) {
+        await directExit(tableId, {
+          playerId: pId,
+          name: targetName,
+          amount: amt,
+          note: nt,
+        });
+        setSuccessMessage(`Exit of ${amt.toLocaleString()} chips recorded for ${targetName}!`);
+      } else {
+        await sendExitRequest(groupId, tableId, amt, nt);
+        setSuccessMessage(`Exit cashout request for ${amt.toLocaleString()} chips submitted successfully!`);
+      }
+      fetchTableData(true);
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err) {
+      console.error('Failed to submit exit:', err);
+      setError(err.response?.data?.error || 'Failed to record exit.');
     }
   };
 
@@ -502,11 +568,9 @@ const TableDetail = () => {
 
           {/* Closed Alert Banner */}
           {isClosed && (
-            <div className="mt-5 p-3.5 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center gap-2.5 text-zinc-300 text-xs">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>This table is closed.</strong> The table host has concluded this session. No new buy-in or exit requests are permitted.
-              </span>
+            <div className="mt-5 p-4 bg-red-950/90 border-2 border-red-500 rounded-xl flex items-center justify-center gap-2.5 text-red-200 text-sm font-black tracking-wider uppercase shadow-lg">
+              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+              <span>TABLE CLOSED • HISTORY LOCKED</span>
             </div>
           )}
         </div>
@@ -763,9 +827,42 @@ const TableDetail = () => {
         {/* TAB 3: SEATED PLAYERS */}
         {activeTab === 'players' && (
           <div className="bg-felt-card border border-gold-accent/30 rounded-2xl p-5 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between text-xs text-cream-text/60 mb-1">
-              <span>Current players seated at this table</span>
-              <span>{players.length} players</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-cream-text/60 mb-2">
+              <div>
+                <span className="font-bold text-cream-text">Current players seated at this table</span>
+                <span className="ml-2 px-2 py-0.5 rounded-full bg-felt-dark border border-gold-accent/20 text-gold-accent font-semibold">{players.length} players</span>
+              </div>
+              {!isClosed && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPlayerName('');
+                      setIsAddPlayerModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-gradient-to-r from-gold-accent to-yellow-500 hover:opacity-95 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Add Player</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenBuyInModal(null)}
+                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Record Buy-In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenExitModal(null)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <MinusCircle className="w-3.5 h-3.5" />
+                    <span>Record Exit</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {players.length === 0 ? (
@@ -777,45 +874,76 @@ const TableDetail = () => {
                 {players.map((p) => (
                   <div
                     key={p.id}
-                    className="p-3.5 bg-felt-dark rounded-xl border border-gold-accent/20 flex items-center justify-between text-xs"
+                    className="p-3.5 bg-felt-dark rounded-xl border border-gold-accent/20 flex flex-col gap-2.5 text-xs"
                   >
-                    <div className="flex items-center gap-3">
-                      <UserBadge
-                        avatarId={p.avatar_id || p.avatar}
-                        name={p.name || p.display_name || p.username}
-                        username={p.username}
-                        size="md"
-                      />
-                      {(p.name === user?.username || p.username === user?.username) && (
-                        <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <UserBadge
+                          avatarId={p.avatar_id || p.avatar}
+                          name={p.name || p.display_name || p.username}
+                          username={p.username}
+                          size="md"
+                        />
+                        {(p.name === user?.username || p.username === user?.username) && (
+                          <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {(table?.entry_fee || table?.entryFee) > 0 && (
+                          (p.entry_fee_paid === 1 || p.entryFeePaid === true) ? (
+                            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                              Fee Paid ✓
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-red-950 text-red-300 border border-red-500/40">
+                              Fee Unpaid
+                            </span>
+                          )
+                        )}
+                        <span className="px-2.5 py-1 text-[10px] font-extrabold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                          {p.status || 'ACTIVE'}
+                        </span>
+                        {!isClosed && (
+                          <button
+                            onClick={() => handleDeletePlayerClick(p)}
+                            className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-400 hover:text-white transition cursor-pointer"
+                            title="Remove player from table"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {(table?.entry_fee || table?.entryFee) > 0 && (
-                        (p.entry_fee_paid === 1 || p.entryFeePaid === true) ? (
-                          <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
-                            Fee Paid ✓
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-red-950 text-red-300 border border-red-500/40">
-                            Fee Unpaid
-                          </span>
-                        )
-                      )}
-                      <span className="px-2.5 py-1 text-[10px] font-extrabold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                        {p.status || 'ACTIVE'}
-                      </span>
-                      {!isClosed && (
+                    {!isClosed && (
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-gold-accent/10">
                         <button
-                          onClick={() => handleDeletePlayerClick(p)}
-                          className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-400 hover:text-white transition cursor-pointer"
-                          title="Remove player from table"
+                          type="button"
+                          onClick={() => handleOpenBuyInModal(p)}
+                          className="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <PlusCircle className="w-3 h-3" />
+                          <span>+ Buy-In</span>
                         </button>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenBuyInModal(p)}
+                          className="px-2 py-1 bg-blue-950/80 hover:bg-blue-900 border border-blue-500/40 text-blue-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Rebuy</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExitModal(p)}
+                          className="px-2 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                        >
+                          <MinusCircle className="w-3 h-3" />
+                          <span>- Exit</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -823,6 +951,56 @@ const TableDetail = () => {
           </div>
         )}
       </div>
+
+      {/* Add Player Modal */}
+      {isAddPlayerModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-base font-black text-gold-accent uppercase tracking-wide mb-2 flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-gold-accent" />
+              <span>Add Player to Table</span>
+            </h3>
+            <p className="text-xs text-cream-text/70 mb-4 leading-relaxed">
+              Manually add a player to this table by name.
+            </p>
+            <form onSubmit={handleAddPlayerSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-cream-text/70 uppercase mb-1">
+                  Player Name
+                </label>
+                <input
+                  type="text"
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  placeholder="Enter player name..."
+                  autoFocus
+                  className="w-full px-3 py-2 bg-felt-dark border border-gold-accent/30 rounded-xl text-cream-text text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddPlayerModalOpen(false);
+                    setNewPlayerName('');
+                  }}
+                  disabled={isAddingPlayer}
+                  className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingPlayer || !newPlayerName.trim()}
+                  className="px-4 py-2 bg-gradient-to-r from-gold-accent to-yellow-500 hover:from-yellow-400 hover:to-gold-accent text-black rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isAddingPlayer ? 'Adding...' : 'Add Player'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Player Modal */}
       {playerToDelete && (
@@ -860,18 +1038,28 @@ const TableDetail = () => {
       {/* Buy-In Modal */}
       <BuyInModal
         isOpen={isBuyInModalOpen}
-        onClose={() => setIsBuyInModalOpen(false)}
-        playerName={myPlayer?.name || user?.username || 'Player'}
-        currentBalance={myTableNetBalance}
+        onClose={() => {
+          setIsBuyInModalOpen(false);
+          setSelectedPlayerForBuyIn(null);
+        }}
+        players={players}
+        initialPlayer={selectedPlayerForBuyIn}
+        playerName={selectedPlayerForBuyIn?.name || myPlayer?.name || user?.username || 'Player'}
+        currentBalance={selectedPlayerForBuyIn ? (selectedPlayerForBuyIn.balance ?? 0) : myTableNetBalance}
         onSubmit={handleBuyInSubmit}
       />
 
       {/* Exit Modal */}
       <ExitModal
         isOpen={isExitModalOpen}
-        onClose={() => setIsExitModalOpen(false)}
-        playerName={myPlayer?.name || user?.username || 'Player'}
-        currentBalance={myTableNetBalance}
+        onClose={() => {
+          setIsExitModalOpen(false);
+          setSelectedPlayerForExit(null);
+        }}
+        players={players}
+        initialPlayer={selectedPlayerForExit}
+        playerName={selectedPlayerForExit?.name || myPlayer?.name || user?.username || 'Player'}
+        currentBalance={selectedPlayerForExit ? (selectedPlayerForExit.balance ?? 0) : myTableNetBalance}
         onSubmit={handleExitSubmit}
       />
     </div>

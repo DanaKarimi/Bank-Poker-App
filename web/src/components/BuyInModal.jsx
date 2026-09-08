@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, UserPlus, Coins } from 'lucide-react';
 
 const BuyInModal = ({
   isOpen,
   onClose,
+  players = [],
+  initialPlayer = null,
   playerName = 'Player',
   currentBalance = 0,
   onSubmit,
 }) => {
+  const [selectedPlayer, setSelectedPlayer] = useState(initialPlayer);
+  const [typedName, setTypedName] = useState(initialPlayer?.name || initialPlayer?.username || '');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -15,14 +19,25 @@ const BuyInModal = ({
 
   useEffect(() => {
     if (isOpen) {
+      setSelectedPlayer(initialPlayer || null);
+      setTypedName(initialPlayer?.name || initialPlayer?.username || '');
       setAmount('');
       setNote('');
       setError('');
       setIsSubmitting(false);
     }
-  }, [isOpen]);
+  }, [isOpen, initialPlayer]);
 
   if (!isOpen) return null;
+
+  const effectivePlayerName = selectedPlayer?.name || selectedPlayer?.username || typedName.trim() || playerName;
+  const effectiveBalance = selectedPlayer
+    ? (selectedPlayer.balance ?? (Number(selectedPlayer.totalBuyIns || 0) - Number(selectedPlayer.totalExits || 0)))
+    : currentBalance;
+
+  const isNewPlayer = !selectedPlayer && typedName.trim().length > 0 && !players.some(
+    (p) => (p.name || p.username || '').toLowerCase() === typedName.trim().toLowerCase()
+  );
 
   const handleAddChip = (val) => {
     const current = Number(amount) || 0;
@@ -44,7 +59,6 @@ const BuyInModal = ({
 
   const handleCustomAmountChange = (e) => {
     const val = e.target.value;
-    // Only positive digits
     if (val === '' || Number(val) >= 0) {
       setAmount(val);
       setError('');
@@ -56,6 +70,12 @@ const BuyInModal = ({
     if (isSubmitting) return;
     setError('');
 
+    const targetName = (selectedPlayer?.name || selectedPlayer?.username || typedName || playerName).trim();
+    if (!targetName) {
+      setError('Please enter or select a player name');
+      return;
+    }
+
     const numAmount = Number(amount);
     if (!amount || isNaN(numAmount) || numAmount <= 0) {
       setError('Amount must be greater than zero');
@@ -65,12 +85,17 @@ const BuyInModal = ({
     setIsSubmitting(true);
     try {
       if (onSubmit) {
-        await onSubmit(numAmount, note);
+        await onSubmit({
+          playerId: selectedPlayer?.id || null,
+          name: targetName,
+          amount: numAmount,
+          note: note || '',
+        }, numAmount, note);
       }
       onClose();
     } catch (err) {
       console.error('Buy-in submission error:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to submit buy-in request');
+      setError(err.response?.data?.error || err.message || 'Failed to submit buy-in');
     } finally {
       setIsSubmitting(false);
     }
@@ -86,12 +111,12 @@ const BuyInModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#064e3b] border-2 border-[#d4af37] rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-[#f5f5dc] animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-[#064e3b] border-2 border-[#d4af37] rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-[#f5f5dc] animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#f5f5dc]/70 hover:text-[#f5f5dc] p-1.5 rounded-xl hover:bg-black/20 transition active:scale-95"
+          className="absolute top-4 right-4 text-[#f5f5dc]/70 hover:text-[#f5f5dc] p-1.5 rounded-xl hover:bg-black/20 transition active:scale-95 cursor-pointer"
           aria-label="Close modal"
         >
           <X className="w-5 h-5" />
@@ -99,33 +124,102 @@ const BuyInModal = ({
 
         {/* 1. Header */}
         <div className="mb-4">
-          <h2 className="text-xl font-black text-[#d4af37] tracking-tight">
-            Request Buy-In
+          <h2 className="text-xl font-black text-[#d4af37] tracking-tight flex items-center gap-2">
+            <Coins className="w-5 h-5" />
+            <span>Record Buy-In</span>
           </h2>
           <p className="text-xs text-[#f5f5dc]/70 mt-0.5">
-            Submit a buy-in request for table chips
+            Record chips for a seated player or auto-seat a new player
           </p>
         </div>
 
+        {/* Player Selection / Name Input (when not fixed to an initial player) */}
+        {!initialPlayer && (
+          <div className="mb-4 space-y-2">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[#d4af37]/80 block">
+              Player Name
+            </label>
+            <input
+              type="text"
+              value={typedName}
+              onChange={(e) => {
+                const val = e.target.value;
+                setTypedName(val);
+                const match = players.find(
+                  (p) => (p.name || p.username || '').toLowerCase() === val.trim().toLowerCase()
+                );
+                setSelectedPlayer(match || null);
+                setError('');
+              }}
+              placeholder="Type player name or pick below"
+              className="w-full px-3.5 py-2.5 bg-[#043327] border border-[#d4af37]/40 rounded-xl text-[#f5f5dc] text-sm focus:outline-none focus:border-[#d4af37]"
+            />
+
+            {/* Quick Seated Player Chips */}
+            {players.length > 0 && (
+              <div className="space-y-1 pt-1">
+                <span className="text-[10px] text-[#f5f5dc]/60 block font-semibold">
+                  Seated Players:
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                  {players.map((p) => {
+                    const isSelected = selectedPlayer?.id === p.id;
+                    const pName = p.name || p.username;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPlayer(p);
+                          setTypedName(pName);
+                          setError('');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#d4af37] text-black border-[#d4af37]'
+                            : 'bg-[#043327] text-[#f5f5dc]/80 border-[#d4af37]/30 hover:border-[#d4af37]'
+                        }`}
+                      >
+                        {pName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {isNewPlayer && (
+              <div className="p-2 bg-yellow-950/40 border border-yellow-500/40 rounded-lg text-[11px] text-yellow-300 flex items-center gap-1.5">
+                <UserPlus className="w-3.5 h-3.5 shrink-0 text-yellow-400" />
+                <span>New player "{typedName.trim()}" will auto-seat at table.</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 2. Player Info Card */}
-        <div className="bg-[#043327] border border-[#d4af37]/30 rounded-xl p-3.5 flex items-center justify-between shadow-inner mb-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#f5f5dc]/60 block">
-              Player
-            </span>
-            <span className="text-sm font-bold text-[#f5f5dc]">
-              {playerName}
-            </span>
+        {effectivePlayerName && (
+          <div className="bg-[#043327] border border-[#d4af37]/30 rounded-xl p-3.5 flex items-center justify-between shadow-inner mb-4">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#f5f5dc]/60 block">
+                Player
+              </span>
+              <span className="text-sm font-bold text-[#f5f5dc]">
+                {effectivePlayerName}
+              </span>
+            </div>
+            {selectedPlayer && (
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#f5f5dc]/60 block">
+                  Current Balance
+                </span>
+                <span className="text-sm font-bold text-[#d4af37] font-mono">
+                  {Number(effectiveBalance).toLocaleString()} chips
+                </span>
+              </div>
+            )}
           </div>
-          <div className="text-right">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#f5f5dc]/60 block">
-              Current Balance
-            </span>
-            <span className="text-sm font-bold text-[#d4af37] font-mono">
-              {Number(currentBalance).toLocaleString()} chips
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* Error message */}
         {error && (

@@ -24,7 +24,6 @@ import {
   TrendingDown,
   DollarSign,
   Clock,
-  Wifi,
   Layers,
   Shield,
   Plus,
@@ -52,8 +51,6 @@ const GroupStats = () => {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const isOnline = group?.mode === 'ONLINE';
 
   // 1. Fetch group info
   const fetchGroupInfo = async () => {
@@ -289,12 +286,6 @@ const GroupStats = () => {
                 <h1 className="text-2xl font-black tracking-tight text-cream-text">
                   {group?.name || 'Poker Club'}
                 </h1>
-                {isOnline && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
-                    <Wifi className="w-3 h-3" />
-                    <span>ONLINE</span>
-                  </span>
-                )}
               </div>
               <p className="text-xs text-cream-text/60 mt-0.5">
                 Club Tables & Personal Performance
