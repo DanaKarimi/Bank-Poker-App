@@ -1185,6 +1185,8 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
 async function calculateGroupBalances(groupId, currentUserId = null) {
     const players = await getGroupUniquePlayers(groupId, currentUserId);
     return players.map(p => ({
+        id: p.id,
+        playerId: p.id,
         userId: p.userId,
         username: p.name,
         name: p.name,
@@ -1297,70 +1299,242 @@ router.post('/:id/sync-balances', authenticateToken, async (req, res) => {
 });
 
 /**
- * GET /api/groups/:id/settlement-plan
- * (Requires Auth)
- * Return the settlement plan (who pays whom) synced from Android
+ * Minimal-transfers greedy max-max settlement algorithm
+ * with debt absorption / matching rule:
+ * - NEVER split a debt across multiple creditors while any single creditor can absorb it fully.
+ * - At most (n-1) transfers.
+ *
+ * @param {Array<{ name: string, balance?: number, net?: number }>} playerNets
+ * @returns {Array<{ payerName: string, receiverName: string, amount: number }>}
  */
-router.get('/:id/settlement-plan', authenticateToken, async (req, res) => {
+function computeSettlementPlan(playerNets) {
+    const debtors = [];
+    const creditors = [];
+
+    for (const p of playerNets) {
+        const net = Math.round(Number(p.net ?? p.balance) || 0);
+        const name = (p.name || p.username || p.playerName || '').trim();
+        if (!name) continue;
+        if (net < 0) {
+            debtors.push({ name, debt: -net });
+        } else if (net > 0) {
+            creditors.push({ name, credit: net });
+        }
+    }
+
+    const transfers = [];
+
+    while (debtors.length > 0 && creditors.length > 0) {
+        debtors.sort((a, b) => b.debt - a.debt);
+        creditors.sort((a, b) => b.credit - a.credit);
+
+        // 1. Check for exact match (debt == credit)
+        let matched = false;
+        for (let dIdx = 0; dIdx < debtors.length; dIdx++) {
+            const d = debtors[dIdx];
+            const cIdx = creditors.findIndex(c => c.credit === d.debt);
+            if (cIdx !== -1) {
+                const c = creditors[cIdx];
+                transfers.push({
+                    payerName: d.name,
+                    receiverName: c.name,
+                    amount: d.debt
+                });
+                debtors.splice(dIdx, 1);
+                creditors.splice(cIdx, 1);
+                matched = true;
+                break;
+            }
+        }
+        if (matched) continue;
+
+        // 2. Rule: NEVER split a debt across multiple creditors while any single creditor can absorb it fully.
+        let absorbed = false;
+        for (let dIdx = 0; dIdx < debtors.length; dIdx++) {
+            const d = debtors[dIdx];
+            const cIdx = creditors.findIndex(c => c.credit >= d.debt);
+            if (cIdx !== -1) {
+                const c = creditors[cIdx];
+                transfers.push({
+                    payerName: d.name,
+                    receiverName: c.name,
+                    amount: d.debt
+                });
+                c.credit -= d.debt;
+                debtors.splice(dIdx, 1);
+                if (c.credit === 0) {
+                    creditors.splice(cIdx, 1);
+                }
+                absorbed = true;
+                break;
+            }
+        }
+        if (absorbed) continue;
+
+        // 3. Fallback to greedy max-max: largest debtor pays largest creditor min(debt, credit)
+        const d = debtors[0];
+        const c = creditors[0];
+        const amount = Math.min(d.debt, c.credit);
+
+        transfers.push({
+            payerName: d.name,
+            receiverName: c.name,
+            amount
+        });
+
+        d.debt -= amount;
+        c.credit -= amount;
+
+        if (d.debt === 0) debtors.splice(0, 1);
+        if (c.credit === 0) creditors.splice(0, 1);
+    }
+
+    return transfers;
+}
+
+function formatSettlementRecord(r) {
+    return {
+        id: r.id,
+        debtorName: r.payer_name,
+        creditorName: r.receiver_name,
+        payerName: r.payer_name,
+        fromPlayer: r.payer_name,
+        receiverName: r.receiver_name,
+        toPlayer: r.receiver_name,
+        amount: Number(r.amount) || 0,
+        initialAmount: Number(r.initial_amount || r.amount) || 0,
+        isPaid: Boolean(r.paid),
+        paid: Boolean(r.paid),
+        timestamp: r.timestamp
+    };
+}
+
+async function generateOrUpdateSettlementPlan(groupId, forceRegenerate = false) {
+    const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+    if (!group) {
+        throw new Error('Group not found');
+    }
+
+    const existingRecords = await all(
+        `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
+        [groupId]
+    );
+
+    if (!forceRegenerate && existingRecords && existingRecords.length > 0) {
+        return existingRecords;
+    }
+
+    // Calculate balances
+    const balances = await calculateGroupBalances(groupId);
+    const plan = computeSettlementPlan(balances);
+
+    // If forceRegenerate: REPLACES old unpaid settlement_records
+    await run(
+        `DELETE FROM settlement_records WHERE group_id = ? AND paid = 0`,
+        [groupId]
+    );
+
+    // Fetch already paid settlement records to preserve paid status
+    const paidRecords = await all(
+        `SELECT payer_name, receiver_name, amount FROM settlement_records WHERE group_id = ? AND paid = 1 AND is_deleted = 0`,
+        [groupId]
+    );
+
+    const now = Date.now();
+    for (const t of plan) {
+        const isAlreadyPaid = paidRecords.some(pr =>
+            pr.payer_name?.toLowerCase().trim() === t.payerName?.toLowerCase().trim() &&
+            pr.receiver_name?.toLowerCase().trim() === t.receiverName?.toLowerCase().trim() &&
+            Number(pr.amount) === Number(t.amount)
+        );
+
+        if (!isAlreadyPaid) {
+            const id = crypto.randomUUID();
+            await run(
+                `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 1, 0)`,
+                [id, groupId, groupId, 'Group Settlement', t.payerName, t.receiverName, t.amount, t.amount, now, id, now]
+            );
+        }
+    }
+
+    return all(
+        `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
+        [groupId]
+    );
+}
+
+/**
+ * GET /api/groups/:id/settlement-plan and GET /api/groups/:id/settlement
+ * (Requires Auth)
+ * Return the settlement plan (who pays whom). Generates on demand if empty.
+ */
+const handleGetSettlementPlan = async (req, res) => {
     try {
         const groupId = req.params.id;
-
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
         if (!group) {
-            console.error(`Group not found for settlement-plan GET: ${groupId}`);
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        const records = await all(
-            `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
-            [groupId]
-        );
-
-        const settlement = (records || []).map(r => ({
-            id: r.id,
-            debtorName: r.payer_name,
-            creditorName: r.receiver_name,
-            payerName: r.payer_name,
-            fromPlayer: r.payer_name,
-            receiverName: r.receiver_name,
-            toPlayer: r.receiver_name,
-            amount: Number(r.amount) || 0,
-            initialAmount: Number(r.initial_amount || r.amount) || 0,
-            isPaid: Boolean(r.paid),
-            paid: Boolean(r.paid),
-            timestamp: r.timestamp
-        }));
-
-        console.log("=== SETTLEMENT GET ===");
-        console.log("Group ID:", groupId);
-        console.log("Returning rows:", settlement.length);
-
+        const records = await generateOrUpdateSettlementPlan(groupId, false);
+        const settlement = (records || []).map(formatSettlementRecord);
         return res.status(200).json({ settlement });
     } catch (error) {
         console.error('Error fetching settlement plan:', error);
         return res.status(500).json({ error: 'Internal server error while fetching settlement plan' });
     }
-});
+};
+
+router.get('/:id/settlement-plan', authenticateToken, handleGetSettlementPlan);
+router.get('/:id/settlement', authenticateToken, handleGetSettlementPlan);
+
+/**
+ * POST /api/groups/:id/settlement/regenerate and POST /api/groups/:id/settlement-plan/regenerate
+ * (Requires Auth)
+ * Regenerate settlement plan (replaces unpaid settlement_records) and broadcasts settlement_done.
+ */
+const handleRegenerateSettlement = async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const records = await generateOrUpdateSettlementPlan(groupId, true);
+        const settlement = (records || []).map(formatSettlementRecord);
+        emitToGroup(groupId, 'settlement_done', { groupId });
+        return res.status(200).json({ message: 'Settlement plan regenerated successfully', settlement });
+    } catch (error) {
+        console.error('Error regenerating settlement plan:', error);
+        return res.status(500).json({ error: 'Internal server error while regenerating settlement plan' });
+    }
+};
+
+router.post('/:id/settlement/regenerate', authenticateToken, handleRegenerateSettlement);
+router.post('/:id/settlement-plan/regenerate', authenticateToken, handleRegenerateSettlement);
 
 /**
  * POST /api/groups/:id/settlement
  * (Requires Auth)
- * Sync/save settlement snapshot from Android app (idempotent full replace)
+ * Sync/save settlement snapshot from Android app (idempotent replace of unpaid)
  */
 router.post('/:id/settlement', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
         const settlements = req.body.settlement || req.body.settlements || [];
 
-        console.log("=== SETTLEMENT PUSH ===");
-        console.log("Group ID:", groupId);
-        console.log("Rows count:", settlements.length);
-        console.log("Data:", JSON.stringify(settlements, null, 2));
-
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
         if (!group) {
-            console.error(`Group not found for settlement push: ${groupId}`);
             return res.status(404).json({ error: 'Group not found' });
+        }
+
+        if (req.body.regenerate === true || (!req.body.settlement && !req.body.settlements)) {
+            const records = await generateOrUpdateSettlementPlan(groupId, true);
+            emitToGroup(groupId, 'settlement_done', { groupId });
+            const settlement = (records || []).map(formatSettlementRecord);
+            return res.status(200).json({ message: 'Settlement plan regenerated successfully', settlement });
         }
 
         if (!Array.isArray(settlements)) {
@@ -1368,7 +1542,8 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
         }
 
         const now = Date.now();
-        await run('DELETE FROM settlement_records WHERE group_id = ?', [groupId]);
+        // Replace unpaid settlement records
+        await run('DELETE FROM settlement_records WHERE group_id = ? AND paid = 0', [groupId]);
 
         for (const s of settlements) {
             const settlementId = s.id || crypto.randomUUID();
@@ -1379,34 +1554,72 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
             const isPaid = (s.isPaid === true || s.paid === true || s.paid === 1 || s.isPaid === 1) ? 1 : 0;
 
             if (payerName && receiverName && amount > 0) {
-                await run(
-                    `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                    [
-                        settlementId,
-                        groupId,
-                        s.tableId || groupId,
-                        s.tableName || 'Group Settlement',
-                        payerName,
-                        receiverName,
-                        amount,
-                        initialAmount,
-                        isPaid,
-                        s.timestamp || now,
-                        settlementId,
-                        now
-                    ]
-                );
+                const existing = await get('SELECT id, paid FROM settlement_records WHERE id = ?', [settlementId]);
+                if (!existing) {
+                    await run(
+                        `INSERT INTO settlement_records (id, group_id, table_id, table_name, payer_name, receiver_name, amount, initial_amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                        [settlementId, groupId, s.tableId || groupId, s.tableName || 'Group Settlement', payerName, receiverName, amount, initialAmount, isPaid, s.timestamp || now, settlementId, now]
+                    );
+                }
             }
         }
 
-        console.log(`Synced ${settlements.length} settlements for group ${groupId}`);
-        return res.status(200).json({ message: 'Settlement plan synced successfully' });
+        emitToGroup(groupId, 'settlement_done', { groupId });
+        const records = await all('SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC', [groupId]);
+        const settlement = (records || []).map(formatSettlementRecord);
+        return res.status(200).json({ message: 'Settlement plan synced successfully', settlement });
     } catch (error) {
         console.error('Error syncing settlement plan:', error);
         return res.status(500).json({ error: 'Internal server error while syncing settlement plan' });
     }
 });
+
+/**
+ * Toggle / update paid status of a settlement record
+ */
+const handleToggleSettlementPaid = async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const recordId = req.params.recordId || req.body.recordId || req.body.id;
+
+        if (!recordId) {
+            return res.status(400).json({ error: 'recordId is required' });
+        }
+
+        const record = await get(
+            'SELECT * FROM settlement_records WHERE (id = ? OR server_id = ?) AND group_id = ? AND is_deleted = 0',
+            [recordId, recordId, groupId]
+        );
+
+        if (!record) {
+            return res.status(404).json({ error: 'Settlement record not found' });
+        }
+
+        const now = Date.now();
+        const nextPaid = req.body.paid !== undefined ? (req.body.paid ? 1 : 0) : (record.paid ? 0 : 1);
+
+        await run(
+            'UPDATE settlement_records SET paid = ?, updated_at = ? WHERE id = ?',
+            [nextPaid, now, record.id]
+        );
+
+        emitToGroup(groupId, 'settlement_done', { groupId, recordId: record.id, paid: Boolean(nextPaid) });
+        return res.status(200).json({
+            message: 'Settlement record updated',
+            recordId: record.id,
+            isPaid: Boolean(nextPaid),
+            paid: Boolean(nextPaid)
+        });
+    } catch (error) {
+        console.error('Error toggling settlement paid:', error);
+        return res.status(500).json({ error: 'Internal server error while toggling settlement paid' });
+    }
+};
+
+router.post('/:id/settlement/:recordId/toggle-paid', authenticateToken, handleToggleSettlementPaid);
+router.post('/:id/settlement/toggle-paid', authenticateToken, handleToggleSettlementPaid);
+router.patch('/:id/settlement/:recordId/paid', authenticateToken, handleToggleSettlementPaid);
 
 /**
  * POST /api/groups/:id/payments
@@ -1443,6 +1656,15 @@ router.post('/:id/payments', authenticateToken, async (req, res) => {
              WHERE group_id = ? AND payer_name = ? AND receiver_name = ? AND paid = 0`,
             [now, groupId, fromPlayer.trim(), toPlayer.trim()]
         );
+
+        emitToGroup(groupId, 'payment_created', {
+            groupId,
+            paymentId,
+            fromPlayer: fromPlayer.trim(),
+            toPlayer: toPlayer.trim(),
+            amount: numAmount
+        });
+        emitToGroup(groupId, 'settlement_done', { groupId });
 
         return res.status(201).json({ message: 'Payment recorded successfully', paymentId });
     } catch (error) {
@@ -1775,5 +1997,7 @@ router.post('/:id/join-new-player', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: 'Internal server error while creating new player' });
     }
 });
+
+router.computeSettlementPlan = computeSettlementPlan;
 
 module.exports = router;
