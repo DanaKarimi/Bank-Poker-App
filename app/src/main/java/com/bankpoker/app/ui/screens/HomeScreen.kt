@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bankpoker.app.data.remote.ApiClient
+import com.bankpoker.app.data.remote.SocketManager
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
 import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
@@ -75,12 +77,14 @@ fun HomeScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val tokenManager = remember { TokenManager.getInstance(context) }
+    val socketManager = remember { SocketManager.getInstance(context) }
     val remoteRepository = remember {
         val service = ApiClient.getApiService(context, tokenManager)
         RemoteRepository(service, tokenManager)
     }
 
     var isConnected by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
     var codeInput by remember { mutableStateOf("") }
     var isLookingUpCode by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
@@ -154,6 +158,17 @@ fun HomeScreen(
         }
     }
 
+    fun doRefresh() {
+        coroutineScope.launch {
+            isRefreshing = true
+            try {
+                checkConnection()
+            } finally {
+                isRefreshing = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         checkConnection()
     }
@@ -168,6 +183,34 @@ fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val isLoggedIn = remember(authStateVersion, tokenManager.getToken()) {
+        !tokenManager.getToken().isNullOrBlank()
+    }
+
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            socketManager.connect()
+        }
+    }
+
+    LaunchedEffect(myGroups) {
+        myGroups.forEach { g ->
+            if (g.id.isNotBlank()) {
+                socketManager.joinGroup(g.id)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        socketManager.events.collect { evt ->
+            when (evt.event) {
+                "buyin_recorded", "exit_recorded", "payment_created", "settlement_done", "group_updated", "table_created", "table_closed", "table_updated" -> {
+                    loadFeedAndGroups()
+                }
+            }
         }
     }
 
@@ -201,9 +244,6 @@ fun HomeScreen(
         }
     }
 
-    val isLoggedIn = remember(authStateVersion, tokenManager.getToken()) {
-        !tokenManager.getToken().isNullOrBlank()
-    }
     val currentDisplayName = remember(authStateVersion, isLoggedIn) {
         tokenManager.getDisplayName() ?: tokenManager.getUsername() ?: "Player"
     }
@@ -407,7 +447,12 @@ fun HomeScreen(
         ) {
             CasinoWatermarks()
 
-            Column(
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { doRefresh() },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
@@ -714,6 +759,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(40.dp))
             }
         }
+    }
     }
 
     // --- FAB MODAL BOTTOM SHEET ---
@@ -1113,38 +1159,59 @@ fun HomeGroupCard(
                 }
 
                 // Net balance indicator
-                val net = group.netBalance
-                Surface(
-                    color = when {
-                        net > 0 -> WinGreen.copy(alpha = 0.2f)
-                        net < 0 -> LoseRed.copy(alpha = 0.2f)
-                        else -> FeltDark
-                    },
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        when {
-                            net > 0 -> WinGreen
-                            net < 0 -> LoseRed
-                            else -> Cream.copy(alpha = 0.2f)
-                        }
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = when {
-                            net > 0 -> "+$net"
-                            net < 0 -> "$net"
-                            else -> "0"
-                        },
+                    if (group.isStale) {
+                        Surface(
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "stale (offline)",
+                                color = Color(0xFFF59E0B),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    val net = group.netBalance
+                    Surface(
                         color = when {
-                            net > 0 -> WinGreen
-                            net < 0 -> LoseRed
-                            else -> Cream.copy(alpha = 0.8f)
+                            net > 0 -> WinGreen.copy(alpha = 0.2f)
+                            net < 0 -> LoseRed.copy(alpha = 0.2f)
+                            else -> FeltDark
                         },
-                        fontWeight = FontWeight.Black,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            when {
+                                net > 0 -> WinGreen
+                                net < 0 -> LoseRed
+                                else -> Cream.copy(alpha = 0.2f)
+                            }
+                        )
+                    ) {
+                        Text(
+                            text = when {
+                                net > 0 -> "+$net"
+                                net < 0 -> "$net"
+                                else -> "0"
+                            },
+                            color = when {
+                                net > 0 -> WinGreen
+                                net < 0 -> LoseRed
+                                else -> Cream.copy(alpha = 0.8f)
+                            },
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }

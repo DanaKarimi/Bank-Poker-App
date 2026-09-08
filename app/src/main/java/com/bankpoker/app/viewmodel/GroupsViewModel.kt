@@ -4,9 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.bankpoker.app.data.local.entity.PlayerGroup
+import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class GroupsViewModel(
@@ -14,6 +18,31 @@ class GroupsViewModel(
     private val remoteRepository: RemoteRepository? = null
 ) : ViewModel() {
     val groups: Flow<List<PlayerGroup>> = repository.getAllGroups()
+
+    private val _serverGroups = MutableStateFlow<Map<String, UserGroupSummaryDto>>(emptyMap())
+    val serverGroups: StateFlow<Map<String, UserGroupSummaryDto>> = _serverGroups.asStateFlow()
+
+    init {
+        loadServerGroups()
+    }
+
+    fun loadServerGroups() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val res = remoteRepository.getMyGroups()
+            if (res.isSuccess) {
+                val list = res.getOrNull() ?: emptyList()
+                val map = mutableMapOf<String, UserGroupSummaryDto>()
+                list.forEach { dto ->
+                    map[dto.id] = dto
+                    if (!dto.serverId.isNullOrBlank()) {
+                        map[dto.serverId] = dto
+                    }
+                }
+                _serverGroups.value = map
+            }
+        }
+    }
 
     fun createGroup(
         name: String,

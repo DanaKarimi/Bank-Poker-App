@@ -51,6 +51,9 @@ data class UserGroupSummaryDto(
     @SerializedName("member_count") val memberCount: Int = 0,
     @SerializedName("is_creator") val isCreator: Boolean = false,
     @SerializedName("net_balance") val netBalance: Long = 0L,
-    @SerializedName("created_at") val createdAt: Long? = null
+    @SerializedName("server_id") val serverId: String? = null,
+    @SerializedName("created_at") val createdAt: Long? = null,
+    @SerializedName("updated_at") val updatedAt: Long? = null,
+    val isStale: Boolean = false
 )
 

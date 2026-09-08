@@ -19,7 +19,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.bankpoker.app.data.remote.SocketManager
+import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -47,9 +54,50 @@ fun GroupsScreen(
     onGroupClick: (String) -> Unit,
     onCreateServerGroupClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val socketManager = remember { SocketManager.getInstance(context) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
     var showCreateGroupSheet by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val groups by viewModel.groups.collectAsState(initial = emptyList())
+    val serverGroups by viewModel.serverGroups.collectAsState()
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadServerGroups()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        socketManager.connect()
+        socketManager.events.collect { evt ->
+            when (evt.event) {
+                "buyin_recorded", "exit_recorded", "payment_created", "settlement_done", "group_updated" -> {
+                    viewModel.loadServerGroups()
+                }
+            }
+        }
+    }
+
+    fun doRefresh() {
+        coroutineScope.launch {
+            isRefreshing = true
+            try {
+                viewModel.loadServerGroups()
+            } finally {
+                isRefreshing = false
+            }
+        }
+    }
 
     val filteredGroups = remember(groups, searchQuery) {
         if (searchQuery.isBlank()) groups
@@ -105,98 +153,106 @@ fun GroupsScreen(
         ) {
             CasinoWatermarks()
 
-            Column(modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { doRefresh() },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
 
-                if (groups.isNotEmpty()) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        placeholder = { Text("Search groups...", color = Cream.copy(alpha = 0.5f)) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = Gold
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Clear",
-                                        tint = Gold
-                                    )
+                    if (groups.isNotEmpty()) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            placeholder = { Text("Search groups...", color = Cream.copy(alpha = 0.5f)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = Gold
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = Gold
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                            focusedTextColor = Cream,
-                            unfocusedTextColor = Cream,
-                            cursorColor = Gold,
-                            focusedContainerColor = FeltCard,
-                            unfocusedContainerColor = FeltCard
-                        )
-                    )
-                }
-
-                if (groups.isEmpty()) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Text(
-                            text = "♠",
-                            fontSize = 96.sp,
-                            color = Gold.copy(alpha = 0.3f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "NO GROUPS YET",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Cream,
-                            letterSpacing = 3.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Tap + to create a new group",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Cream.copy(alpha = 0.6f)
-                        )
-                    }
-                } else if (filteredGroups.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No groups found",
-                            color = Cream.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(filteredGroups, key = { it.id }) { group ->
-                            GroupCard(
-                                group = group,
-                                onClick = { onGroupClick(group.id) }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                                focusedTextColor = Cream,
+                                unfocusedTextColor = Cream,
+                                cursorColor = Gold,
+                                focusedContainerColor = FeltCard,
+                                unfocusedContainerColor = FeltCard
                             )
+                        )
+                    }
+
+                    if (groups.isEmpty()) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Text(
+                                text = "♠",
+                                fontSize = 96.sp,
+                                color = Gold.copy(alpha = 0.3f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "NO GROUPS YET",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Cream,
+                                letterSpacing = 3.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Tap + to create a new group",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                        }
+                    } else if (filteredGroups.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No groups found",
+                                color = Cream.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(filteredGroups, key = { it.id }) { group ->
+                                val serverGroup = serverGroups[group.serverId ?: group.id] ?: serverGroups[group.id]
+                                GroupCard(
+                                    group = group,
+                                    serverGroup = serverGroup,
+                                    onClick = { onGroupClick(group.id) }
+                                )
+                            }
                         }
                     }
                 }
@@ -217,6 +273,7 @@ fun GroupsScreen(
 @Composable
 fun GroupCard(
     group: PlayerGroup,
+    serverGroup: UserGroupSummaryDto? = null,
     onClick: () -> Unit
 ) {
     val isOnline = group.mode == "ONLINE"
@@ -288,6 +345,63 @@ fun GroupCard(
                     fontSize = 9.sp,
                     letterSpacing = 1.sp
                 )
+            }
+
+            if (serverGroup != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (serverGroup.isStale) {
+                        Surface(
+                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "stale",
+                                color = Color(0xFFF59E0B),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                    val net = serverGroup.netBalance
+                    Surface(
+                        color = when {
+                            net > 0 -> WinGreen.copy(alpha = 0.2f)
+                            net < 0 -> LoseRed.copy(alpha = 0.2f)
+                            else -> FeltDark
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            when {
+                                net > 0 -> WinGreen
+                                net < 0 -> LoseRed
+                                else -> Cream.copy(alpha = 0.2f)
+                            }
+                        )
+                    ) {
+                        Text(
+                            text = when {
+                                net > 0 -> "+$net"
+                                net < 0 -> "$net"
+                                else -> "0"
+                            },
+                            color = when {
+                                net > 0 -> WinGreen
+                                net < 0 -> LoseRed
+                                else -> Cream.copy(alpha = 0.8f)
+                            },
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
             }
         }
     }

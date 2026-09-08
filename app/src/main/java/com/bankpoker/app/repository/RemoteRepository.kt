@@ -1154,13 +1154,44 @@ class RemoteRepository(
         try {
             val response = apiService.getMyGroups(getAuthHeader())
             if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!.groups)
+                val groups = response.body()!!.groups
+                saveCachedUserGroups(groups)
+                Result.success(groups)
             } else {
-                val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get user groups"
-                Result.failure(Exception(errorMsg))
+                val cached = getCachedUserGroups()
+                if (cached.isNotEmpty()) {
+                    Result.success(cached.map { it.copy(isStale = true) })
+                } else {
+                    val errorMsg = parseErrorMessage(response.errorBody()?.string()) ?: "Failed to get user groups"
+                    Result.failure(Exception(errorMsg))
+                }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            val cached = getCachedUserGroups()
+            if (cached.isNotEmpty()) {
+                Result.success(cached.map { it.copy(isStale = true) })
+            } else {
+                Result.failure(e)
+            }
+        }
+    }
+
+    private fun saveCachedUserGroups(groups: List<UserGroupSummaryDto>) {
+        try {
+            val prefs = tokenManager.context.getSharedPreferences("cached_groups_prefs", android.content.Context.MODE_PRIVATE)
+            val json = gson.toJson(groups)
+            prefs.edit().putString("cached_my_groups", json).putLong("cached_my_groups_time", System.currentTimeMillis()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getCachedUserGroups(): List<UserGroupSummaryDto> {
+        return try {
+            val prefs = tokenManager.context.getSharedPreferences("cached_groups_prefs", android.content.Context.MODE_PRIVATE)
+            val json = prefs.getString("cached_my_groups", null) ?: return emptyList()
+            val type = object : com.google.gson.reflect.TypeToken<List<UserGroupSummaryDto>>() {}.type
+            gson.fromJson<List<UserGroupSummaryDto>>(json, type) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
