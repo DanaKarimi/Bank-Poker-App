@@ -88,6 +88,7 @@ export const deleteTablePlayer = (tableId, playerId) => api.delete(`/api/tables/
 export const createGroup = (data) => api.post('/api/groups/create', data);
 export const addTablePlayer = (tableId, data) => api.post(`/api/tables/${tableId}/players`, data);
 export const getTableByCode = (code) => api.get(`/api/tables/by-code/${encodeURIComponent(code)}`);
+export const getActiveTables = () => api.get('/api/tables/active');
 
 export const getGroupTables = async (groupId) => {
   try {

@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api, { getGroupByInvite, getGroupPlayersList, claimPlayer, joinNewPlayer, createQuickTable, createGroup } from '../api';
+import api, {
+  getGroupByInvite,
+  getGroupPlayersList,
+  claimPlayer,
+  joinNewPlayer,
+  createQuickTable,
+  createGroup,
+  getActiveTables
+} from '../api';
 import {
   Users,
   Plus,
@@ -17,7 +25,9 @@ import {
   UserPlus,
   ArrowRight,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  ClipboardPaste,
+  Pin
 } from 'lucide-react';
 import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
@@ -25,10 +35,14 @@ import ProfileModal from '../components/ProfileModal';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 import { getSocket } from '../socket';
 
+const CHIP_PRESETS = [50, 100, 200, 500];
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
   const [groups, setGroups] = useState([]);
+  const [activeTables, setActiveTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -56,85 +70,52 @@ const Dashboard = () => {
   const [createGroupLoading, setCreateGroupLoading] = useState(false);
   const [createGroupError, setCreateGroupError] = useState('');
 
-  const handleCreateGroup = async (e) => {
-    e.preventDefault();
-    const trimmed = newGroupName.trim();
-    if (!trimmed) return;
-    setCreateGroupLoading(true);
-    setCreateGroupError('');
-    try {
-      const res = await createGroup({ name: trimmed });
-      setIsCreateGroupOpen(false);
-      setNewGroupName('');
-      fetchGroups();
-      if (res.data?.group?.id) {
-        navigate(`/group/${res.data.group.id}`);
-      }
-    } catch (err) {
-      console.error('Failed to create group:', err);
-      setCreateGroupError(err.response?.data?.error || 'Failed to create group.');
-    } finally {
-      setCreateGroupLoading(false);
-    }
-  };
-
   // Quick Table State
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
   const [quickTableName, setQuickTableName] = useState('');
-  const [quickDefaultBuyIn, setQuickDefaultBuyIn] = useState('100000');
+  const [quickChipPreset, setQuickChipPreset] = useState(100);
+  const [quickChipCustom, setQuickChipCustom] = useState('');
+  const [quickHasEntryFee, setQuickHasEntryFee] = useState(false);
+  const [quickEntryFeeAmount, setQuickEntryFeeAmount] = useState('');
   const [quickPlayerNames, setQuickPlayerNames] = useState('');
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState('');
 
-  const handleCreateQuickTable = async (e) => {
-    e.preventDefault();
-    setQuickLoading(true);
-    setQuickError('');
-    try {
-      const parsedPlayers = quickPlayerNames
-        .split(/[,\n]+/)
-        .map((n) => n.trim())
-        .filter(Boolean);
+  // Action Menu Bottom Sheet / Modal for FAB (+)
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 
-      const res = await createQuickTable({
-        name: quickTableName.trim() || 'Quick Table',
-        chipValue: Number(quickDefaultBuyIn) || 100000,
-        default_buy_in: Number(quickDefaultBuyIn) || 100000,
-        playerNames: parsedPlayers,
-      });
-      setIsQuickModalOpen(false);
-      setQuickPlayerNames('');
-      if (res.data?.table?.id) {
-        navigate(`/table/${res.data.table.id}`);
-      }
-    } catch (err) {
-      console.error('Failed to create quick table:', err);
-      setQuickError(err.response?.data?.error || 'Failed to create quick table.');
-    } finally {
-      setQuickLoading(false);
-    }
-  };
-
-  const fetchGroups = async () => {
+  // Fetch Dashboard Data (Groups + Active Tables)
+  const fetchDashboardData = async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.get('/api/groups/my-groups');
-      setGroups(response.data.groups || []);
+      const [groupRes, activeRes] = await Promise.all([
+        api.get('/api/groups/my-groups').catch((err) => {
+          console.error('Failed to fetch groups:', err);
+          return { data: { groups: [] } };
+        }),
+        getActiveTables().catch((err) => {
+          console.error('Failed to fetch active tables:', err);
+          return { data: { tables: [] } };
+        })
+      ]);
+
+      setGroups(groupRes.data?.groups || []);
+      setActiveTables(activeRes.data?.tables || []);
     } catch (err) {
-      console.error('Failed to fetch groups:', err);
-      setError('Unable to load your groups. Please check backend connection.');
+      console.error('Failed to fetch dashboard data:', err);
+      setError('Unable to load dashboard data. Please check backend connection.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchGroups();
+    fetchDashboardData();
 
     const socket = getSocket();
     const handleRefresh = () => {
-      fetchGroups();
+      fetchDashboardData();
     };
 
     socket.on('table_created', handleRefresh);
@@ -142,7 +123,7 @@ const Dashboard = () => {
     socket.on('table_updated', handleRefresh);
     socket.on('group_updated', handleRefresh);
 
-    const interval = setInterval(fetchGroups, 5000);
+    const interval = setInterval(fetchDashboardData, 8000);
 
     return () => {
       clearInterval(interval);
@@ -153,8 +134,9 @@ const Dashboard = () => {
     };
   }, []);
 
+  // Smart Lookup Handler
   const handleSmartLookup = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const clean = smartCode.trim().toUpperCase();
     if (clean.length < 4) {
       setSmartError('Please enter a valid 6-character code.');
@@ -166,8 +148,7 @@ const Dashboard = () => {
       const res = await api.get(`/api/lookup/${clean}`);
       const data = res.data;
       if (data.type === 'GROUP') {
-        openJoinModal();
-        setInviteCode(clean);
+        openJoinModalWithCode(clean);
       } else if (data.type === 'TABLE') {
         navigate(`/table/${data.id}`);
       } else {
@@ -181,9 +162,93 @@ const Dashboard = () => {
     }
   };
 
-  const openJoinModal = () => {
+  const handlePasteCode = async () => {
+    try {
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        const clean = text?.trim().toUpperCase();
+        if (clean && clean.length >= 4 && clean.length <= 8) {
+          setSmartCode(clean);
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read permission denied or unavailable:', err);
+    }
+  };
+
+  // Create Group Handler
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    setCreateGroupLoading(true);
+    setCreateGroupError('');
+    try {
+      const res = await createGroup({ name: trimmed });
+      setIsCreateGroupOpen(false);
+      setNewGroupName('');
+      fetchDashboardData();
+      if (res.data?.group?.id) {
+        navigate(`/group/${res.data.group.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create group:', err);
+      setCreateGroupError(err.response?.data?.error || 'Failed to create group.');
+    } finally {
+      setCreateGroupLoading(false);
+    }
+  };
+
+  // Create Quick Table Handler
+  const handleCreateQuickTable = async (e) => {
+    e.preventDefault();
+    setQuickLoading(true);
+    setQuickError('');
+    try {
+      const parsedPlayers = quickPlayerNames
+        .split(/[,\n]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+
+      const effectiveChipValue = quickChipCustom
+        ? Number(quickChipCustom)
+        : Number(quickChipPreset) || 100;
+
+      const numEntryFee = quickHasEntryFee && quickEntryFeeAmount
+        ? Number(quickEntryFeeAmount)
+        : null;
+
+      const res = await createQuickTable({
+        name: quickTableName.trim() || 'Quick Table',
+        chipValue: effectiveChipValue,
+        default_buy_in: effectiveChipValue,
+        entryFee: numEntryFee,
+        playerNames: parsedPlayers,
+      });
+
+      setIsQuickModalOpen(false);
+      setQuickTableName('');
+      setQuickChipCustom('');
+      setQuickHasEntryFee(false);
+      setQuickEntryFeeAmount('');
+      setQuickPlayerNames('');
+      fetchDashboardData();
+
+      if (res.data?.table?.id) {
+        navigate(`/table/${res.data.table.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create quick table:', err);
+      setQuickError(err.response?.data?.error || 'Failed to create quick table.');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
+
+  // Open Join Modal with pre-filled code
+  const openJoinModalWithCode = (code = '') => {
     setJoinStep('A');
-    setInviteCode('');
+    setInviteCode(code);
     setJoinError('');
     setJoinSuccess('');
     setInspectedGroup(null);
@@ -200,7 +265,7 @@ const Dashboard = () => {
     setJoinSuccess('');
   };
 
-  // STEP A: Validate invite code and branch
+  // STEP A: Validate invite code
   const handleValidateInvite = async (e) => {
     e.preventDefault();
     setJoinError('');
@@ -214,15 +279,11 @@ const Dashboard = () => {
 
     setIsJoining(true);
     try {
-      // 1. Call GET /api/groups/by-invite/:code
       const response = await getGroupByInvite(cleanCode);
       const groupData = response.data;
       setInspectedGroup(groupData);
 
-      // Branch logic:
-      // If group has NO unclaimed players (native online or fully claimed): join directly
       if (!groupData.hasUnclaimedPlayers) {
-        // Join group directly
         const joinRes = await api.post('/api/groups/join', {
           invite_code: cleanCode,
         });
@@ -232,7 +293,6 @@ const Dashboard = () => {
           navigate(`/group/${groupData.groupId}`);
         }, 800);
       } else {
-        // Group has unclaimed players -> Go to STEP B (Question / Re-claim option)
         setJoinStep('B');
       }
     } catch (err) {
@@ -316,27 +376,29 @@ const Dashboard = () => {
     }
   };
 
+  const quickTables = activeTables.filter((t) => t.isQuickTable);
+
   return (
-    <div className="min-h-screen bg-felt-green text-cream-text flex flex-col">
+    <div className="min-h-screen bg-felt-green text-cream-text flex flex-col relative pb-20">
       {/* Top Navigation Bar */}
       <header className="bg-felt-dark/95 border-b border-gold-accent/40 sticky top-0 z-30 shadow-lg backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl text-gold-accent select-none">♠</span>
             <span className="font-extrabold text-xl tracking-wider text-gold-accent uppercase">
-              BankPoker
+              Bank Poker
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {user?.role === 'SUPER_ADMIN' && (
               <Link
                 to="/admin"
-                className="flex items-center gap-1.5 px-3 py-2 bg-yellow-950/70 hover:bg-yellow-900 border border-gold-accent/60 text-gold-accent rounded-xl text-xs font-bold transition shadow"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-950/70 hover:bg-yellow-900 border border-gold-accent/60 text-gold-accent rounded-xl text-xs font-black transition shadow"
                 title="Super Admin Control Plane"
               >
                 <ShieldCheck className="w-4 h-4 text-gold-accent" />
-                <span className="hidden sm:inline">Admin</span>
+                <span className="hidden sm:inline">ADMIN</span>
               </Link>
             )}
 
@@ -344,7 +406,7 @@ const Dashboard = () => {
 
             <div
               onClick={() => setIsProfileOpen(true)}
-              className="flex items-center bg-felt-card hover:bg-felt-card/80 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-gold-accent/40 cursor-pointer transition select-none shadow"
+              className="flex items-center bg-felt-card hover:bg-felt-card/80 p-1 sm:px-3 sm:py-1.5 rounded-xl border border-gold-accent/40 cursor-pointer transition select-none shadow"
               title="Click to manage profile and settings"
             >
               <UserBadge
@@ -353,13 +415,13 @@ const Dashboard = () => {
                 avatarId={user?.avatar_id}
                 role={user?.role}
                 isGuest={user?.is_guest}
-                size={34}
+                size={32}
               />
             </div>
 
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-900/60 hover:bg-red-800 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-xs font-semibold transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/70 hover:bg-red-900 text-red-200 hover:text-white rounded-xl border border-red-500/40 text-xs font-bold transition active:scale-95 cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -370,192 +432,480 @@ const Dashboard = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl w-full mx-auto px-4 py-8 flex-1">
-        {/* Welcome & Action Banner */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 bg-felt-card/80 p-6 rounded-2xl border border-gold-accent/50 shadow-xl">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-gold-accent tracking-wide flex items-center gap-2">
-              Welcome back, {user?.username}
-            </h1>
-            <p className="text-sm text-cream-text/75 mt-1">
-              Select a poker group below to view your balance, buy-ins, and performance history.
-            </p>
+      <main className="max-w-6xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
+        {/* Error Notification */}
+        {error && (
+          <div className="p-4 bg-red-950/80 border border-red-500 rounded-xl flex items-center gap-3 text-red-200">
+            <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+            <span className="text-sm">{error}</span>
+          </div>
+        )}
+
+        {/* SMART CODE INPUT CARD */}
+        <div className="bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl p-5 shadow-xl">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Pin className="w-4 h-4 text-gold-accent" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-gold-accent">
+                JOIN BY CODE
+              </h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={handlePasteCode}
+              className="flex items-center gap-1 px-2.5 py-1 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent text-[10px] font-bold uppercase rounded-lg transition active:scale-95 cursor-pointer"
+              title="Paste from clipboard"
+            >
+              <ClipboardPaste className="w-3 h-3 text-gold-accent" />
+              <span>PASTE</span>
+            </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <form onSubmit={handleSmartLookup} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={smartCode}
+              onChange={(e) => {
+                setSmartCode(e.target.value.toUpperCase().slice(0, 8));
+                if (smartError) setSmartError('');
+              }}
+              placeholder="ENTER 6-CHAR CODE"
+              maxLength={8}
+              className="flex-1 px-4 py-3 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono font-black tracking-widest text-sm text-center placeholder-cream-text/30 focus:outline-none focus:border-gold-accent transition"
+            />
             <button
-              onClick={fetchGroups}
-              disabled={loading}
-              title="Refresh groups"
-              className="p-3 bg-felt-dark hover:bg-felt-dark/80 text-gold-accent rounded-xl border border-gold-accent/40 shadow transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              type="submit"
+              disabled={smartLoading || !smartCode.trim()}
+              className="px-5 py-3 bg-gold-accent hover:bg-gold-light text-black font-black uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center shrink-0 cursor-pointer"
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              {smartLoading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4" />
+              )}
             </button>
+          </form>
+
+          {smartError && (
+            <p className="text-xs text-red-400 font-semibold mt-2">{smartError}</p>
+          )}
+
+          <p className="text-xs text-cream-text/60 mt-2">
+            Enter 6-char group invite or table code to jump straight in
+          </p>
+        </div>
+
+        {/* 1. LIVE NOW: ACTIVE TABLES HORIZONTAL SECTION */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-950/80 border border-red-500/80 text-red-300 rounded-full text-xs font-black tracking-wider uppercase shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                LIVE NOW
+              </span>
+              <span className="text-xs text-cream-text/60 font-semibold">
+                ({activeTables.length} Active {activeTables.length === 1 ? 'Table' : 'Tables'})
+              </span>
+            </div>
 
             <button
+              onClick={fetchDashboardData}
+              disabled={loading}
+              title="Refresh tables"
+              className="p-1.5 text-gold-accent hover:text-gold-light transition cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {activeTables.length === 0 ? (
+            <div className="p-5 bg-felt-card/40 border border-dashed border-gold-accent/30 rounded-2xl text-center">
+              <p className="text-xs text-cream-text/60">
+                No live tables right now. Start an instant quick table or join a group table.
+              </p>
+            </div>
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-3 pt-1 scrollbar-thin">
+              {activeTables.map((table) => (
+                <div
+                  key={table.id}
+                  className="min-w-[260px] max-w-[280px] bg-felt-card/90 border border-gold-accent/50 rounded-2xl p-4 shadow-lg flex flex-col justify-between shrink-0 hover:border-gold-accent transition duration-150"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <span className="text-[10px] font-mono font-bold tracking-wider text-gold-accent/80 uppercase">
+                        {table.gameType || "NL Hold'em"}
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        ACTIVE
+                      </span>
+                    </div>
+
+                    <h4 className="font-extrabold text-base text-cream-text truncate">
+                      {table.name}
+                    </h4>
+
+                    <p className="text-xs text-cream-text/60 mt-0.5 truncate flex items-center gap-1">
+                      {table.isQuickTable ? (
+                        <>
+                          <Zap className="w-3 h-3 text-gold-accent" />
+                          <span>Quick Table</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gold-accent">♣</span>
+                          <span>{table.groupName || 'Group Table'}</span>
+                        </>
+                      )}
+                    </p>
+
+                    <div className="flex items-center gap-3 mt-3 text-xs text-cream-text/80">
+                      <div className="flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-gold-accent" />
+                        <span>{table.playerCount} Players</span>
+                      </div>
+                      {table.chipValue && (
+                        <div className="font-mono text-gold-light text-[11px] font-bold">
+                          ${Number(table.chipValue).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-gold-accent/20 flex items-center justify-between gap-2">
+                    {table.code ? (
+                      <span className="font-mono text-[11px] font-bold text-gold-accent/80 bg-felt-dark px-2 py-1 rounded-lg border border-gold-accent/30">
+                        {table.code}
+                      </span>
+                    ) : <span />}
+
+                    <Link
+                      to={`/table/${table.id}`}
+                      className="px-3 py-1.5 bg-gold-accent hover:bg-gold-light text-black font-black uppercase text-[11px] rounded-xl shadow transition flex items-center gap-1 active:scale-95"
+                    >
+                      <span>Join</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 2. POKER GROUPS SECTION */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base text-gold-accent select-none">♣</span>
+              <h2 className="text-sm font-black uppercase tracking-wider text-gold-accent">
+                POKER GROUPS
+              </h2>
+              <span className="px-2 py-0.5 bg-gold-accent/20 border border-gold-accent/40 rounded-full text-[10px] font-bold text-gold-accent">
+                {groups.length}
+              </span>
+            </div>
+
+            <button
+              type="button"
               onClick={() => {
                 setNewGroupName('');
                 setCreateGroupError('');
                 setIsCreateGroupOpen(true);
               }}
-              className="px-4 py-3 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent text-xs font-bold uppercase rounded-xl shadow transition active:scale-95 cursor-pointer"
             >
-              <Users className="w-4 h-4 text-gold-accent" />
-              <span>Create Group</span>
+              <Plus className="w-3.5 h-3.5 text-gold-accent" />
+              <span>New Group</span>
             </button>
+          </div>
+
+          {loading && groups.length === 0 ? (
+            <div className="py-12 text-center text-gold-accent">
+              <div className="w-8 h-8 border-3 border-gold-accent border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <span className="text-xs font-semibold">Loading groups...</span>
+            </div>
+          ) : groups.length === 0 ? (
+            <div className="bg-felt-card/40 border border-dashed border-gold-accent/30 rounded-2xl p-8 text-center space-y-3">
+              <Users className="w-12 h-12 text-gold-accent/40 mx-auto" />
+              <h3 className="text-base font-bold text-cream-text">No Groups Joined Yet</h3>
+              <p className="text-xs text-cream-text/60 max-w-sm mx-auto">
+                Create your own poker group to host games and track balances, or join with an invite code.
+              </p>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateGroupOpen(true)}
+                  className="px-4 py-2 bg-gold-accent text-black font-bold text-xs rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
+                >
+                  Create Group
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openJoinModalWithCode()}
+                  className="px-4 py-2 bg-felt-dark border border-gold-accent/40 text-gold-accent font-bold text-xs rounded-xl shadow hover:bg-gold-accent/10 transition cursor-pointer"
+                >
+                  Join with Code
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {groups.map((group) => {
+                const isOwner = group.owner_user_id === user?.id || group.owner_id === user?.id || group.role === 'OWNER';
+                return (
+                  <div
+                    key={group.id}
+                    className="bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl p-5 shadow-xl hover:border-gold-accent transition duration-150 flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gold-accent text-lg">♣</span>
+                          <h3 className="font-black text-lg text-cream-text line-clamp-1">
+                            {group.name}
+                          </h3>
+                        </div>
+
+                        {isOwner && (
+                          <span className="px-2 py-0.5 bg-gold-accent/20 border border-gold-accent/60 text-gold-accent text-[9px] font-black tracking-wider uppercase rounded-md shrink-0">
+                            ADMIN
+                          </span>
+                        )}
+                      </div>
+
+                      {group.invite_code && (
+                        <div className="my-3">
+                          <GroupCodeChip code={group.invite_code} groupName={group.name} />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 text-xs text-cream-text/70 mt-2">
+                        <Users className="w-3.5 h-3.5 text-gold-accent" />
+                        <span>
+                          {group.member_count || group.memberCount || 1} {group.member_count === 1 ? 'member' : 'members'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* HARD RULE: NO balance display on group card */}
+                    <div className="pt-4 border-t border-gold-accent/20 mt-4">
+                      <Link
+                        to={`/group/${group.id}`}
+                        state={{ group }}
+                        className="w-full py-2.5 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/50 shadow flex items-center justify-center gap-1.5 transition active:scale-95"
+                      >
+                        <span>Enter Group</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* 3. QUICK TABLES SECTION */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-gold-accent" />
+              <h2 className="text-sm font-black uppercase tracking-wider text-gold-accent">
+                QUICK TABLES
+              </h2>
+              <span className="px-2 py-0.5 bg-gold-accent/20 border border-gold-accent/40 rounded-full text-[10px] font-bold text-gold-accent">
+                {quickTables.length}
+              </span>
+            </div>
 
             <button
+              type="button"
               onClick={() => {
                 setQuickTableName('');
-                setQuickDefaultBuyIn('100000');
+                setQuickChipPreset(100);
+                setQuickChipCustom('');
+                setQuickHasEntryFee(false);
+                setQuickEntryFeeAmount('');
+                setQuickPlayerNames('');
                 setQuickError('');
                 setIsQuickModalOpen(true);
               }}
-              className="px-4 py-3 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent text-xs font-bold uppercase rounded-xl shadow transition active:scale-95 cursor-pointer"
             >
-              <Zap className="w-4 h-4 text-gold-accent" />
-              <span>Quick Table</span>
-            </button>
-
-            <button
-              onClick={openJoinModal}
-              className="px-5 py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-bold uppercase tracking-wider text-sm rounded-xl shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Join Group</span>
+              <Plus className="w-3.5 h-3.5 text-gold-accent" />
+              <span>Instant Table</span>
             </button>
           </div>
-        </div>
 
-        {/* Error Notification */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-950/80 border border-red-500 rounded-xl flex items-center gap-3 text-red-200">
-            <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Smart Single Code Input Card */}
-        <div className="mb-8 p-5 bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-center sm:text-left">
-            <h2 className="text-sm font-black uppercase tracking-wider text-gold-accent flex items-center gap-2 justify-center sm:justify-start">
-              <span>♠</span>
-              <span>Quick Code Join</span>
-            </h2>
-            <p className="text-xs text-cream-text/70 mt-0.5">
-              Enter any 6-character Group Invite Code or Table Code to jump directly in.
-            </p>
-            {smartError && (
-              <p className="text-xs text-red-400 font-semibold mt-1">{smartError}</p>
-            )}
-          </div>
-
-          <form onSubmit={handleSmartLookup} className="flex items-center gap-2 w-full sm:w-auto">
-            <input
-              type="text"
-              value={smartCode}
-              onChange={(e) => {
-                setSmartCode(e.target.value.toUpperCase());
-                if (smartError) setSmartError('');
-              }}
-              placeholder="6-CHAR CODE"
-              maxLength={8}
-              className="px-4 py-2.5 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text font-mono font-bold tracking-widest text-sm focus:outline-none focus:border-gold-accent w-full sm:w-44 text-center placeholder-cream-text/40"
-            />
-            <button
-              type="submit"
-              disabled={smartLoading || !smartCode.trim()}
-              className="px-4 py-2.5 bg-gold-accent hover:bg-gold-light text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center gap-1.5 shrink-0 cursor-pointer"
-            >
-              {smartLoading ? (
-                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Open</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Groups Grid */}
-        {loading && groups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-12 h-12 border-4 border-gold-accent border-t-transparent rounded-full animate-spin"></div>
-            <p className="mt-4 text-gold-accent font-medium tracking-wide">Loading your poker groups...</p>
-          </div>
-        ) : groups.length === 0 ? (
-          <div className="bg-felt-card/50 border border-dashed border-gold-accent/40 rounded-2xl p-12 text-center">
-            <Users className="w-16 h-16 text-gold-accent/40 mx-auto mb-3" />
-            <h3 className="text-xl font-bold text-cream-text">No Groups Joined Yet</h3>
-            <p className="text-sm text-cream-text/60 max-w-md mx-auto mt-1 mb-6">
-              You haven't joined or created any poker groups yet. Create your own group or join with an invite code.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => {
-                  setNewGroupName('');
-                  setCreateGroupError('');
-                  setIsCreateGroupOpen(true);
-                }}
-                className="px-6 py-2.5 bg-gold-accent text-black font-bold rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
-              >
-                Create Group
-              </button>
-              <button
-                onClick={openJoinModal}
-                className="px-6 py-2.5 bg-felt-dark border border-gold-accent/40 text-gold-accent font-bold rounded-xl shadow hover:bg-gold-accent/10 transition cursor-pointer"
-              >
-                Join with Invite Code
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {groups.map((group) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Quick table cards */}
+            {quickTables.map((table) => (
               <div
-                key={group.id}
-                className="bg-felt-card/90 border-2 border-gold-accent/60 rounded-2xl p-6 shadow-xl hover:border-gold-accent hover:shadow-2xl transition duration-200 flex flex-col justify-between group"
+                key={table.id}
+                className="bg-felt-card/90 border border-gold-accent/50 rounded-2xl p-5 shadow-lg flex flex-col justify-between hover:border-gold-accent transition"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gold-accent text-xl">♣</span>
-                      <h3 className="font-extrabold text-xl text-cream-text group-hover:text-gold-light transition line-clamp-1">
-                        {group.name}
-                      </h3>
-                    </div>
+                  <div className="flex items-center justify-between gap-1 mb-2">
+                    <span className="text-[10px] font-mono font-bold tracking-wider text-gold-accent uppercase">
+                      Quick Game
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      LIVE
+                    </span>
                   </div>
 
-                  {group.invite_code && (
-                    <div className="mb-4">
-                      <GroupCodeChip code={group.invite_code} groupName={group.name} />
+                  <h3 className="font-extrabold text-base text-cream-text truncate">
+                    {table.name}
+                  </h3>
+
+                  {table.code && (
+                    <div className="my-2.5">
+                      <GroupCodeChip code={table.code} groupName={table.name} />
                     </div>
                   )}
+
+                  <div className="flex items-center gap-3 text-xs text-cream-text/70 mt-2">
+                    <div className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-gold-accent" />
+                      <span>{table.playerCount} Seated</span>
+                    </div>
+                    {table.chipValue && (
+                      <span className="font-mono text-gold-light text-[11px] font-bold">
+                        Chip: ${Number(table.chipValue).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t border-gold-accent/20 mt-4">
+                <div className="pt-3 border-t border-gold-accent/20 mt-4">
                   <Link
-                    to={`/group/${group.id}`}
-                    state={{ group }}
-                    className="w-full py-2.5 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/50 shadow flex items-center justify-center gap-1.5 transition active:scale-95"
+                    to={`/table/${table.id}`}
+                    className="w-full py-2 bg-felt-dark hover:bg-gold-accent hover:text-black text-gold-accent font-bold uppercase tracking-wider text-xs rounded-xl border border-gold-accent/40 shadow flex items-center justify-center gap-1 transition active:scale-95"
                   >
-                    <span>Enter Group</span>
-                    <ChevronRight className="w-4 h-4" />
+                    <span>Enter Table</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>
             ))}
+
+            {/* Start Instant Table Action Card */}
+            <div
+              onClick={() => {
+                setQuickTableName('');
+                setQuickChipPreset(100);
+                setQuickChipCustom('');
+                setQuickHasEntryFee(false);
+                setQuickEntryFeeAmount('');
+                setQuickPlayerNames('');
+                setQuickError('');
+                setIsQuickModalOpen(true);
+              }}
+              className="bg-felt-card/40 border-2 border-dashed border-gold-accent/40 hover:border-gold-accent hover:bg-felt-card/60 rounded-2xl p-6 shadow transition cursor-pointer flex flex-col items-center justify-center text-center group min-h-[160px]"
+            >
+              <div className="w-10 h-10 rounded-full bg-gold-accent/15 border border-gold-accent/40 flex items-center justify-center mb-2 group-hover:scale-110 transition">
+                <Zap className="w-5 h-5 text-gold-accent" />
+              </div>
+              <h4 className="font-black text-sm text-gold-accent uppercase tracking-wide">
+                Start Instant Table
+              </h4>
+              <p className="text-xs text-cream-text/60 mt-1 max-w-[200px]">
+                No group needed. Create and share 6-character code immediately.
+              </p>
+            </div>
           </div>
-        )}
+        </section>
       </main>
+
+      {/* Floating Action Button (+) */}
+      <button
+        type="button"
+        onClick={() => setIsActionMenuOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-yellow-600 via-gold-accent to-yellow-400 hover:opacity-95 text-black rounded-full shadow-2xl border-2 border-gold-light flex items-center justify-center active:scale-95 transition-all z-40 cursor-pointer"
+        title="Quick Actions"
+      >
+        <Plus className="w-7 h-7 stroke-[2.5]" />
+      </button>
+
+      {/* Action Menu Modal (Bottom Sheet style) */}
+      {isActionMenuOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-felt-card border-t-2 sm:border-2 border-gold-accent rounded-t-3xl sm:rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+            <button
+              onClick={() => setIsActionMenuOpen(false)}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-base font-black text-gold-accent uppercase tracking-wide mb-4">
+              Quick Actions
+            </h3>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionMenuOpen(false);
+                  setIsCreateGroupOpen(true);
+                }}
+                className="w-full p-3.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 rounded-xl flex items-center gap-3 text-left transition cursor-pointer active:scale-98"
+              >
+                <div className="p-2 bg-gold-accent/20 rounded-lg text-gold-accent">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm text-cream-text">New Poker Group</div>
+                  <div className="text-[11px] text-cream-text/60">Persistent group with balances & history</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionMenuOpen(false);
+                  setIsQuickModalOpen(true);
+                }}
+                className="w-full p-3.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 rounded-xl flex items-center gap-3 text-left transition cursor-pointer active:scale-98"
+              >
+                <div className="p-2 bg-gold-accent/20 rounded-lg text-gold-accent">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm text-cream-text">New Quick Table</div>
+                  <div className="text-[11px] text-cream-text/60">Standalone session with shareable code</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionMenuOpen(false);
+                  openJoinModalWithCode();
+                }}
+                className="w-full p-3.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 rounded-xl flex items-center gap-3 text-left transition cursor-pointer active:scale-98"
+              >
+                <div className="p-2 bg-gold-accent/20 rounded-lg text-gold-accent">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm text-cream-text">Join by Code</div>
+                  <div className="text-[11px] text-cream-text/60">Enter 6-character group invite code</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Multi-step Join Group Modal */}
       {isJoinModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            {/* Close button */}
             <button
               onClick={closeJoinModal}
               disabled={isJoining}
@@ -564,7 +914,6 @@ const Dashboard = () => {
               <X className="w-5 h-5" />
             </button>
 
-            {/* Modal Header */}
             <div className="flex items-center gap-2 mb-4">
               <Key className="w-6 h-6 text-gold-accent" />
               <h2 className="text-xl font-bold text-gold-accent">
@@ -575,7 +924,6 @@ const Dashboard = () => {
               </h2>
             </div>
 
-            {/* Error message */}
             {joinError && (
               <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-lg flex items-center gap-2 text-red-200 text-xs">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
@@ -583,7 +931,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Success message */}
             {joinSuccess && (
               <div className="mb-4 p-3 bg-green-950/80 border border-green-500 rounded-lg flex items-center gap-2 text-green-200 text-xs animate-pulse">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-green-400" />
@@ -591,7 +938,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* STEP A: Invite Code Input */}
+            {/* STEP A */}
             {joinStep === 'A' && (
               <div>
                 <p className="text-xs text-cream-text/75 mb-4">
@@ -634,7 +981,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* STEP B: Question (Converted Group) */}
+            {/* STEP B */}
             {joinStep === 'B' && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-3 bg-felt-dark/80 border border-gold-accent/30 rounded-xl flex items-center justify-between">
@@ -661,7 +1008,7 @@ const Dashboard = () => {
                       Have you played in this group before?
                     </h3>
                     <p className="text-xs text-cream-text/65">
-                      If you played before this group went online, claim your previous player identity to restore your balance and game history.
+                      Claim your previous player identity to restore your balance and game history.
                     </p>
                   </div>
                 )}
@@ -738,7 +1085,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* STEP C: Unclaimed Player List */}
+            {/* STEP C */}
             {joinStep === 'C' && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <p className="text-xs text-cream-text/70">
@@ -801,7 +1148,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* STEP D: New Player Profile Form */}
+            {/* STEP D */}
             {joinStep === 'D' && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <p className="text-xs text-cream-text/70">
@@ -898,6 +1245,7 @@ const Dashboard = () => {
                   className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text placeholder-cream-text/40 font-bold text-sm focus:outline-none focus:border-gold-accent"
                 />
               </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
@@ -920,10 +1268,10 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Quick Table Modal */}
+      {/* Quick Table Creation Modal (mirrors Android CreateQuickTableBottomSheet) */}
       {isQuickModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setIsQuickModalOpen(false)}
               className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
@@ -940,14 +1288,14 @@ const Dashboard = () => {
                   Create Quick Table
                 </h3>
                 <p className="text-xs text-cream-text/60">
-                  Start an instant standalone poker session with a shareable code
+                  Instant standalone session with shareable code
                 </p>
               </div>
             </div>
 
             {quickError && (
               <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
                 <span>{quickError}</span>
               </div>
             )}
@@ -967,23 +1315,72 @@ const Dashboard = () => {
                 />
               </div>
 
+              {/* Chip Value Presets */}
               <div>
-                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
-                  Default Buy-In Amount
+                <label className="block text-[10px] font-bold text-gold-accent/80 uppercase tracking-wider mb-1.5">
+                  DEFAULT BUY-IN / CHIP VALUE
                 </label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {CHIP_PRESETS.map((preset) => {
+                    const isSelected = quickChipPreset === preset && !quickChipCustom;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setQuickChipPreset(preset);
+                          setQuickChipCustom('');
+                        }}
+                        className={`py-2 px-1 rounded-xl text-xs font-black transition border cursor-pointer ${
+                          isSelected
+                            ? 'bg-gold-accent text-black border-gold-accent shadow'
+                            : 'bg-felt-dark text-cream-text border-gold-accent/30 hover:border-gold-accent/60'
+                        }`}
+                      >
+                        ${preset}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <input
                   type="number"
-                  value={quickDefaultBuyIn}
-                  onChange={(e) => setQuickDefaultBuyIn(e.target.value)}
-                  min={1000}
-                  step={1000}
-                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono font-bold text-sm focus:outline-none focus:border-gold-accent"
+                  value={quickChipCustom}
+                  onChange={(e) => setQuickChipCustom(e.target.value)}
+                  placeholder="Custom Chip Value (optional)"
+                  className="w-full px-4 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
                 />
-                <p className="text-[11px] text-cream-text/50 mt-1">
-                  A unique 6-character code will be generated to share with other players.
-                </p>
               </div>
 
+              {/* Entry Fee Toggle & Input */}
+              <div className="p-3.5 bg-felt-dark/80 border border-gold-accent/30 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-cream-text block">Entry Fee</span>
+                    <span className="text-[11px] text-cream-text/60">Require entry fee for this game</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={quickHasEntryFee}
+                    onChange={(e) => setQuickHasEntryFee(e.target.checked)}
+                    className="w-4 h-4 accent-[#d4af37] rounded cursor-pointer"
+                  />
+                </div>
+
+                {quickHasEntryFee && (
+                  <div>
+                    <input
+                      type="number"
+                      value={quickEntryFeeAmount}
+                      onChange={(e) => setQuickEntryFeeAmount(e.target.value)}
+                      placeholder="Entry Fee Amount"
+                      className="w-full px-3 py-2 bg-felt-card border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Initial Players */}
               <div>
                 <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
                   Initial Player Names (optional)
