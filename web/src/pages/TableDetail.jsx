@@ -23,7 +23,7 @@ import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
 import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
-import { UserBadge } from '../components/AvatarSystem';
+import { PokerAvatar, UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
 import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../socket';
 import {
@@ -109,8 +109,8 @@ const TableDetail = () => {
       ]);
 
       let currentTableObj = null;
-      if (tableRes.status === 'fulfilled' && tableRes.value.data?.table) {
-        currentTableObj = tableRes.value.data.table;
+      if (tableRes.status === 'fulfilled') {
+        currentTableObj = tableRes.value.data?.table || (tableRes.value.data && !tableRes.value.data.error ? tableRes.value.data : null);
       }
 
       // Sync status override if available
@@ -118,7 +118,15 @@ const TableDetail = () => {
         const sData = statusRes.value.data;
         if (currentTableObj) {
           currentTableObj.status = sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED');
-          currentTableObj.isActive = sData.isActive;
+          currentTableObj.isActive = sData.isActive !== false;
+        } else {
+          currentTableObj = {
+            id: tableId,
+            name: sData.name || `Table ${tableId}`,
+            status: sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED'),
+            isActive: sData.isActive !== false,
+            groupId: sData.groupId || groupId || null,
+          };
         }
 
         // Check if table just transitioned to CLOSED
@@ -130,13 +138,15 @@ const TableDetail = () => {
 
       if (currentTableObj) {
         setTable(currentTableObj);
+      } else if (!table) {
+        setError('Table could not be loaded. Please verify the table code or ID.');
       }
 
       if (playersRes.status === 'fulfilled') {
-        const rawPlayers = playersRes.value.data?.players || [];
+        const rawPlayers = playersRes.value.data?.players || (Array.isArray(playersRes.value.data) ? playersRes.value.data : []);
         const playerMap = new Map();
         rawPlayers.forEach((p) => {
-          if (p.id) playerMap.set(p.id, p);
+          if (p && p.id) playerMap.set(p.id, p);
         });
         setPlayers(Array.from(playerMap.values()));
       }
@@ -324,6 +334,8 @@ const TableDetail = () => {
     const exit = getPlayerExits(p.id);
     return exit - buy;
   };
+
+  const myTableNetBalance = myPlayer ? getPlayerBalance(myPlayer) : 0;
 
   // Deduplicated & ranked players
   const sortedPlayersWithRank = useMemo(() => {
@@ -643,6 +655,24 @@ const TableDetail = () => {
     );
   }
 
+  if (!loading && !table) {
+    return (
+      <div className="min-h-screen bg-felt-dark flex items-center justify-center p-4">
+        <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-6 max-w-md w-full text-center space-y-4 shadow-xl">
+          <AlertCircle className="w-12 h-12 text-lose-red mx-auto" />
+          <h2 className="text-lg font-bold text-cream-text">Table Not Found</h2>
+          <p className="text-xs text-cream-text/70">{error || 'This table does not exist or could not be loaded.'}</p>
+          <button
+            onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
+            className="px-5 py-2.5 bg-gold-accent text-black font-extrabold rounded-xl text-xs uppercase tracking-wider hover:brightness-105 cursor-pointer shadow"
+          >
+            Return to {groupId ? 'Group' : 'Dashboard'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-28">
       <div className="w-full max-w-4xl space-y-5">
@@ -826,7 +856,7 @@ const TableDetail = () => {
                 : 'text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            STATS
+            RESULTS
           </button>
         </div>
 
@@ -979,11 +1009,10 @@ const TableDetail = () => {
                               : `#${rank}`}
                           </span>
 
-                          <UserBadge
-                            avatarId={p.avatar_id || p.avatar}
+                          <PokerAvatar
+                            avatarId={p.avatar_id || p.avatarId || p.avatar}
                             name={p.name || p.display_name || p.username}
-                            username={p.username}
-                            size="md"
+                            size={40}
                           />
 
                           <div className="min-w-0">

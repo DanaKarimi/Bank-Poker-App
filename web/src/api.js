@@ -78,8 +78,22 @@ export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);
 export const getTableDetail = (tableId) => api.get(`/api/tables/${tableId}`);
 export const getTableStatus = (tableId) => api.get(`/api/tables/${tableId}/status`);
 export const closeTable = (tableId) => api.post(`/api/tables/${tableId}/close`);
+export const getTableBuyIns = (tableId) => api.get(`/api/tables/${tableId}/buy-ins`);
+export const getTableExits = (tableId) => api.get(`/api/tables/${tableId}/exits`);
+export const getTableActivity = async (tableId) => {
+  try {
+    const [buyInsRes, exitsRes] = await Promise.allSettled([
+      api.get(`/api/tables/${tableId}/buy-ins`),
+      api.get(`/api/tables/${tableId}/exits`),
+    ]);
+    const buyIns = buyInsRes.status === 'fulfilled' ? (buyInsRes.value.data?.buyIns || []) : [];
+    const exits = exitsRes.status === 'fulfilled' ? (exitsRes.value.data?.exits || []) : [];
+    return { data: { buyIns, exits } };
+  } catch (err) {
+    return { data: { buyIns: [], exits: [] } };
+  }
+};
 export const getPlayers = (tableId) => api.get(`/api/tables/${tableId}/players`);
-export const getTableActivity = (tableId) => api.get(`/api/tables/${tableId}/activity`);
 export const directBuyIn = (tableId, data) => api.post(`/api/tables/${tableId}/buy-in-direct`, data);
 export const directExit = (tableId, data) => api.post(`/api/tables/${tableId}/exit-direct`, data);
 export const createQuickTable = (data) => api.post('/api/tables/quick', data);
