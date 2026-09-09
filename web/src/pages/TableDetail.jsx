@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -17,6 +17,7 @@ import {
   addTablePlayer,
   directBuyIn,
   directExit,
+  closeTable,
 } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
@@ -28,6 +29,7 @@ import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../sock
 import {
   ArrowLeft,
   RefreshCw,
+  Plus,
   PlusCircle,
   MinusCircle,
   UserPlus,
@@ -45,6 +47,9 @@ import {
   History,
   Share2,
   Trash2,
+  X,
+  Search,
+  BarChart3,
 } from 'lucide-react';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 
@@ -65,7 +70,8 @@ const TableDetail = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isJoining, setIsJoining] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'activity' | 'players' | 'requests'
+  const [activeTab, setActiveTab] = useState('players'); // 'players' | 'history' | 'stats'
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal states
   const [isBuyInModalOpen, setIsBuyInModalOpen] = useState(false);
@@ -78,6 +84,8 @@ const TableDetail = () => {
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
   const [selectedPlayerForBuyIn, setSelectedPlayerForBuyIn] = useState(null);
   const [selectedPlayerForExit, setSelectedPlayerForExit] = useState(null);
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [isClosingTable, setIsClosingTable] = useState(false);
 
   const previousStatusRef = useRef(null);
 
@@ -236,6 +244,16 @@ const TableDetail = () => {
 
   const isPlayerSeated = !!myPlayer;
 
+  const isHostOrAdmin =
+    user?.role === 'SUPER_ADMIN' ||
+    table?.host_id === user?.id ||
+    table?.hostId === user?.id ||
+    table?.creator_user_id === user?.id ||
+    table?.creatorUserId === user?.id ||
+    table?.isHost ||
+    table?.isQuickTable ||
+    !(groupId || table?.groupId);
+
   const pendingJoinReq = (myRequests.joinRequests || []).find(
     (jr) => (jr.table_id === tableId || jr.tableId === tableId) && jr.status === 'PENDING'
   );
@@ -268,10 +286,116 @@ const TableDetail = () => {
     return timeB - timeA;
   });
 
-  // Server is the ONLY balance authority. Clients MUST render server-computed balances; NEVER recompute client-side.
-  const myTableBuyIns = myPlayer?.totalBuyIns ?? myPlayer?.total_buy_ins ?? 0;
-  const myTableExits = myPlayer?.totalExits ?? myPlayer?.total_exits ?? 0;
-  const myTableNetBalance = myPlayer?.balance ?? 0;
+  // Table totals (matches Android TableSummaryBar calculation)
+  const totalBuyIns = useMemo(() => {
+    return (activity.buyIns || []).reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+  }, [activity.buyIns]);
+
+  const totalExits = useMemo(() => {
+    return (activity.exits || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [activity.exits]);
+
+  const remainingBalance = totalBuyIns - totalExits;
+
+  // Helper player balance & profit/loss functions
+  const getPlayerBuyIns = (pId) => {
+    return (activity.buyIns || [])
+      .filter((b) => b.player_id === pId || b.playerId === pId)
+      .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+  };
+
+  const getPlayerExits = (pId) => {
+    return (activity.exits || [])
+      .filter((e) => e.player_id === pId || e.playerId === pId)
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  };
+
+  const getPlayerBalance = (p) => {
+    const buy = getPlayerBuyIns(p.id);
+    const exit = getPlayerExits(p.id);
+    if (buy > 0 || exit > 0) {
+      return buy - exit;
+    }
+    return p.balance ?? 0;
+  };
+
+  const getPlayerNetResult = (p) => {
+    const buy = getPlayerBuyIns(p.id);
+    const exit = getPlayerExits(p.id);
+    return exit - buy;
+  };
+
+  // Deduplicated & ranked players
+  const sortedPlayersWithRank = useMemo(() => {
+    const playerMap = new Map();
+    players.forEach((p) => {
+      if (p.id) playerMap.set(p.id, p);
+    });
+    const unique = Array.from(playerMap.values());
+    unique.sort((a, b) => getPlayerBalance(b) - getPlayerBalance(a));
+    return unique.map((p, idx) => ({ player: p, rank: idx + 1 }));
+  }, [players, activity.buyIns, activity.exits]);
+
+  const filteredPlayers = useMemo(() => {
+    if (!searchQuery.trim()) return sortedPlayersWithRank;
+    const q = searchQuery.toLowerCase().trim();
+    return sortedPlayersWithRank.filter(({ player }) =>
+      (player.name || player.username || '').toLowerCase().includes(q)
+    );
+  }, [sortedPlayersWithRank, searchQuery]);
+
+  // Player results for Stats tab
+  const playerResults = useMemo(() => {
+    return sortedPlayersWithRank.map(({ player }) => {
+      const b = getPlayerBuyIns(player.id);
+      const e = getPlayerExits(player.id);
+      return {
+        id: player.id,
+        name: player.name || player.username || 'Player',
+        status: player.status,
+        buyIns: b,
+        exits: e,
+        netResult: e - b,
+      };
+    });
+  }, [sortedPlayersWithRank, activity.buyIns, activity.exits]);
+
+  // Settlements calculation (Creditors & Debtors)
+  const settlements = useMemo(() => {
+    const debtors = playerResults
+      .filter((r) => r.netResult < 0)
+      .map((r) => ({ ...r, remaining: Math.abs(r.netResult) }))
+      .sort((a, b) => b.remaining - a.remaining);
+    const creditors = playerResults
+      .filter((r) => r.netResult > 0)
+      .map((r) => ({ ...r, remaining: r.netResult }))
+      .sort((a, b) => b.remaining - a.remaining);
+
+    const result = [];
+    let d = 0;
+    let c = 0;
+
+    while (d < debtors.length && c < creditors.length) {
+      const debtor = debtors[d];
+      const creditor = creditors[c];
+      const amt = Math.min(debtor.remaining, creditor.remaining);
+
+      if (amt > 0) {
+        result.push({
+          from: debtor.name,
+          to: creditor.name,
+          amount: amt,
+        });
+        debtor.remaining -= amt;
+        creditor.remaining -= amt;
+      }
+
+      if (debtor.remaining <= 0) d++;
+      if (creditor.remaining <= 0) c++;
+    }
+
+    return result;
+  }, [playerResults]);
 
   // Actions
   const handleJoinTable = async () => {
@@ -334,14 +458,6 @@ const TableDetail = () => {
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
       const effectiveGroupId = groupId || table?.groupId;
-      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || 
-                            table?.host_id === user?.id || 
-                            table?.hostId === user?.id || 
-                            table?.creator_user_id === user?.id || 
-                            table?.creatorUserId === user?.id || 
-                            table?.isHost || 
-                            table?.isQuickTable || 
-                            !effectiveGroupId;
 
       if (isHostOrAdmin || !effectiveGroupId || targetName !== user?.username) {
         await directBuyIn(tableId, {
@@ -372,14 +488,6 @@ const TableDetail = () => {
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
       const effectiveGroupId = groupId || table?.groupId;
-      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || 
-                            table?.host_id === user?.id || 
-                            table?.hostId === user?.id || 
-                            table?.creator_user_id === user?.id || 
-                            table?.creatorUserId === user?.id || 
-                            table?.isHost || 
-                            table?.isQuickTable || 
-                            !effectiveGroupId;
 
       if (isHostOrAdmin || !effectiveGroupId || targetName !== user?.username) {
         await directExit(tableId, {
@@ -441,7 +549,7 @@ const TableDetail = () => {
   };
 
   const handleDeletePlayerClick = (p) => {
-    const buyIns = Number(p.totalBuyIns || p.total_buy_ins || p.buy_ins || 0);
+    const buyIns = getPlayerBuyIns(p.id);
     if (buyIns > 0) {
       setError('Cannot remove player who has already bought in. Settle their stack with an Exit transaction first.');
       setTimeout(() => setError(''), 6000);
@@ -467,6 +575,53 @@ const TableDetail = () => {
     }
   };
 
+  const handleCloseTableConfirm = async () => {
+    setIsClosingTable(true);
+    try {
+      await closeTable(tableId);
+      setSuccessMessage('Table closed successfully. History is now locked.');
+      setIsCloseModalOpen(false);
+      fetchTableData(true);
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err) {
+      console.error('Failed to close table:', err);
+      setError(err.response?.data?.error || 'Failed to close table.');
+    } finally {
+      setIsClosingTable(false);
+    }
+  };
+
+  const handleShareResults = () => {
+    const lines = [
+      `🎰 ${table?.name || 'BankPoker Table'} Results 🎰`,
+      `Total Buy-Ins: $${totalBuyIns.toLocaleString()}`,
+      `Total Exits: $${totalExits.toLocaleString()}`,
+      `Remaining Chips: $${remainingBalance.toLocaleString()}`,
+      '',
+      '--- PLAYER STANDINGS ---',
+      ...playerResults.map(
+        (r, i) =>
+          `#${i + 1} ${r.name}: Buy-in $${r.buyIns.toLocaleString()} | Exit $${r.exits.toLocaleString()} | Net: ${
+            r.netResult >= 0 ? '+' : ''
+          }$${r.netResult.toLocaleString()}`
+      ),
+      '',
+      ...(settlements.length > 0
+        ? [
+            '--- SUGGESTED SETTLEMENTS ---',
+            ...settlements.map((s) => `• ${s.from} pays ${s.to}: $${s.amount.toLocaleString()}`),
+          ]
+        : ['No settlements needed.']),
+    ];
+
+    const shareText = lines.join('\n');
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareText);
+      setSuccessMessage('Table results copied to clipboard!');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    }
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(Number(timestamp));
@@ -489,311 +644,485 @@ const TableDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-32">
-      <div className="w-full max-w-4xl space-y-6">
-        {/* Navigation & Header */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition shadow-sm cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>{groupId ? 'Back to Group Tables' : 'Back to Dashboard'}</span>
-          </button>
+    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-28">
+      <div className="w-full max-w-4xl space-y-5">
+        {/* Top Bar (Matches Android TopAppBar: Back arrow, Table Name + LIVE badge, Actions) */}
+        <div className="flex items-center justify-between gap-2 pb-1">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
+              className="p-2 bg-felt-card/80 hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent transition cursor-pointer shrink-0"
+              title="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2.5 truncate">
+              <h1 className="text-xl sm:text-2xl font-black text-cream-text tracking-tight truncate">
+                {table?.name || `Table ${tableId}`}
+              </h1>
+              {!isClosed ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white animate-pulse shrink-0">
+                  LIVE
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700 shrink-0">
+                  CLOSED
+                </span>
+              )}
+            </div>
+          </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <NotificationsDropdown />
             <button
               onClick={() => fetchTableData()}
-              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
-              title="Refresh Table Data"
+              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent transition cursor-pointer"
+              title="Refresh from Server"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-          </div>
-        </div>
-
-        {/* Table Hero Card */}
-        <div className="bg-felt-card border-2 border-gold-accent rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div
-                className={`p-3.5 rounded-2xl border ${
-                  isClosed
-                    ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                    : 'bg-felt-dark text-gold-accent border-gold-accent/50'
-                }`}
+            <button
+              onClick={handleShareResults}
+              className="p-2 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/40 rounded-xl text-gold-accent transition cursor-pointer"
+              title="Share Results"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            {!isClosed && isHostOrAdmin && (
+              <button
+                onClick={() => setIsCloseModalOpen(true)}
+                className="px-3 py-1.5 bg-red-950/60 hover:bg-red-900 border border-red-500/50 rounded-xl text-red-300 hover:text-white text-xs font-bold transition cursor-pointer"
               >
-                <Layers className="w-7 h-7" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-2xl font-black tracking-tight text-cream-text">
-                    {table?.name || `Table ${tableId}`}
-                  </h1>
-                  <StatusBadge status={table?.status} />
-                  {(table?.entry_fee || table?.entryFee) > 0 && (
-                    (myPlayer?.entry_fee_paid === 1 || myPlayer?.entryFeePaid === true || table?.myEntryFeePaid === true || table?.my_entry_fee_paid === 1) ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/60 shadow-sm">
-                        Entry Fee Paid ✓
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-red-950 text-red-300 border border-red-500/60 shadow-sm">
-                        UNPAID
-                      </span>
-                    )
-                  )}
-                </div>
-                <p className="text-xs text-cream-text/60 mt-0.5">
-                  Live Table Session & Transaction Ledger
-                </p>
-
-                {/* Table Code / Publish Button */}
-                <div className="flex items-center gap-2 mt-2">
-                  {table?.code ? (
-                    <GroupCodeChip code={table.code} label="Table Code" />
-                  ) : !isClosed ? (
-                    <button
-                      onClick={handlePublishTable}
-                      disabled={isPublishing}
-                      className="px-3 py-1.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent hover:opacity-95 active:scale-95 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>{isPublishing ? 'Publishing...' : 'Publish Table Code'}</span>
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Table Metrics */}
-            <div className="flex items-center gap-2">
-              <div className="px-3.5 py-2 bg-felt-dark rounded-xl border border-gold-accent/30 text-center text-xs">
-                <div className="text-[10px] text-cream-text/50 uppercase">Chip Value</div>
-                <div className="font-bold text-gold-accent">
-                  {table?.chip_value || table?.chipValue
-                    ? `$${table.chip_value || table.chipValue}`
-                    : '$1'}
-                </div>
-              </div>
-
-              {(table?.has_entry_fee || table?.hasEntryFee) && (
-                <div className="px-3.5 py-2 bg-felt-dark rounded-xl border border-amber-500/30 text-center text-xs">
-                  <div className="text-[10px] text-amber-400 uppercase">Entry Fee</div>
-                  <div className="font-bold text-amber-400">
-                    ${table?.entry_fee || table?.entryFee}
-                  </div>
-                </div>
-              )}
-
-              <div className="px-3.5 py-2 bg-felt-dark rounded-xl border border-gold-accent/30 text-center text-xs">
-                <div className="text-[10px] text-cream-text/50 uppercase">Players Seated</div>
-                <div className="font-bold text-cream-text">{players.length}</div>
-              </div>
-            </div>
+                Close
+              </button>
+            )}
           </div>
-
-          {/* Closed Alert Banner */}
-          {isClosed && (
-            <div className="mt-5 p-4 bg-red-950/90 border-2 border-red-500 rounded-xl flex items-center justify-center gap-2.5 text-red-200 text-sm font-black tracking-wider uppercase shadow-lg">
-              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-              <span>TABLE CLOSED • HISTORY LOCKED</span>
-            </div>
-          )}
         </div>
 
-        {/* Global Feedback Banners */}
+        {/* Closed Banner (Full Width Red/Orange Banner matching Android) */}
+        {isClosed && (
+          <div className="w-full py-3.5 px-4 bg-red-950/50 border border-red-500/60 rounded-2xl flex items-center justify-center gap-2.5 text-red-400 text-xs sm:text-sm font-black tracking-wider uppercase shadow-md animate-in fade-in">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>TABLE CLOSED • HISTORY LOCKED</span>
+          </div>
+        )}
+
+        {/* Global Feedback Alerts */}
         {successMessage && (
-          <div className="p-3.5 bg-emerald-950/90 border border-emerald-500 rounded-xl flex items-center gap-2 text-emerald-200 text-xs shadow-lg animate-in fade-in">
+          <div className="p-3 bg-emerald-950/90 border border-emerald-500 rounded-xl flex items-center gap-2 text-emerald-200 text-xs shadow-lg animate-in fade-in">
             <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
-
         {error && (
-          <div className="p-3.5 bg-red-950/90 border border-red-500 rounded-xl flex items-center gap-2 text-red-200 text-xs shadow-lg animate-in fade-in">
+          <div className="p-3 bg-red-950/90 border border-red-500 rounded-xl flex items-center gap-2 text-red-200 text-xs shadow-lg animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* User Session Bar (if seated at this table) */}
-        {isPlayerSeated && (
-          <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-5 shadow-lg">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-gold-accent flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Your Table Balance & Session Result</span>
-              </span>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                Seated
-              </span>
+        {/* Table Summary Bar (Exact Match to Android TableSummaryBar Hero Card) */}
+        <div className="bg-felt-card border-[1.5px] border-gold-accent/70 rounded-[20px] p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <span className="text-gold-accent text-lg font-bold">♠</span>
+            <h3 className="text-xs sm:text-sm font-bold text-cream-text uppercase tracking-[3px]">
+              TABLE SUMMARY
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
+            <div className="px-2">
+              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                BUY-INS
+              </div>
+              <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
+                ${totalBuyIns.toLocaleString()}
+              </div>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-              <div className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20">
-                <div className="text-[11px] text-cream-text/60 uppercase">Table Buy-Ins</div>
-                <div className="text-lg font-bold font-mono text-emerald-400">
-                  ${myTableBuyIns.toLocaleString()}
-                </div>
+            <div className="px-2">
+              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                EXITS
               </div>
-
-              <div className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20">
-                <div className="text-[11px] text-cream-text/60 uppercase">Table Exits</div>
-                <div className="text-lg font-bold font-mono text-amber-400">
-                  ${myTableExits.toLocaleString()}
-                </div>
+              <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
+                ${totalExits.toLocaleString()}
               </div>
-
-              <div className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20">
-                <div className="text-[11px] text-cream-text/60 uppercase">Net Table Balance</div>
-                <div
-                  className={`text-lg font-extrabold font-mono ${
-                    myTableNetBalance >= 0 ? 'text-emerald-400' : 'text-red-400'
-                  }`}
-                >
-                  {myTableNetBalance >= 0
-                    ? `+$${myTableNetBalance.toLocaleString()}`
-                    : `-$${Math.abs(myTableNetBalance).toLocaleString()}`}
-                </div>
+            </div>
+            <div className="px-2">
+              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                REMAINING
+              </div>
+              <div
+                className={`text-lg sm:text-2xl font-bold font-mono ${
+                  remainingBalance < 0
+                    ? 'text-lose-red'
+                    : remainingBalance === 0
+                    ? 'text-cream-text'
+                    : 'text-win-green'
+                }`}
+              >
+                ${remainingBalance.toLocaleString()}
               </div>
             </div>
           </div>
-        )}
 
-        {/* Action Controls for Table (Fixed Bottom) */}
-        {!isClosed && (
-          <div className="fixed bottom-0 left-0 right-0 p-4 bg-felt-dark/90 backdrop-blur-md border-t border-gold-accent/30 z-40 pb-safe shadow-[0_-10px_30px_-10px_rgba(0,0,0,0.5)]">
-            <div className="max-w-4xl mx-auto">
-              {!isPlayerSeated ? (
-                <div className="text-center space-y-2">
-                  {pendingJoinReq ? (
-                    <div className="py-3 px-4 bg-amber-950/80 border border-amber-500/50 rounded-xl text-amber-300 text-xs font-bold flex items-center justify-center gap-2">
-                      <Clock className="w-4 h-4 animate-spin" />
-                      <span>Join Request Pending Host Approval</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleJoinTable}
-                      disabled={isJoining}
-                      className="w-full max-w-sm mx-auto py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg hover:opacity-95 transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      <span>{isJoining ? 'Submitting Join Request...' : 'Request to Join Table'}</span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={handleOpenBuyInModal}
-                    className="py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <PlusCircle className="w-5 h-5" />
-                    <span>Request Buy-In (Chips)</span>
-                  </button>
+          {/* Table Code / Publish Bar */}
+          <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
+            {table?.code ? (
+              <GroupCodeChip code={table.code} label="Table Code" />
+            ) : !isClosed ? (
+              <button
+                onClick={handlePublishTable}
+                disabled={isPublishing}
+                className="px-4 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Share2 className="w-3.5 h-3.5 text-gold-accent" />
+                <span>{isPublishing ? 'Publishing...' : 'Publish / Share Table'}</span>
+              </button>
+            ) : null}
 
-                  <button
-                    onClick={handleOpenExitModal}
-                    className="py-3.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-black font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <MinusCircle className="w-5 h-5" />
-                    <span>Request Exit / Cashout</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            {(table?.chip_value || table?.chipValue) && (
+              <span className="px-3 py-1 bg-felt-dark rounded-xl border border-gold-accent/30 text-[11px] font-bold text-gold-accent">
+                Chip: ${table.chip_value || table.chipValue}
+              </span>
+            )}
+            {(table?.has_entry_fee || table?.hasEntryFee) && (
+              <span className="px-3 py-1 bg-felt-dark rounded-xl border border-amber-500/40 text-[11px] font-bold text-amber-400">
+                Entry Fee: ${table.entry_fee || table.entryFee}
+              </span>
+            )}
           </div>
-        )}
+        </div>
 
-        {/* Tabs Bar */}
-        <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-2 text-xs">
+        {/* Tab Navigation (Matching Android HorizontalPagerTabs: PLAYERS | HISTORY | STATS) */}
+        <div className="grid grid-cols-3 gap-2 p-1.5 bg-felt-card/80 border border-gold-accent/30 rounded-2xl shadow-md">
           <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-xl font-bold transition flex items-center gap-1.5 ${
-              activeTab === 'overview'
-                ? 'bg-gold-accent text-black shadow-md'
-                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Overview & My Requests ({totalTablePendingRequests})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('activity')}
-            className={`px-4 py-2 rounded-xl font-bold transition flex items-center gap-1.5 ${
-              activeTab === 'activity'
-                ? 'bg-gold-accent text-black shadow-md'
-                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            <span>Activity History ({allTransactions.length})</span>
-          </button>
-
-          <button
+            type="button"
             onClick={() => setActiveTab('players')}
-            className={`px-4 py-2 rounded-xl font-bold transition flex items-center gap-1.5 ${
+            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
               activeTab === 'players'
-                ? 'bg-gold-accent text-black shadow-md'
-                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+                ? 'bg-gold-accent text-black shadow'
+                : 'text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Seated Players ({players.length})</span>
+            PLAYERS ({players.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-gold-accent text-black shadow'
+                : 'text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            HISTORY ({allTransactions.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('stats')}
+            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
+              activeTab === 'stats'
+                ? 'bg-gold-accent text-black shadow'
+                : 'text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            STATS
           </button>
         </div>
 
-        {/* TAB 1: OVERVIEW & MY TABLE REQUESTS */}
-        {activeTab === 'overview' && (
+        {/* ================= TAB 1: PLAYERS ================= */}
+        {activeTab === 'players' && (
           <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gold-accent flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              <span>My Pending & Recent Requests for this Table</span>
-            </h3>
+            {/* Action Row Below Tabs (Matching Android: Record Buy-In + Record Exit side-by-side) */}
+            {!isClosed && (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleOpenBuyInModal(null)}
+                  className="py-3 px-4 bg-gold-accent hover:brightness-105 active:scale-[0.98] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>Record Buy-In</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenExitModal(null)}
+                  className="py-3 px-4 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/60 active:scale-[0.98] text-gold-accent font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <MinusCircle className="w-4 h-4" />
+                  <span>Record Exit</span>
+                </button>
+              </div>
+            )}
 
-            {tableBuyInRequests.length === 0 && tableExitRequests.length === 0 ? (
-              <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-                No active requests for this table.
+            {/* Pending Requests Notice Card (if any pending requests) */}
+            {totalTablePendingRequests > 0 && (
+              <div className="p-4 bg-amber-950/40 border border-amber-500/50 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    <span>Pending Requests ({totalTablePendingRequests})</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {tableBuyInRequests.map((req) => (
+                    <RequestCard
+                      key={req.id}
+                      request={req}
+                      type="buy-in"
+                      onConfirmReceipt={(r) => handleConfirmReceipt(r, 'buy-in')}
+                    />
+                  ))}
+                  {tableExitRequests.map((req) => (
+                    <RequestCard
+                      key={req.id}
+                      request={req}
+                      type="exit"
+                      onConfirmReceipt={(r) => handleConfirmReceipt(r, 'exit')}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Player Search Bar (Matches Android OutlinedTextField) */}
+            {players.length > 0 && (
+              <div className="relative">
+                <Search className="w-4 h-4 text-gold-accent absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search players..."
+                  className="w-full pl-10 pr-10 py-2.5 bg-felt-card border border-gold-accent/40 rounded-xl text-cream-text text-xs focus:outline-none focus:border-gold-accent placeholder:text-cream-text/40 transition"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gold-accent hover:text-gold-light"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {players.length === 0 ? (
+              <div className="p-12 bg-felt-card/60 rounded-2xl text-center space-y-3 border border-gold-accent/20">
+                <div className="text-4xl text-gold-accent/40">♠</div>
+                <div className="font-bold text-cream-text text-sm">No players yet</div>
+                <div className="text-xs text-cream-text/50">Tap + to add players</div>
+                {!isClosed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPlayerName('');
+                      setIsAddPlayerModalOpen(true);
+                    }}
+                    className="mt-2 px-5 py-2.5 bg-gold-accent hover:brightness-105 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow transition cursor-pointer"
+                  >
+                    Add Player
+                  </button>
+                )}
+              </div>
+            ) : filteredPlayers.length === 0 ? (
+              <div className="p-8 bg-felt-card/60 rounded-2xl text-center text-xs text-cream-text/60 border border-gold-accent/20">
+                No players found matching "{searchQuery}".
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {tableBuyInRequests.map((req) => (
-                  <RequestCard
-                    key={req.id}
-                    request={req}
-                    type="buy-in"
-                    onConfirmReceipt={(r) => handleConfirmReceipt(r, 'buy-in')}
-                  />
-                ))}
-                {tableExitRequests.map((req) => (
-                  <RequestCard
-                    key={req.id}
-                    request={req}
-                    type="exit"
-                    onConfirmReceipt={(r) => handleConfirmReceipt(r, 'exit')}
-                  />
-                ))}
+              /* Player Cards List (Matches Android PlayerCard layout) */
+              <div className="space-y-3">
+                {filteredPlayers.map(({ player: p, rank }) => {
+                  const balance = getPlayerBalance(p);
+                  const finalResult = getPlayerNetResult(p);
+                  const isExited = p.status === 'EXITED';
+                  const playerBuyIns = getPlayerBuyIns(p.id);
+
+                  // Rank border color (1: Gold, 2: Silver, 3: Bronze, else Gold/40)
+                  const rankBorder =
+                    rank === 1
+                      ? 'border-gold-accent shadow-gold-accent/10 shadow-lg'
+                      : rank === 2
+                      ? 'border-[#c0c0c0]'
+                      : rank === 3
+                      ? 'border-[#cd7f32]'
+                      : 'border-gold-accent/40';
+
+                  const rankPillBg =
+                    rank === 1
+                      ? 'bg-gold-accent text-black'
+                      : rank === 2
+                      ? 'bg-[#c0c0c0] text-black'
+                      : rank === 3
+                      ? 'bg-[#cd7f32] text-black'
+                      : 'bg-gold-accent/15 text-gold-accent';
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`bg-felt-card border-2 ${rankBorder} rounded-[20px] p-4 sm:p-5 transition shadow-md`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Rank badge */}
+                          <span
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold shrink-0 ${rankPillBg}`}
+                          >
+                            {rank === 1
+                              ? '🥇 #1'
+                              : rank === 2
+                              ? '🥈 #2'
+                              : rank === 3
+                              ? '🥉 #3'
+                              : `#${rank}`}
+                          </span>
+
+                          <UserBadge
+                            avatarId={p.avatar_id || p.avatar}
+                            name={p.name || p.display_name || p.username}
+                            username={p.username}
+                            size="md"
+                          />
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-bold text-cream-text text-sm sm:text-base truncate">
+                                {p.name || p.username}
+                              </span>
+                              {(p.name === user?.username || p.username === user?.username) && (
+                                <span className="px-1.5 py-0.5 bg-gold-accent/20 border border-gold-accent/40 text-gold-accent text-[9px] font-bold rounded">
+                                  You
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Status badge / Entry fee status */}
+                            {(table?.has_entry_fee || table?.hasEntryFee) && !isExited ? (
+                              <div className="text-[11px] mt-0.5">
+                                <span className="text-cream-text/60">Entry Fee: </span>
+                                <span
+                                  className={
+                                    p.entry_fee_paid === 1 || p.entryFeePaid === true
+                                      ? 'text-win-green font-bold'
+                                      : 'text-lose-red font-bold'
+                                  }
+                                >
+                                  {p.entry_fee_paid === 1 || p.entryFeePaid === true ? 'Paid' : 'Unpaid'}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="mt-0.5">
+                                <StatusBadge status={p.status || 'ACTIVE'} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Balance display & Delete button */}
+                        <div className="flex items-center gap-3 shrink-0">
+                          {!isExited && (
+                            <div className="text-right">
+                              <div
+                                className={`text-base sm:text-xl font-bold font-mono ${
+                                  balance >= 0 ? 'text-win-green' : 'text-lose-red'
+                                }`}
+                              >
+                                {balance >= 0 ? `+${balance}` : balance}
+                              </div>
+                              <div className="text-[10px] text-cream-text/50 uppercase">chips</div>
+                            </div>
+                          )}
+
+                          {!isClosed && playerBuyIns === 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePlayerClick(p)}
+                              className="p-1.5 text-lose-red/80 hover:text-lose-red hover:bg-red-950/40 rounded-lg transition cursor-pointer"
+                              title="Remove Player (0 buy-ins)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* EXITED Status Result Banner & Rebuy Button */}
+                      {isExited && (
+                        <div className="mt-3 space-y-2">
+                          <div
+                            className={`p-2.5 rounded-lg text-xs font-bold text-center ${
+                              finalResult > 0
+                                ? 'bg-win-green/15 text-win-green border border-win-green/30'
+                                : finalResult < 0
+                                ? 'bg-lose-red/15 text-lose-red border border-lose-red/30'
+                                : 'bg-felt-dark text-cream-text border border-gold-accent/20'
+                            }`}
+                          >
+                            {finalResult > 0
+                              ? `Creditor: +$${finalResult.toLocaleString()}`
+                              : finalResult < 0
+                              ? `Debtor: -$${Math.abs(finalResult).toLocaleString()}`
+                              : 'Break-even'}
+                          </div>
+
+                          {!isClosed && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenBuyInModal(p)}
+                              className="w-full py-2.5 bg-gold-accent hover:brightness-105 active:scale-[0.99] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Rebuy / Buy-In</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* PLAYING Status Action Buttons */}
+                      {!isExited && !isClosed && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 pt-2 border-t border-gold-accent/10">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenBuyInModal(p)}
+                            className="py-2.5 bg-gold-accent hover:brightness-105 active:scale-[0.98] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1 cursor-pointer shadow"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Buy-In</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenExitModal(p)}
+                            className="py-2.5 bg-transparent hover:bg-gold-accent/10 border border-gold-accent text-gold-accent font-extrabold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1 cursor-pointer active:scale-[0.98]"
+                          >
+                            <MinusCircle className="w-3.5 h-3.5" />
+                            <span>Exit</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 2: ACTIVITY HISTORY */}
-        {activeTab === 'activity' && (
+        {/* ================= TAB 2: HISTORY ================= */}
+        {activeTab === 'history' && (
           <div className="bg-felt-card border border-gold-accent/30 rounded-2xl p-5 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between text-xs text-cream-text/60 mb-1">
-              <span>All direct and request-approved transactions</span>
+            <div className="flex items-center justify-between text-xs text-cream-text/60 mb-2">
+              <span>All recorded buy-ins and exits</span>
               <span>{allTransactions.length} records</span>
             </div>
 
             {allTransactions.length === 0 ? (
               <div className="p-8 bg-felt-dark/60 rounded-xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-                No buy-ins or exits recorded at this table yet.
+                No transactions recorded at this table yet.
               </div>
             ) : (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
                 {allTransactions.map((tx) => {
                   const isBuyIn = tx.txType === 'buy-in';
                   return (
@@ -803,7 +1132,7 @@ const TableDetail = () => {
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className={`p-2.5 rounded-xl ${
+                          className={`p-2 rounded-xl ${
                             isBuyIn
                               ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
                               : 'bg-amber-950 text-amber-400 border border-amber-500/30'
@@ -828,10 +1157,12 @@ const TableDetail = () => {
                       <div className="text-right">
                         <div
                           className={`font-mono font-extrabold text-base ${
-                            isBuyIn ? 'text-emerald-400' : 'text-amber-400'
+                            isBuyIn ? 'text-win-green' : 'text-amber-400'
                           }`}
                         >
-                          {isBuyIn ? `+$${Number(tx.amount).toLocaleString()}` : `-$${Number(tx.amount).toLocaleString()}`}
+                          {isBuyIn
+                            ? `+$${Number(tx.amount).toLocaleString()}`
+                            : `-$${Number(tx.amount).toLocaleString()}`}
                         </div>
                         <span
                           className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
@@ -851,133 +1182,124 @@ const TableDetail = () => {
           </div>
         )}
 
-        {/* TAB 3: SEATED PLAYERS */}
-        {activeTab === 'players' && (
-          <div className="bg-felt-card border border-gold-accent/30 rounded-2xl p-5 space-y-3 shadow-lg">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-cream-text/60 mb-2">
-              <div>
-                <span className="font-bold text-cream-text">Current players seated at this table</span>
-                <span className="ml-2 px-2 py-0.5 rounded-full bg-felt-dark border border-gold-accent/20 text-gold-accent font-semibold">{players.length} players</span>
+        {/* ================= TAB 3: STATS / RESULTS ================= */}
+        {activeTab === 'stats' && (
+          <div className="space-y-4">
+            {/* Player Results Table */}
+            <div className="bg-felt-card border border-gold-accent/30 rounded-2xl p-5 shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gold-accent flex items-center gap-1.5">
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Player Results & Net Position</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleShareResults}
+                  className="px-3 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share Results</span>
+                </button>
               </div>
-              {!isClosed && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewPlayerName('');
-                      setIsAddPlayerModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-gradient-to-r from-gold-accent to-yellow-500 hover:opacity-95 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>+ Add Player</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenBuyInModal(null)}
-                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5" />
-                    <span>Record Buy-In</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenExitModal(null)}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MinusCircle className="w-3.5 h-3.5" />
-                    <span>Record Exit</span>
-                  </button>
+
+              {playerResults.length === 0 ? (
+                <div className="p-8 bg-felt-dark/60 rounded-xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+                  No player results yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-gold-accent/20 text-cream-text/60 uppercase text-[10px]">
+                        <th className="py-2.5 px-3">Player</th>
+                        <th className="py-2.5 px-3 text-right">Buy-Ins</th>
+                        <th className="py-2.5 px-3 text-right">Exits</th>
+                        <th className="py-2.5 px-3 text-right">Net Result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gold-accent/10">
+                      {playerResults.map((r) => (
+                        <tr key={r.id} className="hover:bg-felt-dark/40 transition">
+                          <td className="py-2.5 px-3 font-bold text-cream-text flex items-center gap-1.5">
+                            <span>{r.name}</span>
+                            {r.name === user?.username && (
+                              <span className="text-[9px] text-gold-accent">(You)</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-cream-text/80">
+                            ${r.buyIns.toLocaleString()}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-cream-text/80">
+                            ${r.exits.toLocaleString()}
+                          </td>
+                          <td
+                            className={`py-2.5 px-3 text-right font-mono font-extrabold ${
+                              r.netResult > 0
+                                ? 'text-win-green'
+                                : r.netResult < 0
+                                ? 'text-lose-red'
+                                : 'text-cream-text/60'
+                            }`}
+                          >
+                            {r.netResult > 0 ? `+$${r.netResult.toLocaleString()}` : `$${r.netResult.toLocaleString()}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
-            {players.length === 0 ? (
-              <div className="p-8 bg-felt-dark/60 rounded-xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-                No players currently seated at this table.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[500px] overflow-y-auto">
-                {players.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-3.5 bg-felt-dark rounded-xl border border-gold-accent/20 flex flex-col gap-2.5 text-xs"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <UserBadge
-                          avatarId={p.avatar_id || p.avatar}
-                          name={p.name || p.display_name || p.username}
-                          username={p.username}
-                          size="md"
-                        />
-                        {(p.name === user?.username || p.username === user?.username) && (
-                          <span className="text-[10px] text-gold-accent font-semibold px-1.5 py-0.5 rounded bg-gold-accent/10 border border-gold-accent/20">You</span>
-                        )}
-                      </div>
+            {/* Suggested Settlements Section */}
+            <div className="bg-felt-card border border-gold-accent/30 rounded-2xl p-5 shadow-lg space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gold-accent flex items-center gap-1.5">
+                <Coins className="w-4 h-4" />
+                <span>Suggested Settlements</span>
+              </h3>
 
+              {settlements.length === 0 ? (
+                <div className="p-6 bg-felt-dark/60 rounded-xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
+                  All balances are settled or no exits recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {settlements.map((s, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 bg-felt-dark rounded-xl border border-gold-accent/20 flex items-center justify-between text-xs"
+                    >
                       <div className="flex items-center gap-2">
-                        {(table?.entry_fee || table?.entryFee) > 0 && (
-                          (p.entry_fee_paid === 1 || p.entryFeePaid === true) ? (
-                            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
-                              Fee Paid ✓
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full bg-red-950 text-red-300 border border-red-500/40">
-                              Fee Unpaid
-                            </span>
-                          )
-                        )}
-                        <span className="px-2.5 py-1 text-[10px] font-extrabold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                          {p.status || 'ACTIVE'}
-                        </span>
-                        {!isClosed && (
-                          <button
-                            onClick={() => handleDeletePlayerClick(p)}
-                            className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-400 hover:text-white transition cursor-pointer"
-                            title="Remove player from table"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <span className="font-bold text-lose-red">{s.from}</span>
+                        <span className="text-cream-text/50">pays</span>
+                        <span className="font-bold text-win-green">{s.to}</span>
+                      </div>
+                      <div className="font-mono font-black text-sm text-gold-accent">
+                        ${s.amount.toLocaleString()}
                       </div>
                     </div>
-
-                    {!isClosed && (
-                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-gold-accent/10">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenBuyInModal(p)}
-                          className="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
-                        >
-                          <PlusCircle className="w-3 h-3" />
-                          <span>+ Buy-In</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenBuyInModal(p)}
-                          className="px-2 py-1 bg-blue-950/80 hover:bg-blue-900 border border-blue-500/40 text-blue-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span>Rebuy</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenExitModal(p)}
-                          className="px-2 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 text-[10px] font-bold rounded-lg transition active:scale-95 flex items-center gap-1 cursor-pointer"
-                        >
-                          <MinusCircle className="w-3 h-3" />
-                          <span>- Exit</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Floating Action Button (+) for Add Player (Matches Android lines 881-896) */}
+      {!isClosed && (
+        <button
+          type="button"
+          onClick={() => {
+            setNewPlayerName('');
+            setIsAddPlayerModalOpen(true);
+          }}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-yellow-600 via-gold-accent to-yellow-400 hover:opacity-95 text-black rounded-full shadow-2xl border-2 border-gold-light flex items-center justify-center active:scale-95 transition-all z-40 cursor-pointer"
+          title="Add Player"
+        >
+          <Plus className="w-7 h-7 stroke-[2.5]" />
+        </button>
+      )}
 
       {/* Add Player Modal */}
       {isAddPlayerModalOpen && (
@@ -1056,6 +1378,39 @@ const TableDetail = () => {
                 className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 {isDeletingPlayer ? 'Removing...' : 'Confirm Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close Table Confirmation Modal */}
+      {isCloseModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-red-500 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-base font-black text-red-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <span>Close Table Session</span>
+            </h3>
+            <p className="text-xs text-cream-text/80 mb-5 leading-relaxed">
+              Are you sure you want to close this table? All transaction history will be locked and no further buy-ins or exits will be allowed.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCloseModalOpen(false)}
+                disabled={isClosingTable}
+                className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCloseTableConfirm}
+                disabled={isClosingTable}
+                className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isClosingTable ? 'Closing...' : 'Confirm Close Table'}
               </button>
             </div>
           </div>
