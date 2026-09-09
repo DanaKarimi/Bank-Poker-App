@@ -34,6 +34,7 @@ import com.bankpoker.app.data.remote.dto.AdminGroupDto
 import com.bankpoker.app.data.remote.dto.AdminTableDto
 import com.bankpoker.app.data.remote.dto.AdminTablePlayerDto
 import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
+import com.bankpoker.app.data.remote.dto.TableDetailDto
 import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -544,6 +545,26 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to fetch table activity (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Get table details by ID
+     */
+    suspend fun getTableDetail(tableId: String): Result<TableDetailDto> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTableDetail(tableId, getAuthHeader())
+            if (response.isSuccessful && response.body()?.table != null) {
+                Result.success(response.body()!!.table!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to get table details (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: IOException) {

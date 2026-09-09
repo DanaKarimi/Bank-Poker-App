@@ -908,12 +908,25 @@ fun HomeScreen(
                                 val tableId = obj?.getAsJsonObject("table")?.get("id")?.asString
                                     ?: obj?.get("tableId")?.asString
                                 if (tableId != null) {
+                                    repository.createTable(
+                                        name = name,
+                                        chipValue = chip,
+                                        groupId = null,
+                                        customId = tableId
+                                    )
                                     onNavigateToTable(tableId)
                                 } else {
                                     refreshConnection()
                                 }
                             } else {
-                                Toast.makeText(context, "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                // Fallback for offline usage: create local quick table in Room
+                                val localTable = repository.createTable(
+                                    name = name,
+                                    chipValue = chip,
+                                    groupId = null
+                                )
+                                showQuickTableCreateDialog = false
+                                onNavigateToTable(localTable.id)
                             }
                         }
                     },

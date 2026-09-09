@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -340,7 +341,7 @@ fun TableDetailScreen(
                     exitRecords = exitRecords,
                     tableId = uiState.table?.id ?: "",
                     viewModel = viewModel,
-                    isTableActive = uiState.table?.status == "ACTIVE",
+                    isTableActive = uiState.table?.status != "CLOSED",
                     tableHasEntryFee = uiState.table?.hasEntryFee == true,
                     onPlayerClick = onPlayerClick
                 )
@@ -721,6 +722,21 @@ fun PlayersTab(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
+                        onClick = onAddPlayer,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = FeltCard,
+                            contentColor = Gold
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Player", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
                         onClick = onDirectBuyInClick,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
@@ -732,7 +748,7 @@ fun PlayersTab(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Record Buy-in", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Record Buy-in", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = onDirectExitClick,
@@ -747,7 +763,7 @@ fun PlayersTab(
                     ) {
                         Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Record Exit", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Record Exit", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -816,6 +832,22 @@ fun PlayersTab(
                             style = MaterialTheme.typography.bodySmall,
                             color = Cream.copy(alpha = 0.4f)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        if (isTableActive) {
+                            Button(
+                                onClick = onAddPlayer,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Gold,
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                            ) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Add Player", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                        }
                     }
                 }
             } else if (filteredPlayers.isEmpty()) {

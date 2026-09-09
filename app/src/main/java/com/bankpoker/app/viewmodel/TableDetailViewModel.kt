@@ -52,27 +52,48 @@ class TableDetailViewModel(
     }
 
     /**
-     * Check whether this table belongs to an ONLINE group with an active remote connection.
-     * OFFLINE groups must return false so they have zero interaction with the server.
+     * Check whether this table belongs to an ONLINE group or is an online quick table with an active remote connection.
+     * Only explicit OFFLINE groups return false.
      */
     suspend fun isTableOnline(): Boolean {
+        if (remoteRepository == null) return false
         val table = _uiState.value.table ?: repository.getTableById(tableId)
         val groupId = table?.groupId
         if (groupId.isNullOrBlank()) {
-            Log.d("TableDetail", "isTableOnline: table $tableId has no groupId -> OFFLINE")
-            return false
+            Log.d("TableDetail", "isTableOnline: table $tableId has no groupId -> ONLINE quick table")
+            return true
         }
         val group = repository.getGroupById(groupId)
-        val isOnline = group?.mode?.equals("ONLINE", ignoreCase = true) == true && remoteRepository != null
+        val isOnline = group?.mode?.equals("OFFLINE", ignoreCase = true) != true
         Log.d("TableDetail", "isTableOnline check: tableId=$tableId, groupId=$groupId, mode=${group?.mode}, result=$isOnline")
         return isOnline
     }
 
     fun loadTableData() {
         viewModelScope.launch {
-            val table = repository.getTableById(tableId)
+            var table = repository.getTableById(tableId)
+            if (table == null && remoteRepository != null) {
+                try {
+                    val tableRes = remoteRepository.getTableDetail(tableId)
+                    if (tableRes.isSuccess) {
+                        val dto = tableRes.getOrNull()
+                        if (dto != null) {
+                            table = repository.createTable(
+                                name = dto.name,
+                                chipValue = dto.chipValue,
+                                groupId = dto.groupId,
+                                hasEntryFee = dto.hasEntryFee,
+                                entryFee = dto.entryFee,
+                                customId = dto.id
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("TableDetail", "Failed to fetch table details: ${e.message}")
+                }
+            }
             val group = table?.groupId?.let { repository.getGroupById(it) }
-            val isOnline = group?.mode?.equals("ONLINE", ignoreCase = true) == true && remoteRepository != null
+            val isOnline = (group == null || group.mode?.equals("OFFLINE", ignoreCase = true) != true) && remoteRepository != null
             val totalBuyIns = repository.getTotalBuyInsForTable(tableId)
             val totalExits = repository.getTotalExitsForTable(tableId)
             _uiState.value = _uiState.value.copy(
