@@ -62,7 +62,7 @@ const GroupStats = () => {
   // Create Table Modal State (mirrors Android CreateTableBottomSheet)
   const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
   const [newTableName, setNewTableName] = useState('');
-  const [newChipPreset, setNewChipPreset] = useState(25);
+  const [newChipPreset, setNewChipPreset] = useState(null);
   const [newChipCustom, setNewChipCustom] = useState('');
   const [newHasEntryFee, setNewHasEntryFee] = useState(false);
   const [newEntryFeeAmount, setNewEntryFeeAmount] = useState('');
@@ -260,7 +260,7 @@ const GroupStats = () => {
 
   const handleOpenCreateTable = async () => {
     setNewTableName('');
-    setNewChipPreset(25);
+    setNewChipPreset(null);
     setNewChipCustom('');
     setNewHasEntryFee(false);
     setNewEntryFeeAmount('');
@@ -302,7 +302,9 @@ const GroupStats = () => {
     try {
       const effectiveChipValue = newChipCustom
         ? Number(newChipCustom)
-        : Number(newChipPreset) || 25;
+        : newChipPreset
+        ? Number(newChipPreset)
+        : null;
       const numEntryFee = newHasEntryFee && newEntryFeeAmount
         ? Number(newEntryFeeAmount)
         : null;
@@ -636,8 +638,12 @@ const GroupStats = () => {
                         key={preset}
                         type="button"
                         onClick={() => {
-                          setNewChipPreset(preset);
-                          setNewChipCustom('');
+                          if (newChipPreset === preset && !newChipCustom) {
+                            setNewChipPreset(null);
+                          } else {
+                            setNewChipPreset(preset);
+                            setNewChipCustom('');
+                          }
                         }}
                         className={`py-2 px-1 rounded-xl text-xs font-black transition border cursor-pointer ${
                           isSelected

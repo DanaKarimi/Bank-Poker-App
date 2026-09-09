@@ -577,9 +577,7 @@ fun CreateTableBottomSheet(
     onCreateTable: (String, Long?, Boolean, Long?) -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
-    var chipValue by remember(initialChipValue) { 
-        mutableStateOf(initialChipValue?.toString() ?: "") 
-    }
+    var chipValue by remember { mutableStateOf("") }
     var hasEntryFee by remember { mutableStateOf(false) }
     var entryFeeAmount by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
