@@ -207,7 +207,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         socketManager.events.collect { evt ->
             when (evt.event) {
-                "buyin_recorded", "exit_recorded", "payment_created", "settlement_done", "group_updated", "table_created", "table_closed", "table_updated" -> {
+                "buyin_recorded", "exit_recorded", "payment_created", "settlement_done", "group_updated", "table_created", "table_closed", "table_updated", "entry_fee_updated" -> {
                     loadFeedAndGroups()
                 }
             }

@@ -191,6 +191,7 @@ const TableDetail = () => {
     socket.on('player_deleted', handleRefresh);
     socket.on('request_created', handleRefresh);
     socket.on('request_resolved', handleRefresh);
+    socket.on('entry_fee_updated', handleRefresh);
 
     // 2. High-frequency API polling fallback (3.5 seconds) ensuring realtime parity
     const interval = setInterval(() => {
@@ -212,6 +213,7 @@ const TableDetail = () => {
       socket.off('player_deleted', handleRefresh);
       socket.off('request_created', handleRefresh);
       socket.off('request_resolved', handleRefresh);
+      socket.off('entry_fee_updated', handleRefresh);
     };
   }, [groupId, tableId]);
 

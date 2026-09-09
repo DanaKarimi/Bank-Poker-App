@@ -102,7 +102,8 @@ class SocketManager private constructor(private val context: Context) {
                 "request_resolved",
                 "player_added",
                 "player_deleted",
-                "claim_done"
+                "claim_done",
+                "entry_fee_updated"
             )
 
             businessEvents.forEach { eventName ->

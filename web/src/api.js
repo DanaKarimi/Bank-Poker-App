@@ -117,6 +117,8 @@ export const getAdminTables = () => api.get('/api/admin/tables');
 export const deleteAdminTable = (id) => api.delete(`/api/admin/tables/${id}`);
 export const getAdminTablePlayers = (tableId) => api.get(`/api/admin/tables/${tableId}/players`);
 export const updateAdminTablePlayer = (tableId, playerId, data) => api.put(`/api/admin/tables/${tableId}/players/${playerId}`, data);
+export const getGroupEntryFees = (groupId) => api.get(`/api/groups/${groupId}/entry-fees`);
+export const updateGroupEntryFee = (groupId, feeId, data) => api.put(`/api/groups/${groupId}/entry-fees/${feeId}`, data);
 export const getServerHealth = () => api.get('/api/health');
 
 export default api;

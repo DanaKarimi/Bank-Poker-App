@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -50,11 +51,37 @@ fun GroupHistoryScreen(
     viewModel: GroupHistoryViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val payments by viewModel.payments.collectAsState(initial = emptyList())
     val entryFeeRecords by viewModel.entryFeeRecords.collectAsState(initial = emptyList())
 
+    val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
+
+    LaunchedEffect(socketManager, group?.id, group?.serverId) {
+        val sId = group?.serverId ?: group?.id
+        if (!sId.isNullOrBlank()) {
+            socketManager.joinGroup(sId)
+        }
+        socketManager.events.collect { event ->
+            when (event.event) {
+                "entry_fee_updated" -> {
+                    val eventGroupId = event.payload?.optString("groupId", "")
+                    if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
+                        viewModel.fetchEntryFeesFromServer()
+                    }
+                }
+            }
+        }
+    }
+
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == 1) {
+            viewModel.fetchEntryFeesFromServer()
+        }
+    }
 
     var selectedPaymentForAction by remember { mutableStateOf<Payment?>(null) }
     var selectedPaymentForEdit by remember { mutableStateOf<Payment?>(null) }
@@ -157,6 +184,9 @@ fun GroupHistoryScreen(
                             entryFeeRecords = entryFeeRecords,
                             onEntryFeeLongClick = { record ->
                                 selectedEntryFeeForAction = record
+                            },
+                            onTogglePaid = { record ->
+                                viewModel.updateEntryFeeRecord(record.id, record.amount, !record.paid)
                             }
                         )
                     }
@@ -488,7 +518,8 @@ private fun PaymentHistoryCard(
 @Composable
 private fun EntryFeesHistoryTab(
     entryFeeRecords: List<EntryFeeRecord>,
-    onEntryFeeLongClick: (EntryFeeRecord) -> Unit
+    onEntryFeeLongClick: (EntryFeeRecord) -> Unit,
+    onTogglePaid: (EntryFeeRecord) -> Unit = {}
 ) {
     if (entryFeeRecords.isEmpty()) {
         Column(
@@ -513,7 +544,8 @@ private fun EntryFeesHistoryTab(
             items(entryFeeRecords, key = { it.id }) { record ->
                 EntryFeeHistoryCard(
                     record = record,
-                    onLongClick = { onEntryFeeLongClick(record) }
+                    onLongClick = { onEntryFeeLongClick(record) },
+                    onTogglePaid = { onTogglePaid(record) }
                 )
             }
         }
@@ -524,7 +556,8 @@ private fun EntryFeesHistoryTab(
 @Composable
 private fun EntryFeeHistoryCard(
     record: EntryFeeRecord,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onTogglePaid: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -594,19 +627,21 @@ private fun EntryFeeHistoryCard(
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                if (record.paid) {
-                    Text(
-                        text = "Paid ✓",
-                        color = WinGreen,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodySmall
+                Surface(
+                    onClick = onTogglePaid,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (record.paid) WinGreen.copy(alpha = 0.2f) else LoseRed.copy(alpha = 0.2f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (record.paid) WinGreen.copy(alpha = 0.6f) else LoseRed.copy(alpha = 0.6f)
                     )
-                } else {
+                ) {
                     Text(
-                        text = "Unpaid ✗",
-                        color = LoseRed,
+                        text = if (record.paid) "Paid ✓" else "Unpaid ✗",
+                        color = if (record.paid) WinGreen else LoseRed,
                         fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }

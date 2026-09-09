@@ -436,6 +436,10 @@ class PokerRepository(
         entryFeeRecordDao.updateEntryFeeRecordPaid(id, true)
     }
 
+    suspend fun insertOrUpdateEntryFeeRecords(records: List<EntryFeeRecord>) {
+        entryFeeRecordDao.insertEntryFeeRecords(records)
+    }
+
     // Backup & Restore operations
     suspend fun exportBackupJson(): String {
         val groups = playerGroupDao.getAllGroupsOnce()

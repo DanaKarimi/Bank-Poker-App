@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { run, get, all } = require('../database/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { generateInviteCode } = require('../utils/helpers');
-const { emitToGroup } = require('../socket');
+const { emitToGroup, emitToTable } = require('../socket');
 const { sendNotification } = require('../services/notifications');
 
 /**
@@ -1637,6 +1637,140 @@ router.post('/:id/payments', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error recording payment:', error);
         return res.status(500).json({ error: 'Internal server error while recording payment' });
+    }
+});
+
+/**
+ * GET /api/groups/:id/entry-fees
+ * Return all entry fee records for this group
+ */
+router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const group = await get('SELECT id FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const records = await all(
+            `SELECT id, group_id, table_id, table_name, player_name, amount, paid, timestamp, updated_at
+             FROM entry_fee_records
+             WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0
+             ORDER BY timestamp DESC`,
+            [group.id, groupId]
+        );
+
+        return res.json({
+            entryFees: records.map(r => ({
+                id: r.id,
+                groupId: r.group_id,
+                tableId: r.table_id,
+                tableName: r.table_name,
+                playerName: r.player_name,
+                amount: Number(r.amount) || 0,
+                paid: Boolean(r.paid),
+                timestamp: r.timestamp,
+                updatedAt: r.updated_at
+            }))
+        });
+    } catch (err) {
+        console.error('Error fetching group entry fees:', err);
+        return res.status(500).json({ error: 'Failed to fetch entry fees' });
+    }
+});
+
+/**
+ * PUT /api/groups/:id/entry-fees/:feeId
+ * Update entry fee paid status and/or amount, sync with players table, emit entry_fee_updated
+ */
+router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
+    try {
+        const { id: groupId, feeId } = req.params;
+        const { paid, amount } = req.body;
+
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const actualGroupId = group.id;
+
+        // Authorization check: table admin / group admin / owner / super admin
+        const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === req.user.id;
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
+        const isGroupAdmin = membership && membership.role === 'ADMIN';
+
+        if (!isSuperAdmin && !isOwner && !isGroupAdmin) {
+            return res.status(403).json({ error: 'Permission denied: admin privileges required' });
+        }
+
+        const record = await get(
+            `SELECT * FROM entry_fee_records 
+             WHERE (id = ? OR server_id = ?) AND (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [feeId, feeId, actualGroupId, groupId]
+        );
+        if (!record) {
+            return res.status(404).json({ error: 'Entry fee record not found' });
+        }
+
+        const now = Date.now();
+        const newPaid = paid !== undefined ? ((paid === true || paid === 1 || paid === 'true') ? 1 : 0) : record.paid;
+        const newAmount = (amount !== undefined && !isNaN(Number(amount))) ? Number(amount) : record.amount;
+
+        await run(
+            `UPDATE entry_fee_records
+             SET paid = ?, amount = ?, updated_at = ?, is_synced = 1
+             WHERE id = ?`,
+            [newPaid, newAmount, now, record.id]
+        );
+
+        // Synchronize with players table if this entry fee is tied to a table
+        if (record.table_id && record.player_name) {
+            await run(
+                `UPDATE players
+                 SET entry_fee_paid = ?, updated_at = ?
+                 WHERE table_id = ? AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                [newPaid, now, record.table_id, record.player_name]
+            );
+            emitToTable(record.table_id, 'player_updated', {
+                tableId: record.table_id,
+                playerName: record.player_name,
+                entryFeePaid: Boolean(newPaid)
+            });
+            emitToTable(record.table_id, 'table_updated', {
+                tableId: record.table_id
+            });
+        }
+
+        const eventPayload = {
+            groupId: actualGroupId,
+            feeId: record.id,
+            paid: Boolean(newPaid),
+            amount: newAmount,
+            playerName: record.player_name,
+            tableId: record.table_id
+        };
+
+        // Emit entry_fee_updated to group room
+        emitToGroup(actualGroupId, 'entry_fee_updated', eventPayload);
+        if (actualGroupId !== groupId) {
+            emitToGroup(groupId, 'entry_fee_updated', eventPayload);
+        }
+
+        return res.json({
+            message: 'Entry fee updated successfully',
+            entryFee: {
+                id: record.id,
+                groupId: actualGroupId,
+                tableId: record.table_id,
+                tableName: record.table_name,
+                playerName: record.player_name,
+                amount: newAmount,
+                paid: Boolean(newPaid),
+                timestamp: record.timestamp,
+                updatedAt: now
+            }
+        });
+    } catch (err) {
+        console.error('Error updating entry fee record:', err);
+        return res.status(500).json({ error: 'Failed to update entry fee record' });
     }
 });
 

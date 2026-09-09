@@ -35,6 +35,8 @@ import com.bankpoker.app.data.remote.dto.AdminTableDto
 import com.bankpoker.app.data.remote.dto.AdminTablePlayerDto
 import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
 import com.bankpoker.app.data.remote.dto.TableDetailDto
+import com.bankpoker.app.data.remote.dto.RemoteEntryFeeDto
+import com.bankpoker.app.data.remote.dto.UpdateEntryFeeRequest
 import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -1011,6 +1013,42 @@ class RemoteRepository(
             }
         } catch (e: Exception) {
             android.util.Log.e("EntryFeeSync", "FAILED: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getGroupEntryFees(groupId: String): Result<List<RemoteEntryFeeDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupEntryFees(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.entryFees)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch entry fees (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateEntryFeeRecord(
+        groupId: String,
+        feeId: String,
+        paid: Boolean,
+        amount: Long? = null
+    ): Result<RemoteEntryFeeDto> = withContext(Dispatchers.IO) {
+        try {
+            val request = UpdateEntryFeeRequest(paid = paid, amount = amount)
+            val response = apiService.updateEntryFeeRecord(groupId, feeId, request, getAuthHeader())
+            if (response.isSuccessful && response.body()?.entryFee != null) {
+                Result.success(response.body()!!.entryFee!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to update entry fee (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

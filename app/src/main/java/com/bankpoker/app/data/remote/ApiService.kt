@@ -257,6 +257,20 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 
+    @GET("api/groups/{groupId}/entry-fees")
+    suspend fun getGroupEntryFees(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.GroupEntryFeesResponse>
+
+    @PUT("api/groups/{groupId}/entry-fees/{feeId}")
+    suspend fun updateEntryFeeRecord(
+        @Path("groupId") groupId: String,
+        @Path("feeId") feeId: String,
+        @Body request: com.bankpoker.app.data.remote.dto.UpdateEntryFeeRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.UpdateEntryFeeResponse>
+
     @DELETE("api/tables/{tableId}/players/{playerId}")
     suspend fun deleteTablePlayer(
         @Path("tableId") tableId: String,

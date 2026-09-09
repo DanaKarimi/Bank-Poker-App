@@ -208,6 +208,7 @@ const GroupStats = () => {
     socket.on('group_updated', handleRefresh);
     socket.on('claim_done', handleRefresh);
     socket.on('settlement_done', handleRefresh);
+    socket.on('entry_fee_updated', handleRefresh);
 
     // 2. High-frequency API polling fallback (3.5 seconds) ensuring real-time parity
     const interval = setInterval(() => {
@@ -231,6 +232,7 @@ const GroupStats = () => {
       socket.off('group_updated', handleRefresh);
       socket.off('claim_done', handleRefresh);
       socket.off('settlement_done', handleRefresh);
+      socket.off('entry_fee_updated', handleRefresh);
     };
   }, [groupId]);
 

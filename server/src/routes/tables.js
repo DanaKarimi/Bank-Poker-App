@@ -1025,6 +1025,26 @@ router.post('/:id/entry-fee-sync', authenticateToken, async (req, res) => {
                     [isPaid, now, tableId, playerName]
                 );
                 updatedCount += resUp.changes || 0;
+
+                await run(
+                    `UPDATE entry_fee_records SET paid = ?, updated_at = ?
+                     WHERE table_id = ? AND UPPER(TRIM(player_name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                    [isPaid, now, tableId, playerName]
+                );
+
+                if (table.group_id) {
+                    emitToGroup(table.group_id, 'entry_fee_updated', {
+                        groupId: table.group_id,
+                        tableId,
+                        playerName,
+                        paid: Boolean(isPaid)
+                    });
+                }
+                emitToTable(tableId, 'player_updated', {
+                    tableId,
+                    playerName,
+                    entryFeePaid: Boolean(isPaid)
+                });
             }
         }
 
