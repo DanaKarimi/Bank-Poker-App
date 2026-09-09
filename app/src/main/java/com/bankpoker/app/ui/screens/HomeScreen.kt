@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.SocketManager
 import com.bankpoker.app.data.remote.TokenManager
@@ -47,11 +49,7 @@ import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
 import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
-import com.bankpoker.app.ui.components.AuthDialog
-import com.bankpoker.app.ui.components.GoldGradientButton
-import com.bankpoker.app.ui.components.PokerAvatar
-import com.bankpoker.app.ui.components.ProfileDialog
-import com.bankpoker.app.ui.components.SectionHeader
+import com.bankpoker.app.ui.components.*
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,12 +95,28 @@ fun HomeScreen(
     // Live Feed & Groups state
     var activeTables by remember { mutableStateOf<List<ActiveTableSummaryDto>>(emptyList()) }
     var myGroups by remember { mutableStateOf<List<UserGroupSummaryDto>>(emptyList()) }
-    var isLoadingFeed by remember { mutableStateOf(false) }
+
+    // Local quick tables state
+    val quickTables by repository.getQuickTables().collectAsState(initial = emptyList())
 
     // FAB Bottom Sheet state
     var showFabBottomSheet by remember { mutableStateOf(false) }
     var showQuickTableCreateDialog by remember { mutableStateOf(false) }
     var isCreatingQuickTable by remember { mutableStateOf(false) }
+
+    fun shareCode(code: String, name: String, isGroup: Boolean) {
+        val sendIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(
+                Intent.EXTRA_TEXT,
+                if (isGroup) "Join my poker group \"$name\" on BankPoker using code: $code"
+                else "Join my poker table \"$name\" on BankPoker using code: $code"
+            )
+            type = "text/plain"
+        }
+        val shareIntent = Intent.createChooser(sendIntent, "Share Code")
+        context.startActivity(shareIntent)
+    }
 
     suspend fun loadFeedAndGroups() {
         if (tokenManager.isLoggedIn()) {
@@ -277,13 +291,13 @@ fun HomeScreen(
                         Text(
                             text = "♠",
                             fontSize = 20.sp,
-                            color = Gold,
+                            color = DesignTokens.GoldAccent,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "BANK POKER",
-                            color = Cream,
+                            color = DesignTokens.CreamText,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 2.sp,
                             fontSize = 16.sp
@@ -297,9 +311,9 @@ fun HomeScreen(
                             modifier = Modifier
                                 .clickable { onAdminManagementClick() }
                                 .padding(end = 4.dp),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(DesignTokens.RadiusMD),
                             color = Color(0xFF451A03),
-                            border = BorderStroke(1.dp, Gold)
+                            border = BorderStroke(1.dp, DesignTokens.GoldAccent)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -308,13 +322,13 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.Default.Shield,
                                     contentDescription = "Admin",
-                                    tint = Gold,
+                                    tint = DesignTokens.GoldAccent,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "ADMIN",
-                                    color = Gold,
+                                    color = DesignTokens.GoldAccent,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black
                                 )
@@ -323,13 +337,14 @@ fun HomeScreen(
                     }
 
                     if (isLoggedIn) {
+                        // User Avatar + Name Profile Chip
                         Surface(
                             modifier = Modifier
                                 .clickable { showProfileDialog = true }
                                 .padding(end = 4.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            color = FeltCard,
-                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f))
+                            shape = RoundedCornerShape(DesignTokens.RadiusFull),
+                            color = DesignTokens.FeltCard,
+                            border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.6f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -343,7 +358,7 @@ fun HomeScreen(
                                 )
                                 Text(
                                     text = currentDisplayName,
-                                    color = Cream,
+                                    color = DesignTokens.CreamText,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -352,12 +367,12 @@ fun HomeScreen(
                                 )
                                 if (isGuest) {
                                     Surface(
-                                        color = Gold.copy(alpha = 0.2f),
+                                        color = DesignTokens.GoldAccent.copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
                                             text = "GUEST",
-                                            color = Gold,
+                                            color = DesignTokens.GoldAccent,
                                             fontSize = 8.sp,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -367,11 +382,12 @@ fun HomeScreen(
                             }
                         }
 
+                        // Notifications Icon with Unread Badge
                         IconButton(onClick = onNotificationsClick) {
                             BadgedBox(
                                 badge = {
                                     if (unreadNotifCount > 0) {
-                                        Badge(containerColor = Gold, contentColor = Color.Black) {
+                                        Badge(containerColor = DesignTokens.GoldAccent, contentColor = Color.Black) {
                                             Text("$unreadNotifCount", fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                         }
                                     }
@@ -380,26 +396,30 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.Default.Notifications,
                                     contentDescription = "Notifications",
-                                    tint = Gold
+                                    tint = DesignTokens.GoldAccent
                                 )
                             }
                         }
                     } else {
                         Button(
                             onClick = { showAuthDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
-                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DesignTokens.GoldAccent,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(DesignTokens.RadiusLG),
                             modifier = Modifier.padding(end = 4.dp)
                         ) {
                             Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     }
 
+                    // Settings Icon
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            tint = Gold
+                            tint = DesignTokens.GoldAccent
                         )
                     }
                 },
@@ -409,7 +429,7 @@ fun HomeScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showFabBottomSheet = true },
-                containerColor = Gold,
+                containerColor = DesignTokens.GoldAccent,
                 contentColor = Color.Black,
                 shape = CircleShape,
                 elevation = FloatingActionButtonDefaults.elevation(8.dp)
@@ -418,14 +438,14 @@ fun HomeScreen(
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = FeltBackground
+        containerColor = DesignTokens.FeltGreen
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF186349), FeltBackground),
+                        colors = listOf(Color(0xFF186349), DesignTokens.FeltGreen),
                         radius = 1500f
                     )
                 )
@@ -439,321 +459,425 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Quick Join By Code Card
-                Card(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, Gold.copy(alpha = 0.6f), RoundedCornerShape(18.dp)),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = FeltCard),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    // =======================================================
+                    // SMART CODE INPUT CARD (Paste-Aware Auto-Detect)
+                    // =======================================================
+                    UnifiedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        cornerRadius = DesignTokens.RadiusLG
                     ) {
-                        Text(
-                            text = "JOIN BY CODE",
-                            color = Gold,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedTextField(
-                                value = codeInput,
-                                onValueChange = { if (it.length <= 8) codeInput = it.uppercase() },
-                                placeholder = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Pin,
+                                        contentDescription = null,
+                                        tint = DesignTokens.GoldAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        "ENTER 6-CHAR CODE",
+                                        text = "JOIN BY CODE",
+                                        color = DesignTokens.GoldAccent,
                                         fontSize = 12.sp,
-                                        color = Cream.copy(alpha = 0.4f),
+                                        fontWeight = FontWeight.Black,
                                         letterSpacing = 1.sp
                                     )
-                                },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(
-                                    capitalization = KeyboardCapitalization.Characters,
-                                    imeAction = ImeAction.Done
-                                ),
-                                keyboardActions = KeyboardActions(onDone = { handleLookupCode() }),
-                                textStyle = androidx.compose.ui.text.TextStyle(
-                                    color = Cream,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    fontFamily = FontFamily.Monospace,
-                                    letterSpacing = 2.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Gold,
-                                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                                    cursorColor = Gold
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Button(
-                                onClick = { handleLookupCode() },
-                                enabled = !isLookingUpCode && codeInput.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.height(54.dp)
-                            ) {
-                                if (isLookingUpCode) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
-                                } else {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Lookup")
                                 }
-                            }
-                        }
-                    }
-                }
 
-                // ---------------- 1. LIVE NOW: ACTIVE TABLES ----------------
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(Color(0xFF10B981), CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "LIVE NOW",
-                                color = Gold,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                color = Gold.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "${activeTables.size}",
-                                    color = Gold,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-
-                        TextButton(onClick = onQuickTableClick) {
-                            Text("All Tables", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    if (activeTables.isEmpty()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = FeltCard.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("No tables active right now.", color = Cream.copy(alpha = 0.6f), fontSize = 12.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                TextButton(onClick = { showQuickTableCreateDialog = true }) {
-                                    Text("+ Start a Quick Table", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    } else {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(activeTables) { table ->
-                                LiveTableCard(
-                                    table = table,
-                                    onJoinClick = { onNavigateToTable(table.id) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ---------------- 2. POKER GROUPS SECTION ----------------
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Groups, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "POKER GROUPS",
-                                color = Gold,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                color = Gold.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "${myGroups.size}",
-                                    color = Gold,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-
-                        TextButton(onClick = onGroupsClick) {
-                            Text("Manage Groups", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    if (myGroups.isEmpty()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = FeltCard.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.25f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("You haven't joined any poker groups yet.", color = Cream.copy(alpha = 0.6f), fontSize = 12.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                TextButton(onClick = onCreateGroupClick) {
-                                    Text("+ Create New Group", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            myGroups.forEach { group ->
-                                HomeGroupCard(
-                                    group = group,
-                                    onGroupClick = { onNavigateToGroup(group.id) },
-                                    onCopyCode = {
-                                        if (!group.inviteCode.isNullOrBlank()) {
-                                            clipboardManager.setText(AnnotatedString(group.inviteCode))
-                                            Toast.makeText(context, "Invite code ${group.inviteCode} copied!", Toast.LENGTH_SHORT).show()
+                                val clipText = clipboardManager.getText()?.text?.trim()
+                                if (codeInput.isBlank() && !clipText.isNullOrBlank() && clipText.length in 4..8) {
+                                    Surface(
+                                        modifier = Modifier.clickable {
+                                            codeInput = clipText.uppercase()
+                                        },
+                                        color = DesignTokens.FeltDark,
+                                        shape = RoundedCornerShape(DesignTokens.RadiusSM),
+                                        border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.5f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentPaste,
+                                                contentDescription = "Paste",
+                                                tint = DesignTokens.GoldAccent,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "PASTE",
+                                                color = DesignTokens.GoldAccent,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
-                                )
+                                }
                             }
-                        }
-                    }
-                }
 
-                // ---------------- 3. QUICK TABLES SECTION ----------------
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = codeInput,
+                                    onValueChange = { if (it.length <= 8) codeInput = it.uppercase() },
+                                    placeholder = {
+                                        Text(
+                                            "ENTER 6-CHAR CODE",
+                                            fontSize = 12.sp,
+                                            color = DesignTokens.CreamText.copy(alpha = 0.4f),
+                                            letterSpacing = 1.sp
+                                        )
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.Characters,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    keyboardActions = KeyboardActions(onDone = { handleLookupCode() }),
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        color = DesignTokens.CreamText,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        letterSpacing = 2.sp,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = DesignTokens.GoldAccent,
+                                        unfocusedBorderColor = DesignTokens.GoldAccent.copy(alpha = 0.4f),
+                                        cursorColor = DesignTokens.GoldAccent
+                                    ),
+                                    shape = RoundedCornerShape(DesignTokens.RadiusMD),
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Button(
+                                    onClick = { handleLookupCode() },
+                                    enabled = !isLookingUpCode && codeInput.isNotBlank(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DesignTokens.GoldAccent,
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(DesignTokens.RadiusMD),
+                                    modifier = Modifier.height(54.dp)
+                                ) {
+                                    if (isLookingUpCode) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                                    } else {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Lookup")
+                                    }
+                                }
+                            }
+
                             Text(
-                                text = "QUICK TABLES",
-                                color = Gold,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
-                                letterSpacing = 1.sp
+                                text = "Enter 6-char group invite or table code to jump straight in",
+                                color = DesignTokens.CreamMuted,
+                                fontSize = 11.sp
                             )
                         }
-
-                        TextButton(onClick = onQuickTableClick) {
-                            Text("History", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
                     }
 
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showQuickTableCreateDialog = true },
-                        color = FeltCard,
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
-                    ) {
+                    // =======================================================
+                    // 1. LIVE NOW: ACTIVE TABLES HORIZONTAL SECTION
+                    // =======================================================
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(Gold.copy(alpha = 0.15f), CircleShape),
-                                    contentAlignment = Alignment.Center
+                                UnifiedLiveBadge()
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "LIVE NOW",
+                                    color = DesignTokens.GoldAccent,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    color = DesignTokens.GoldAccent.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(DesignTokens.RadiusSM)
                                 ) {
-                                    Icon(Icons.Default.FlashOn, contentDescription = null, tint = Gold)
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Instant Poker Table", color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text("No group needed. Play immediately.", color = Cream.copy(alpha = 0.6f), fontSize = 11.sp)
+                                    Text(
+                                        text = "${activeTables.size}",
+                                        color = DesignTokens.GoldAccent,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
                                 }
                             }
 
-                            Button(
-                                onClick = { showQuickTableCreateDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            TextButton(onClick = onQuickTableClick) {
+                                Text("All Tables", color = DesignTokens.GoldAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        if (activeTables.isEmpty()) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = DesignTokens.FeltCard.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(DesignTokens.RadiusLG),
+                                border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.25f))
                             ) {
-                                Text("Create", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("No tables active right now.", color = DesignTokens.CreamMuted, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    TextButton(onClick = { showQuickTableCreateDialog = true }) {
+                                        Text("+ Start a Quick Table", color = DesignTokens.GoldAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(activeTables) { table ->
+                                    LiveTableCard(
+                                        table = table,
+                                        onJoinClick = { onNavigateToTable(table.id) }
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(40.dp))
+                    // =======================================================
+                    // 2. POKER GROUPS SECTION (Group Cards with NO balance)
+                    // =======================================================
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Groups, contentDescription = null, tint = DesignTokens.GoldAccent, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "POKER GROUPS",
+                                    color = DesignTokens.GoldAccent,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    letterSpacing = 1.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    color = DesignTokens.GoldAccent.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(DesignTokens.RadiusSM)
+                                ) {
+                                    Text(
+                                        text = "${myGroups.size}",
+                                        color = DesignTokens.GoldAccent,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            TextButton(onClick = onGroupsClick) {
+                                Text("Manage Groups", color = DesignTokens.GoldAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        if (myGroups.isEmpty()) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = DesignTokens.FeltCard.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(DesignTokens.RadiusLG),
+                                border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.25f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("You haven't joined any poker groups yet.", color = DesignTokens.CreamMuted, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    TextButton(onClick = onCreateGroupClick) {
+                                        Text("+ Create New Group", color = DesignTokens.GoldAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                myGroups.forEach { group ->
+                                    HomeGroupCard(
+                                        group = group,
+                                        onGroupClick = { onNavigateToGroup(group.id) },
+                                        onCopyCode = {
+                                            if (!group.inviteCode.isNullOrBlank()) {
+                                                clipboardManager.setText(AnnotatedString(group.inviteCode))
+                                                Toast.makeText(context, "Invite code ${group.inviteCode} copied!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onShareCode = {
+                                            if (!group.inviteCode.isNullOrBlank()) {
+                                                shareCode(group.inviteCode, group.name, isGroup = true)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // =======================================================
+                    // 3. QUICK TABLES SECTION (Cards with code copy/share)
+                    // =======================================================
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Bolt, contentDescription = null, tint = DesignTokens.GoldAccent, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "QUICK TABLES",
+                                    color = DesignTokens.GoldAccent,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.sp,
+                                    letterSpacing = 1.sp
+                                )
+                                if (quickTables.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        color = DesignTokens.GoldAccent.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(DesignTokens.RadiusSM)
+                                    ) {
+                                        Text(
+                                            text = "${quickTables.size}",
+                                            color = DesignTokens.GoldAccent,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            TextButton(onClick = onQuickTableClick) {
+                                Text("History", color = DesignTokens.GoldAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Create Instant Table Banner
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showQuickTableCreateDialog = true },
+                            color = DesignTokens.FeltCard,
+                            shape = RoundedCornerShape(DesignTokens.RadiusLG),
+                            border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(DesignTokens.GoldAccent.copy(alpha = 0.15f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = DesignTokens.GoldAccent)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text("Instant Poker Table", color = DesignTokens.CreamText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text("No group needed. Play immediately.", color = DesignTokens.CreamMuted, fontSize = 11.sp)
+                                    }
+                                }
+
+                                Button(
+                                    onClick = { showQuickTableCreateDialog = true },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DesignTokens.GoldAccent,
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(DesignTokens.RadiusSM),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Create", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        // Recent Quick Tables List (if available)
+                        if (quickTables.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                quickTables.take(5).forEach { qTable ->
+                                    HomeQuickTableCard(
+                                        table = qTable,
+                                        onTableClick = { onNavigateToTable(qTable.id) },
+                                        onCopyCode = {
+                                            if (!qTable.code.isNullOrBlank()) {
+                                                clipboardManager.setText(AnnotatedString(qTable.code!!))
+                                                Toast.makeText(context, "Table code ${qTable.code} copied!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onShareCode = {
+                                            if (!qTable.code.isNullOrBlank()) {
+                                                shareCode(qTable.code!!, qTable.name, isGroup = false)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
+                }
             }
         }
     }
-    }
 
-    // --- FAB MODAL BOTTOM SHEET ---
+    // =======================================================
+    // FAB MODAL BOTTOM SHEET (New Group / New Quick Table)
+    // =======================================================
     if (showFabBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = { showFabBottomSheet = false },
-            containerColor = FeltCard,
-            contentColor = Cream
+            containerColor = DesignTokens.FeltCard,
+            contentColor = DesignTokens.CreamText,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = DesignTokens.GoldAccent) },
+            shape = RoundedCornerShape(topStart = DesignTokens.RadiusXL, topEnd = DesignTokens.RadiusXL)
         ) {
             Column(
                 modifier = Modifier
@@ -763,9 +887,9 @@ fun HomeScreen(
             ) {
                 Text(
                     text = "CREATE NEW",
-                    color = Gold,
+                    color = DesignTokens.GoldAccent,
                     fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
                     letterSpacing = 1.sp
                 )
 
@@ -777,9 +901,9 @@ fun HomeScreen(
                             showFabBottomSheet = false
                             onCreateGroupClick()
                         },
-                    color = FeltDark,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                    color = DesignTokens.FeltDark,
+                    shape = RoundedCornerShape(DesignTokens.RadiusMD),
+                    border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.4f))
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -787,16 +911,16 @@ fun HomeScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .background(Gold.copy(alpha = 0.15f), CircleShape),
+                                .size(38.dp)
+                                .background(DesignTokens.GoldAccent.copy(alpha = 0.15f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Groups, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Groups, contentDescription = null, tint = DesignTokens.GoldAccent, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("New Poker Group", color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Dedicated circle with member ledger and invite code", color = Cream.copy(alpha = 0.6f), fontSize = 11.sp)
+                            Text("New Poker Group", color = DesignTokens.CreamText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Dedicated circle with member ledger and invite code", color = DesignTokens.CreamMuted, fontSize = 11.sp)
                         }
                     }
                 }
@@ -809,9 +933,9 @@ fun HomeScreen(
                             showFabBottomSheet = false
                             showQuickTableCreateDialog = true
                         },
-                    color = FeltDark,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                    color = DesignTokens.FeltDark,
+                    shape = RoundedCornerShape(DesignTokens.RadiusMD),
+                    border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.4f))
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -819,16 +943,16 @@ fun HomeScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .background(Gold.copy(alpha = 0.15f), CircleShape),
+                                .size(38.dp)
+                                .background(DesignTokens.GoldAccent.copy(alpha = 0.15f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Gold, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = DesignTokens.GoldAccent, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("New Quick Table", color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Fast casual table without requiring a group", color = Cream.copy(alpha = 0.6f), fontSize = 11.sp)
+                            Text("New Quick Table", color = DesignTokens.CreamText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Fast casual table without requiring a group", color = DesignTokens.CreamMuted, fontSize = 11.sp)
                         }
                     }
                 }
@@ -838,7 +962,9 @@ fun HomeScreen(
         }
     }
 
-    // --- CREATE QUICK TABLE BOTTOM SHEET ---
+    // =======================================================
+    // CREATE QUICK TABLE BOTTOM SHEET
+    // =======================================================
     if (showQuickTableCreateDialog) {
         CreateQuickTableBottomSheet(
             onDismiss = { showQuickTableCreateDialog = false },
@@ -927,9 +1053,9 @@ fun LiveTableCard(
         modifier = Modifier
             .width(220.dp)
             .clickable { onJoinClick() },
-        color = FeltCard,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.2.dp, Gold.copy(alpha = 0.6f)),
+        color = DesignTokens.FeltCard,
+        shape = RoundedCornerShape(DesignTokens.RadiusLG),
+        border = BorderStroke(1.2.dp, DesignTokens.GoldAccent.copy(alpha = 0.6f)),
         shadowElevation = 4.dp
     ) {
         Column(
@@ -943,30 +1069,19 @@ fun LiveTableCard(
             ) {
                 Text(
                     text = table.name,
-                    color = Cream,
+                    color = DesignTokens.CreamText,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Surface(
-                    color = WinGreen.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "LIVE",
-                        color = WinGreen,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
-                }
+                UnifiedLiveBadge()
             }
 
             Text(
                 text = "${table.gameType ?: "NL Hold'em"} • ${table.groupName ?: "Quick Table"}",
-                color = Cream.copy(alpha = 0.6f),
+                color = DesignTokens.CreamMuted,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -979,15 +1094,18 @@ fun LiveTableCard(
             ) {
                 Text(
                     text = "${table.playerCount} players",
-                    color = Gold,
+                    color = DesignTokens.GoldAccent,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 11.sp
                 )
 
                 Button(
                     onClick = onJoinClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
-                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DesignTokens.GoldAccent,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(DesignTokens.RadiusSM),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(28.dp)
                 ) {
@@ -1003,15 +1121,16 @@ fun LiveTableCard(
 fun HomeGroupCard(
     group: UserGroupSummaryDto,
     onGroupClick: () -> Unit,
-    onCopyCode: () -> Unit
+    onCopyCode: () -> Unit,
+    onShareCode: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onGroupClick() },
-        color = FeltCard,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Gold.copy(alpha = 0.4f)),
+        color = DesignTokens.FeltCard,
+        shape = RoundedCornerShape(DesignTokens.RadiusLG),
+        border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.4f)),
         shadowElevation = 3.dp
     ) {
         Column(
@@ -1023,12 +1142,15 @@ fun HomeGroupCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("♣", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("♣", color = DesignTokens.GoldAccent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = group.name,
-                        color = Cream,
+                        color = DesignTokens.CreamText,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         maxLines = 1,
@@ -1036,66 +1158,76 @@ fun HomeGroupCard(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     if (group.isCreator) {
-                        Surface(
-                            color = Gold.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(0.8.dp, Gold)
-                        ) {
-                            Text(
-                                text = "ADMIN",
-                                color = Gold,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                            )
-                        }
+                        UnifiedAdminBadge()
                     }
                     Surface(
-                        color = FeltDark,
-                        shape = RoundedCornerShape(4.dp)
+                        color = DesignTokens.FeltDark,
+                        shape = RoundedCornerShape(DesignTokens.RadiusFull),
+                        border = BorderStroke(0.8.dp, DesignTokens.GoldAccent.copy(alpha = 0.2f))
                     ) {
                         Text(
                             text = "${group.memberCount} members",
-                            color = Cream.copy(alpha = 0.7f),
+                            color = DesignTokens.CreamText.copy(alpha = 0.7f),
                             fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Invite code chip (tap to copy)
-                if (!group.inviteCode.isNullOrBlank()) {
-                    Surface(
-                        modifier = Modifier.clickable { onCopyCode() },
-                        color = FeltDark,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+            // Invite code row with copy & share actions (NO balance per hard rule)
+            if (!group.inviteCode.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            modifier = Modifier.clickable { onCopyCode() },
+                            color = DesignTokens.FeltDark,
+                            shape = RoundedCornerShape(DesignTokens.RadiusSM),
+                            border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.35f))
                         ) {
-                            Text(
-                                text = group.inviteCode,
-                                color = Gold,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = group.inviteCode,
+                                    color = DesignTokens.GoldAccent,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy code",
+                                    tint = DesignTokens.GoldAccent.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onShareCode,
+                            modifier = Modifier.size(26.dp)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy code",
-                                tint = Gold.copy(alpha = 0.7f),
-                                modifier = Modifier.size(12.dp)
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = DesignTokens.GoldAccent,
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     }
@@ -1105,6 +1237,139 @@ fun HomeGroupCard(
     }
 }
 
+// ---------------- HOME QUICK TABLE CARD COMPONENT ----------------
+@Composable
+fun HomeQuickTableCard(
+    table: PokerTable,
+    onTableClick: () -> Unit,
+    onCopyCode: () -> Unit,
+    onShareCode: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onTableClick() },
+        color = DesignTokens.FeltCard,
+        shape = RoundedCornerShape(DesignTokens.RadiusLG),
+        border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.35f)),
+        shadowElevation = 3.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = null,
+                        tint = DesignTokens.GoldAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = table.name,
+                        color = DesignTokens.CreamText,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Surface(
+                    color = if (table.status == "ACTIVE") DesignTokens.WinGreen.copy(alpha = 0.15f) else Color.DarkGray,
+                    shape = RoundedCornerShape(DesignTokens.RadiusFull),
+                    border = BorderStroke(0.8.dp, if (table.status == "ACTIVE") DesignTokens.WinGreen else Color.Gray)
+                ) {
+                    Text(
+                        text = table.status,
+                        color = if (table.status == "ACTIVE") DesignTokens.WinGreen else Color.LightGray,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!table.code.isNullOrBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.clickable { onCopyCode() },
+                            color = DesignTokens.FeltDark,
+                            shape = RoundedCornerShape(DesignTokens.RadiusSM),
+                            border = BorderStroke(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = table.code!!,
+                                    color = DesignTokens.GoldAccent,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy code",
+                                    tint = DesignTokens.GoldAccent.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onShareCode,
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = DesignTokens.GoldAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Unpublished • Local Table",
+                        color = DesignTokens.CreamMuted,
+                        fontSize = 11.sp
+                    )
+                }
+
+                if (table.chipValue != null) {
+                    Text(
+                        text = "Chip: $${table.chipValue}",
+                        color = DesignTokens.GoldAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ---------------- CREATE QUICK TABLE BOTTOM SHEET ----------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateQuickTableBottomSheet(
@@ -1124,9 +1389,9 @@ fun CreateQuickTableBottomSheet(
     ModalBottomSheet(
         onDismissRequest = { if (!isCreating) onDismiss() },
         sheetState = sheetState,
-        containerColor = FeltCard,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        containerColor = DesignTokens.FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = DesignTokens.GoldAccent) },
+        shape = RoundedCornerShape(topStart = DesignTokens.RadiusXL, topEnd = DesignTokens.RadiusXL)
     ) {
         Column(
             modifier = Modifier
@@ -1145,27 +1410,27 @@ fun CreateQuickTableBottomSheet(
                     tableName = it
                     if (error != null) error = null
                 },
-                label = { Text("Table Name", color = Cream.copy(alpha = 0.7f)) },
-                placeholder = { Text("e.g. Quick Game #1", color = Cream.copy(alpha = 0.4f)) },
+                label = { Text("Table Name", color = DesignTokens.CreamText.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. Quick Game #1", color = DesignTokens.CreamText.copy(alpha = 0.4f)) },
                 singleLine = true,
                 isError = error != null,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(DesignTokens.RadiusMD),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Gold,
-                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                    focusedTextColor = Cream,
-                    unfocusedTextColor = Cream,
-                    cursorColor = Gold,
-                    focusedContainerColor = FeltBackground,
-                    unfocusedContainerColor = FeltBackground
+                    focusedBorderColor = DesignTokens.GoldAccent,
+                    unfocusedBorderColor = DesignTokens.GoldAccent.copy(alpha = 0.4f),
+                    focusedTextColor = DesignTokens.CreamText,
+                    unfocusedTextColor = DesignTokens.CreamText,
+                    cursorColor = DesignTokens.GoldAccent,
+                    focusedContainerColor = DesignTokens.FeltGreen,
+                    unfocusedContainerColor = DesignTokens.FeltGreen
                 )
             )
             if (error != null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = error!!,
-                    color = LoseRed,
+                    color = DesignTokens.LoseRed,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.Start)
                 )
@@ -1177,7 +1442,7 @@ fun CreateQuickTableBottomSheet(
             Text(
                 text = "DEFAULT CHIP VALUE",
                 style = MaterialTheme.typography.labelSmall,
-                color = Gold.copy(alpha = 0.75f),
+                color = DesignTokens.GoldAccent.copy(alpha = 0.75f),
                 letterSpacing = 1.5.sp,
                 modifier = Modifier.align(Alignment.Start)
             )
@@ -1195,14 +1460,14 @@ fun CreateQuickTableBottomSheet(
                             .weight(1f)
                             .border(
                                 width = 1.dp,
-                                color = if (isSelected) Gold else Gold.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(10.dp)
+                                color = if (isSelected) DesignTokens.GoldAccent else DesignTokens.GoldAccent.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(DesignTokens.RadiusSM)
                             )
                             .clickable {
                                 chipValue = if (isSelected) "" else preset.toString()
                             },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isSelected) Gold.copy(alpha = 0.25f) else FeltBackground
+                        shape = RoundedCornerShape(DesignTokens.RadiusSM),
+                        color = if (isSelected) DesignTokens.GoldAccent.copy(alpha = 0.25f) else DesignTokens.FeltGreen
                     ) {
                         Box(
                             modifier = Modifier.padding(vertical = 8.dp),
@@ -1210,7 +1475,7 @@ fun CreateQuickTableBottomSheet(
                         ) {
                             Text(
                                 text = "$$preset",
-                                color = if (isSelected) Gold else Cream,
+                                color = if (isSelected) DesignTokens.GoldAccent else DesignTokens.CreamText,
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.labelMedium
                             )
@@ -1224,19 +1489,19 @@ fun CreateQuickTableBottomSheet(
             OutlinedTextField(
                 value = chipValue,
                 onValueChange = { chipValue = it.filter { c -> c.isDigit() } },
-                label = { Text("Custom Chip Value (optional)", color = Cream.copy(alpha = 0.7f)) },
+                label = { Text("Custom Chip Value (optional)", color = DesignTokens.CreamText.copy(alpha = 0.7f)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(DesignTokens.RadiusMD),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Gold,
-                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                    focusedTextColor = Cream,
-                    unfocusedTextColor = Cream,
-                    cursorColor = Gold,
-                    focusedContainerColor = FeltBackground,
-                    unfocusedContainerColor = FeltBackground
+                    focusedBorderColor = DesignTokens.GoldAccent,
+                    unfocusedBorderColor = DesignTokens.GoldAccent.copy(alpha = 0.4f),
+                    focusedTextColor = DesignTokens.CreamText,
+                    unfocusedTextColor = DesignTokens.CreamText,
+                    cursorColor = DesignTokens.GoldAccent,
+                    focusedContainerColor = DesignTokens.FeltGreen,
+                    unfocusedContainerColor = DesignTokens.FeltGreen
                 )
             )
 
@@ -1246,9 +1511,9 @@ fun CreateQuickTableBottomSheet(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+                    .border(1.dp, DesignTokens.GoldAccent.copy(alpha = 0.3f), RoundedCornerShape(DesignTokens.RadiusMD)),
+                shape = RoundedCornerShape(DesignTokens.RadiusMD),
+                colors = CardDefaults.cardColors(containerColor = DesignTokens.FeltGreen)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(
@@ -1260,23 +1525,23 @@ fun CreateQuickTableBottomSheet(
                             Text(
                                 text = "Entry Fee",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = Cream,
+                                color = DesignTokens.CreamText,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "Require entry fee for this game",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Cream.copy(alpha = 0.6f)
+                                color = DesignTokens.CreamMuted
                             )
                         }
                         Switch(
                             checked = hasEntryFee,
                             onCheckedChange = { hasEntryFee = it },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Gold,
-                                checkedTrackColor = Gold.copy(alpha = 0.5f),
-                                uncheckedThumbColor = Cream.copy(alpha = 0.5f),
-                                uncheckedTrackColor = Gold.copy(alpha = 0.2f)
+                                checkedThumbColor = DesignTokens.GoldAccent,
+                                checkedTrackColor = DesignTokens.GoldAccent.copy(alpha = 0.5f),
+                                uncheckedThumbColor = DesignTokens.CreamText.copy(alpha = 0.5f),
+                                uncheckedTrackColor = DesignTokens.GoldAccent.copy(alpha = 0.2f)
                             )
                         )
                     }
@@ -1286,19 +1551,19 @@ fun CreateQuickTableBottomSheet(
                         OutlinedTextField(
                             value = entryFeeAmount,
                             onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
-                            label = { Text("Entry Fee Amount", color = Cream.copy(alpha = 0.7f)) },
+                            label = { Text("Entry Fee Amount", color = DesignTokens.CreamText.copy(alpha = 0.7f)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(DesignTokens.RadiusMD),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Gold,
-                                unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                                focusedTextColor = Cream,
-                                unfocusedTextColor = Cream,
-                                cursorColor = Gold,
-                                focusedContainerColor = FeltCard,
-                                unfocusedContainerColor = FeltCard
+                                focusedBorderColor = DesignTokens.GoldAccent,
+                                unfocusedBorderColor = DesignTokens.GoldAccent.copy(alpha = 0.4f),
+                                focusedTextColor = DesignTokens.CreamText,
+                                unfocusedTextColor = DesignTokens.CreamText,
+                                cursorColor = DesignTokens.GoldAccent,
+                                focusedContainerColor = DesignTokens.FeltCard,
+                                unfocusedContainerColor = DesignTokens.FeltCard
                             )
                         )
                     }
