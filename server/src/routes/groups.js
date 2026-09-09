@@ -12,16 +12,15 @@ const { sendNotification } = require('../services/notifications');
  * (Requires Auth)
  * Create a new group with a unique 6-character invite code (creator = group ADMIN)
  */
-router.post('/create', authenticateToken, async (req, res) => {
+const handleCreateGroup = async (req, res) => {
     try {
-        const { name, mode } = req.body;
+        const { name } = req.body;
 
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Group name is required' });
         }
 
         const trimmedName = name.trim();
-        const groupMode = (mode && typeof mode === 'string' && mode.trim().toUpperCase() === 'ONLINE') ? 'ONLINE' : 'ONLINE';
         const groupId = crypto.randomUUID();
         const now = Date.now();
         const ownerUserId = req.user.id;
@@ -39,8 +38,8 @@ router.post('/create', authenticateToken, async (req, res) => {
         // Insert into groups table
         await run(
             `INSERT INTO groups (id, owner_user_id, name, invite_code, mode, created_by, created_at, server_id, updated_at, is_synced, is_deleted)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-            [groupId, ownerUserId, trimmedName, inviteCode, groupMode, ownerUserId, now, groupId, now]
+             VALUES (?, ?, ?, ?, 'ONLINE', ?, ?, ?, ?, 1, 0)`,
+            [groupId, ownerUserId, trimmedName, inviteCode, ownerUserId, now, groupId, now]
         );
 
         // Add creator to group_members with role = 'ADMIN'
@@ -54,13 +53,11 @@ router.post('/create', authenticateToken, async (req, res) => {
             message: 'Group created successfully',
             groupId,
             inviteCode,
-            mode: groupMode,
             group: {
                 id: groupId,
                 name: trimmedName,
                 invite_code: inviteCode,
                 owner_user_id: ownerUserId,
-                mode: groupMode,
                 created_at: now,
                 updated_at: now
             }
@@ -69,7 +66,10 @@ router.post('/create', authenticateToken, async (req, res) => {
         console.error('Error creating group:', error);
         return res.status(500).json({ error: 'Internal server error while creating group' });
     }
-});
+};
+
+router.post('/create', authenticateToken, handleCreateGroup);
+router.post('/', authenticateToken, handleCreateGroup);
 
 /**
  * POST /api/groups/import and POST /api/groups/publish

@@ -52,12 +52,10 @@ fun CreateGroupScreen(
     }
 
     var groupName by remember { mutableStateOf("") }
-    var selectedMode by remember { mutableStateOf("OFFLINE") } // "OFFLINE" or "ONLINE"
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var createdInviteCode by remember { mutableStateOf<String?>(null) }
     var createdGroupName by remember { mutableStateOf<String?>(null) }
-    var createdMode by remember { mutableStateOf<String>("OFFLINE") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var isCopied by remember { mutableStateOf(false) }
 
@@ -73,21 +71,14 @@ fun CreateGroupScreen(
         errorMessage = null
 
         coroutineScope.launch {
-            if (selectedMode == "ONLINE") {
-                if (!hasToken) {
-                    isLoading = false
-                    errorMessage = "Authentication required. Please log in as an Admin via Server Test first."
-                    return@launch
-                }
-
-                val result = remoteRepository.createGroup(groupName.trim(), "ONLINE")
+            if (hasToken) {
+                val result = remoteRepository.createGroup(groupName.trim())
                 isLoading = false
 
                 if (result.isSuccess) {
                     val data = result.getOrNull()
                     createdInviteCode = data?.inviteCode
                     createdGroupName = groupName.trim()
-                    createdMode = selectedMode
 
                     // Insert immediately into local Room database
                     pokerRepository?.createGroup(
@@ -103,14 +94,15 @@ fun CreateGroupScreen(
                     errorMessage = result.exceptionOrNull()?.message ?: "Failed to create group on server."
                 }
             } else {
-                // Offline group creation locally in Room
+                // Offline fallback in Room
+                val localId = java.util.UUID.randomUUID().toString()
                 pokerRepository?.createGroup(
                     name = groupName.trim(),
-                    mode = "OFFLINE"
+                    mode = "ONLINE",
+                    customId = localId
                 )
                 isLoading = false
                 createdGroupName = groupName.trim()
-                createdMode = "OFFLINE"
                 showSuccessDialog = true
             }
         }
@@ -212,7 +204,7 @@ fun CreateGroupScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = "Choose whether this group is run Offline on this device, or Online with server sync & player requests.",
+                            text = "Create a dedicated poker circle with a shared ledger and table history.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Cream.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center
@@ -261,90 +253,6 @@ fun CreateGroupScreen(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
                         )
-
-                        // Mode Selection (Offline vs Online)
-                        Text(
-                            text = "GROUP TYPE",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Gold,
-                            letterSpacing = 1.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // OFFLINE Option
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedMode = "OFFLINE" }
-                                    .border(
-                                        width = if (selectedMode == "OFFLINE") 2.dp else 1.dp,
-                                        color = if (selectedMode == "OFFLINE") Gold else Gold.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (selectedMode == "OFFLINE") Color(0xFF041C0E) else FeltCard
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "🎲 Offline (Local)",
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selectedMode == "OFFLINE") Gold else Cream.copy(alpha = 0.8f),
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Admin manages all tables directly on device.",
-                                        fontSize = 11.sp,
-                                        color = Cream.copy(alpha = 0.6f),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-
-                            // ONLINE Option
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedMode = "ONLINE" }
-                                    .border(
-                                        width = if (selectedMode == "ONLINE") 2.dp else 1.dp,
-                                        color = if (selectedMode == "ONLINE") Gold else Gold.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (selectedMode == "ONLINE") Color(0xFF041C0E) else FeltCard
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "🌐 Online (Sync)",
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selectedMode == "ONLINE") Gold else Cream.copy(alpha = 0.8f),
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Live requests + invite code for players.",
-                                        fontSize = 11.sp,
-                                        color = Cream.copy(alpha = 0.6f),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
 
                         if (errorMessage != null) {
                             Card(
@@ -410,17 +318,17 @@ fun CreateGroupScreen(
                     )
 
                     Text(
-                        text = if (createdMode == "ONLINE") {
-                            "Online Group Created! Share this invite code with players so they can join on their app or web dashboard:"
+                        text = if (createdInviteCode != null) {
+                            "Group Created! Share this invite code with players so they can join on their app or web dashboard:"
                         } else {
-                            "Offline Group Created! You can now create tables and record sessions directly."
+                            "Group Created! You can now create tables and record sessions directly."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = Cream.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center
                     )
 
-                    if (createdMode == "ONLINE" && createdInviteCode != null) {
+                    if (createdInviteCode != null) {
                         // Invite Code Display Box
                         Box(
                             modifier = Modifier

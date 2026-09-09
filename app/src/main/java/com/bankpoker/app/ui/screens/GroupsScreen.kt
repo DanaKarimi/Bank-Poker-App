@@ -263,8 +263,8 @@ fun GroupsScreen(
     if (showCreateGroupSheet) {
         CreateGroupBottomSheet(
             onDismiss = { showCreateGroupSheet = false },
-            onCreate = { name, mode, onSuccess, onError ->
-                viewModel.createGroup(name, mode, onSuccess, onError)
+            onCreate = { name, onSuccess, onError ->
+                viewModel.createGroup(name, onSuccess, onError)
             }
         )
     }
@@ -411,7 +411,7 @@ fun GroupCard(
 @Composable
 fun CreateGroupBottomSheet(
     onDismiss: () -> Unit,
-    onCreate: (name: String, mode: String, onSuccess: (PlayerGroup) -> Unit, onError: (String) -> Unit) -> Unit
+    onCreate: (name: String, onSuccess: (PlayerGroup) -> Unit, onError: (String) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -550,7 +550,6 @@ fun CreateGroupBottomSheet(
 
                     onCreate(
                         trimmed,
-                        "ONLINE",
                         { createdGroup ->
                             isSubmitting = false
                             if (createdGroup.inviteCode != null) {

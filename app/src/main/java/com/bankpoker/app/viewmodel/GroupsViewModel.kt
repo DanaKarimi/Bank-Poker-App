@@ -46,14 +46,13 @@ class GroupsViewModel(
 
     fun createGroup(
         name: String,
-        mode: String = "ONLINE",
         onSuccess: ((PlayerGroup) -> Unit)? = null,
         onError: ((String) -> Unit)? = null
     ) {
         viewModelScope.launch {
             val trimmed = name.trim()
             if (remoteRepository != null) {
-                val result = remoteRepository.createGroup(trimmed, "ONLINE")
+                val result = remoteRepository.createGroup(trimmed)
                 if (result.isSuccess) {
                     val response = result.getOrNull()
                     val serverGroupId = response?.groupId

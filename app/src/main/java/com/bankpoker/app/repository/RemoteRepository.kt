@@ -255,9 +255,9 @@ class RemoteRepository(
     /**
      * Create a new remote group on the server (Admin only)
      */
-    suspend fun createGroup(name: String, mode: String = "OFFLINE"): Result<CreateGroupResponse> = withContext(Dispatchers.IO) {
+    suspend fun createGroup(name: String): Result<CreateGroupResponse> = withContext(Dispatchers.IO) {
         try {
-            val request = CreateGroupRequest(name.trim(), mode)
+            val request = CreateGroupRequest(name.trim())
             val response = apiService.createGroup(request, getAuthHeader())
 
             if (response.isSuccessful && response.body() != null) {
