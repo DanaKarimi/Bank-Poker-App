@@ -35,7 +35,7 @@ import ProfileModal from '../components/ProfileModal';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 import { getSocket } from '../socket';
 
-const CHIP_PRESETS = [50, 100, 200, 500];
+const CHIP_PRESETS = [5, 10, 25, 50, 100];
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -70,16 +70,27 @@ const Dashboard = () => {
   const [createGroupLoading, setCreateGroupLoading] = useState(false);
   const [createGroupError, setCreateGroupError] = useState('');
 
-  // Quick Table State
+  // Quick Table State (chip value defaults to null/empty)
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
   const [quickTableName, setQuickTableName] = useState('');
-  const [quickChipPreset, setQuickChipPreset] = useState(100);
+  const [quickChipPreset, setQuickChipPreset] = useState(null);
   const [quickChipCustom, setQuickChipCustom] = useState('');
   const [quickHasEntryFee, setQuickHasEntryFee] = useState(false);
   const [quickEntryFeeAmount, setQuickEntryFeeAmount] = useState('');
   const [quickPlayerNames, setQuickPlayerNames] = useState('');
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState('');
+
+  const openQuickModal = () => {
+    setQuickTableName('');
+    setQuickChipPreset(null);
+    setQuickChipCustom('');
+    setQuickHasEntryFee(false);
+    setQuickEntryFeeAmount('');
+    setQuickPlayerNames('');
+    setQuickError('');
+    setIsQuickModalOpen(true);
+  };
 
   // Action Menu Bottom Sheet / Modal for FAB (+)
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
@@ -212,7 +223,7 @@ const Dashboard = () => {
 
       const effectiveChipValue = quickChipCustom
         ? Number(quickChipCustom)
-        : Number(quickChipPreset) || 100;
+        : (quickChipPreset != null ? Number(quickChipPreset) : null);
 
       const numEntryFee = quickHasEntryFee && quickEntryFeeAmount
         ? Number(quickEntryFeeAmount)
@@ -228,6 +239,7 @@ const Dashboard = () => {
 
       setIsQuickModalOpen(false);
       setQuickTableName('');
+      setQuickChipPreset(null);
       setQuickChipCustom('');
       setQuickHasEntryFee(false);
       setQuickEntryFeeAmount('');
@@ -723,16 +735,7 @@ const Dashboard = () => {
 
             <button
               type="button"
-              onClick={() => {
-                setQuickTableName('');
-                setQuickChipPreset(100);
-                setQuickChipCustom('');
-                setQuickHasEntryFee(false);
-                setQuickEntryFeeAmount('');
-                setQuickPlayerNames('');
-                setQuickError('');
-                setIsQuickModalOpen(true);
-              }}
+              onClick={openQuickModal}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent text-xs font-bold uppercase rounded-xl shadow transition active:scale-95 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-gold-accent" />
@@ -795,16 +798,7 @@ const Dashboard = () => {
 
             {/* Start Instant Table Action Card */}
             <div
-              onClick={() => {
-                setQuickTableName('');
-                setQuickChipPreset(100);
-                setQuickChipCustom('');
-                setQuickHasEntryFee(false);
-                setQuickEntryFeeAmount('');
-                setQuickPlayerNames('');
-                setQuickError('');
-                setIsQuickModalOpen(true);
-              }}
+              onClick={openQuickModal}
               className="bg-felt-card/40 border-2 border-dashed border-gold-accent/40 hover:border-gold-accent hover:bg-felt-card/60 rounded-2xl p-6 shadow transition cursor-pointer flex flex-col items-center justify-center text-center group min-h-[160px]"
             >
               <div className="w-10 h-10 rounded-full bg-gold-accent/15 border border-gold-accent/40 flex items-center justify-center mb-2 group-hover:scale-110 transition">
@@ -868,7 +862,7 @@ const Dashboard = () => {
                 type="button"
                 onClick={() => {
                   setIsActionMenuOpen(false);
-                  setIsQuickModalOpen(true);
+                  openQuickModal();
                 }}
                 className="w-full p-3.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 rounded-xl flex items-center gap-3 text-left transition cursor-pointer active:scale-98"
               >
@@ -1270,57 +1264,61 @@ const Dashboard = () => {
 
       {/* Quick Table Creation Modal (mirrors Android CreateQuickTableBottomSheet) */}
       {isQuickModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-felt-card border-t-2 sm:border-2 border-gold-accent rounded-t-[28px] sm:rounded-[28px] w-full max-w-lg p-6 sm:p-8 shadow-2xl relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            {/* Mobile Sheet Drag Handle */}
+            <div className="w-12 h-1.5 bg-gold-accent/60 rounded-full mx-auto mb-4 sm:hidden" />
+
+            {/* Close Button */}
             <button
+              type="button"
               onClick={() => setIsQuickModalOpen(false)}
-              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
+              className="absolute top-5 right-5 text-cream-text/60 hover:text-cream-text p-1.5 rounded-xl hover:bg-felt-green/60 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
-                <Zap className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
-                  Create Quick Table
-                </h3>
-                <p className="text-xs text-cream-text/60">
-                  Instant standalone session with shareable code
-                </p>
-              </div>
+            {/* Section Header (Matches Android SectionHeader "NEW QUICK TABLE" ♠) */}
+            <div className="flex items-center gap-2 mb-6 pr-8">
+              <span className="text-gold-accent font-bold text-base">♠</span>
+              <h3 className="text-sm font-bold text-cream-text uppercase tracking-[2px]">
+                NEW QUICK TABLE
+              </h3>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-gold-accent/50 to-transparent ml-2" />
             </div>
 
             {quickError && (
-              <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
+              <div className="mb-4 p-3 bg-red-950/80 border border-red-500/60 rounded-xl text-red-200 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
                 <span>{quickError}</span>
               </div>
             )}
 
             <form onSubmit={handleCreateQuickTable} className="space-y-4">
+              {/* Table Name */}
               <div>
-                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-cream-text/70 mb-1.5">
                   Table Name
                 </label>
                 <input
                   type="text"
                   value={quickTableName}
-                  onChange={(e) => setQuickTableName(e.target.value)}
-                  placeholder="e.g. Quick Cash Game"
+                  onChange={(e) => {
+                    setQuickTableName(e.target.value);
+                    if (quickError) setQuickError('');
+                  }}
+                  placeholder="e.g. Quick Game #1"
                   maxLength={40}
-                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                  className="w-full px-4 py-3 bg-felt-green border border-gold-accent/40 rounded-xl text-cream-text font-medium text-sm focus:outline-none focus:border-gold-accent focus:ring-1 focus:ring-gold-accent transition placeholder:text-cream-text/40"
                 />
               </div>
 
-              {/* Chip Value Presets */}
+              {/* Default Chip Value (Optional presets + custom input) */}
               <div>
-                <label className="block text-[10px] font-bold text-gold-accent/80 uppercase tracking-wider mb-1.5">
-                  DEFAULT BUY-IN / CHIP VALUE
-                </label>
-                <div className="grid grid-cols-4 gap-2 mb-2">
+                <span className="block text-[11px] font-bold text-gold-accent/75 tracking-[1.5px] uppercase mb-2">
+                  DEFAULT CHIP VALUE
+                </span>
+                <div className="grid grid-cols-5 gap-2 mb-2.5">
                   {CHIP_PRESETS.map((preset) => {
                     const isSelected = quickChipPreset === preset && !quickChipCustom;
                     return (
@@ -1328,13 +1326,18 @@ const Dashboard = () => {
                         key={preset}
                         type="button"
                         onClick={() => {
-                          setQuickChipPreset(preset);
-                          setQuickChipCustom('');
+                          if (quickChipPreset === preset && !quickChipCustom) {
+                            setQuickChipPreset(null);
+                            setQuickChipCustom('');
+                          } else {
+                            setQuickChipPreset(preset);
+                            setQuickChipCustom('');
+                          }
                         }}
-                        className={`py-2 px-1 rounded-xl text-xs font-black transition border cursor-pointer ${
+                        className={`py-2 px-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
                           isSelected
-                            ? 'bg-gold-accent text-black border-gold-accent shadow'
-                            : 'bg-felt-dark text-cream-text border-gold-accent/30 hover:border-gold-accent/60'
+                            ? 'bg-gold-accent/25 border-gold-accent text-gold-accent shadow-sm'
+                            : 'bg-felt-green border-gold-accent/30 text-cream-text hover:border-gold-accent/60'
                         }`}
                       >
                         ${preset}
@@ -1346,35 +1349,41 @@ const Dashboard = () => {
                 <input
                   type="number"
                   value={quickChipCustom}
-                  onChange={(e) => setQuickChipCustom(e.target.value)}
+                  onChange={(e) => {
+                    setQuickChipCustom(e.target.value);
+                    setQuickChipPreset(null);
+                  }}
                   placeholder="Custom Chip Value (optional)"
-                  className="w-full px-4 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
+                  className="w-full px-4 py-2.5 bg-felt-green border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent transition placeholder:text-cream-text/40"
                 />
               </div>
 
-              {/* Entry Fee Toggle & Input */}
-              <div className="p-3.5 bg-felt-dark/80 border border-gold-accent/30 rounded-xl space-y-3">
+              {/* Entry Fee Toggle Card */}
+              <div className="p-4 bg-felt-green border border-gold-accent/30 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-bold text-cream-text block">Entry Fee</span>
-                    <span className="text-[11px] text-cream-text/60">Require entry fee for this game</span>
+                    <span className="text-sm font-bold text-cream-text block">Entry Fee</span>
+                    <span className="text-xs text-cream-muted">Require entry fee for this game</span>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={quickHasEntryFee}
-                    onChange={(e) => setQuickHasEntryFee(e.target.checked)}
-                    className="w-4 h-4 accent-[#d4af37] rounded cursor-pointer"
-                  />
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={quickHasEntryFee}
+                      onChange={(e) => setQuickHasEntryFee(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gold-accent/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-cream-text/70 peer-checked:after:bg-gold-accent after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold-accent/50 border border-gold-accent/40"></div>
+                  </label>
                 </div>
 
                 {quickHasEntryFee && (
-                  <div>
+                  <div className="pt-1">
                     <input
                       type="number"
                       value={quickEntryFeeAmount}
                       onChange={(e) => setQuickEntryFeeAmount(e.target.value)}
                       placeholder="Entry Fee Amount"
-                      className="w-full px-3 py-2 bg-felt-card border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
+                      className="w-full px-4 py-2.5 bg-felt-card border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent transition placeholder:text-cream-text/40"
                     />
                   </div>
                 )}
@@ -1382,7 +1391,7 @@ const Dashboard = () => {
 
               {/* Initial Players */}
               <div>
-                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-cream-text/70 mb-1.5">
                   Initial Player Names (optional)
                 </label>
                 <input
@@ -1390,27 +1399,29 @@ const Dashboard = () => {
                   value={quickPlayerNames}
                   onChange={(e) => setQuickPlayerNames(e.target.value)}
                   placeholder="e.g. Arash, Reza, Ali (comma separated)"
-                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                  className="w-full px-4 py-2.5 bg-felt-green border border-gold-accent/40 rounded-xl text-cream-text font-medium text-sm focus:outline-none focus:border-gold-accent transition placeholder:text-cream-text/40"
                 />
                 <p className="text-[11px] text-cream-text/50 mt-1">
                   Optional. Comma-separated names to auto-seat at the table.
                 </p>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              {/* Action Buttons: Cancel and CREATE & ENTER (Matches Android GoldGradientButton) */}
+              <div className="pt-3 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setIsQuickModalOpen(false)}
-                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                  className="px-5 py-3.5 bg-felt-green border border-gold-accent/30 text-cream-text/80 hover:text-cream-text font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={quickLoading}
-                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="flex-1 py-3.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] font-black text-sm uppercase tracking-widest rounded-xl shadow-lg hover:brightness-110 active:scale-[0.99] transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
-                  {quickLoading ? 'Creating...' : 'Start Table'}
+                  <span className="text-base">♠</span>
+                  <span>{quickLoading ? 'CREATING...' : 'CREATE & ENTER'}</span>
                 </button>
               </div>
             </form>

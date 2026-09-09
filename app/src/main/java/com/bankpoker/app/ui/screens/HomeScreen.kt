@@ -1378,7 +1378,7 @@ fun CreateQuickTableBottomSheet(
     onCreateTable: (String, Long?, Boolean, Long?) -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
-    var chipValue by remember { mutableStateOf("100") }
+    var chipValue by remember { mutableStateOf("") }
     var hasEntryFee by remember { mutableStateOf(false) }
     var entryFeeAmount by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
