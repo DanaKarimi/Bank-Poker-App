@@ -722,21 +722,6 @@ fun PlayersTab(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = onAddPlayer,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = FeltCard,
-                            contentColor = Gold
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp)
-                    ) {
-                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Player", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Button(
                         onClick = onDirectBuyInClick,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
