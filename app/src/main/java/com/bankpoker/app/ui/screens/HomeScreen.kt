@@ -278,32 +278,6 @@ fun HomeScreen(
                         )
                     }
                 },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            refreshConnection()
-                            onServerTestClick()
-                        }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .background(
-                                    color = if (isConnected) Color(0xFF10B981) else Color(0xFFEF4444),
-                                    shape = CircleShape
-                                )
-                                .border(BorderStroke(1.dp, Color.White), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Public,
-                                contentDescription = "Server Connection Status",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                },
                 actions = {
                     // Super Admin Control Plane button (Parity with Web Header)
                     if (isLoggedIn && userRole == "SUPER_ADMIN") {
