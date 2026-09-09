@@ -82,6 +82,7 @@ const Dashboard = () => {
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
   const [quickTableName, setQuickTableName] = useState('');
   const [quickDefaultBuyIn, setQuickDefaultBuyIn] = useState('100000');
+  const [quickPlayerNames, setQuickPlayerNames] = useState('');
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState('');
 
@@ -90,11 +91,19 @@ const Dashboard = () => {
     setQuickLoading(true);
     setQuickError('');
     try {
+      const parsedPlayers = quickPlayerNames
+        .split(/[,\n]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+
       const res = await createQuickTable({
         name: quickTableName.trim() || 'Quick Table',
+        chipValue: Number(quickDefaultBuyIn) || 100000,
         default_buy_in: Number(quickDefaultBuyIn) || 100000,
+        playerNames: parsedPlayers,
       });
       setIsQuickModalOpen(false);
+      setQuickPlayerNames('');
       if (res.data?.table?.id) {
         navigate(`/table/${res.data.table.id}`);
       }
@@ -972,6 +981,22 @@ const Dashboard = () => {
                 />
                 <p className="text-[11px] text-cream-text/50 mt-1">
                   A unique 6-character code will be generated to share with other players.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Initial Player Names (optional)
+                </label>
+                <input
+                  type="text"
+                  value={quickPlayerNames}
+                  onChange={(e) => setQuickPlayerNames(e.target.value)}
+                  placeholder="e.g. Arash, Reza, Ali (comma separated)"
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+                <p className="text-[11px] text-cream-text/50 mt-1">
+                  Optional. Comma-separated names to auto-seat at the table.
                 </p>
               </div>
 

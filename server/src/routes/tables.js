@@ -42,7 +42,7 @@ async function generateUniqueTableCode() {
  */
 router.post('/quick', authenticateToken, async (req, res) => {
     try {
-        const { name, chipValue, entryFee, playerNames = [] } = req.body;
+        const { name, chipValue, entryFee } = req.body;
         const userId = req.user.id;
 
         if (!name || !name.trim()) {
@@ -51,7 +51,8 @@ router.post('/quick', authenticateToken, async (req, res) => {
 
         const tableId = crypto.randomUUID();
         const now = Date.now();
-        const numChipValue = chipValue != null && !isNaN(Number(chipValue)) ? Number(chipValue) : null;
+        const rawChipValue = chipValue != null ? chipValue : (req.body.default_buy_in != null ? req.body.default_buy_in : req.body.defaultBuyIn);
+        const numChipValue = rawChipValue != null && !isNaN(Number(rawChipValue)) ? Number(rawChipValue) : null;
         const numEntryFee = entryFee != null && !isNaN(Number(entryFee)) ? Number(entryFee) : null;
         const hasEntryFee = numEntryFee != null && numEntryFee > 0 ? 1 : 0;
 
@@ -63,18 +64,31 @@ router.post('/quick', authenticateToken, async (req, res) => {
         );
 
         // Add initial players if provided
+        let namesToProcess = [];
+        if (Array.isArray(req.body.playerNames)) {
+            namesToProcess = req.body.playerNames;
+        } else if (Array.isArray(req.body.players)) {
+            namesToProcess = req.body.players;
+        } else if (typeof req.body.playerNames === 'string') {
+            namesToProcess = req.body.playerNames.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+        } else if (req.body.playerName) {
+            namesToProcess = [req.body.playerName];
+        } else if (req.body.player_name) {
+            namesToProcess = [req.body.player_name];
+        }
+
         const createdPlayers = [];
-        if (Array.isArray(playerNames)) {
-            for (const pName of playerNames) {
-                if (pName && pName.trim()) {
-                    const pId = crypto.randomUUID();
-                    await run(
-                        `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
-                         VALUES (?, ?, NULL, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                        [pId, tableId, pName.trim(), now, pId, now]
-                    );
-                    createdPlayers.push({ id: pId, name: pName.trim() });
-                }
+        for (const p of namesToProcess) {
+            const pName = typeof p === 'string' ? p.trim() : (p?.name || p?.playerName || '').trim();
+            if (pName) {
+                const pId = crypto.randomUUID();
+                const pUserId = (p?.userId || p?.user_id) || (pName.toLowerCase() === req.user.username?.toLowerCase() ? userId : null);
+                await run(
+                    `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
+                    [pId, tableId, pUserId, pName, now, pId, now]
+                );
+                createdPlayers.push({ id: pId, name: pName, userId: pUserId });
             }
         }
 
@@ -87,10 +101,16 @@ router.post('/quick', authenticateToken, async (req, res) => {
                 name: name.trim(),
                 code: null, // Code remains NULL and hidden until published
                 chip_value: numChipValue,
+                chipValue: numChipValue,
                 has_entry_fee: Boolean(hasEntryFee),
                 entry_fee: numEntryFee,
                 status: 'ACTIVE',
                 creator_user_id: userId,
+                creatorUserId: userId,
+                host_id: userId,
+                hostId: userId,
+                isHost: true,
+                isQuickTable: true,
                 created_at: now,
                 published_at: null,
                 players: createdPlayers
@@ -845,6 +865,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
         }
 
         const isClosed = table.status === 'CLOSED';
+        const isHost = Boolean(userId && table.creator_user_id === userId);
+        const isQuickTable = !table.group_id;
         const formattedTable = {
             id: table.id,
             groupId: table.group_id,
@@ -860,7 +882,13 @@ router.get('/:id', authenticateToken, async (req, res) => {
             createdAt: table.created_at,
             closedAt: table.closed_at,
             publishedAt: table.published_at,
-            playerCount: Number(table.playerCount) || 0
+            playerCount: Number(table.playerCount) || 0,
+            creator_user_id: table.creator_user_id,
+            creatorUserId: table.creator_user_id,
+            host_id: table.creator_user_id,
+            hostId: table.creator_user_id,
+            isHost,
+            isQuickTable
         };
 
         return res.status(200).json({ table: formattedTable });

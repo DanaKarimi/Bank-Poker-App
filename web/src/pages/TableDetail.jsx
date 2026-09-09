@@ -87,12 +87,17 @@ const TableDetail = () => {
     if (!isBackground) setLoading(true);
 
     try {
+      const effectiveGroupId = groupId || table?.groupId;
+      const requestsPromise = effectiveGroupId
+        ? getMyRequests(effectiveGroupId, tableId)
+        : Promise.resolve({ data: { joinRequests: [], buyInRequests: [], exitRequests: [] } });
+
       const [tableRes, statusRes, playersRes, activityRes, requestsRes] = await Promise.allSettled([
         getTableDetail(tableId),
         getTableStatus(tableId),
         getPlayers(tableId),
         getTableActivity(tableId),
-        getMyRequests(groupId, tableId),
+        requestsPromise,
       ]);
 
       let currentTableObj = null;
@@ -328,8 +333,17 @@ const TableDetail = () => {
       const amt = Number(typeof payload === 'object' ? payload.amount : payload);
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
-      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || table?.host_id === user?.id || table?.isHost;
-      if (isHostOrAdmin || targetName !== user?.username) {
+      const effectiveGroupId = groupId || table?.groupId;
+      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || 
+                            table?.host_id === user?.id || 
+                            table?.hostId === user?.id || 
+                            table?.creator_user_id === user?.id || 
+                            table?.creatorUserId === user?.id || 
+                            table?.isHost || 
+                            table?.isQuickTable || 
+                            !effectiveGroupId;
+
+      if (isHostOrAdmin || !effectiveGroupId || targetName !== user?.username) {
         await directBuyIn(tableId, {
           playerId: pId,
           name: targetName,
@@ -339,7 +353,7 @@ const TableDetail = () => {
         });
         setSuccessMessage(`Buy-in of ${amt.toLocaleString()} chips recorded for ${targetName}!`);
       } else {
-        await sendBuyInRequest(groupId, tableId, amt, nt);
+        await sendBuyInRequest(effectiveGroupId, tableId, amt, nt);
         setSuccessMessage(`Buy-in request for ${amt.toLocaleString()} chips submitted successfully!`);
       }
       fetchTableData(true);
@@ -357,8 +371,17 @@ const TableDetail = () => {
       const amt = Number(typeof payload === 'object' ? payload.amount : payload);
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
-      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || table?.host_id === user?.id || table?.isHost;
-      if (isHostOrAdmin || targetName !== user?.username) {
+      const effectiveGroupId = groupId || table?.groupId;
+      const isHostOrAdmin = user?.role === 'SUPER_ADMIN' || 
+                            table?.host_id === user?.id || 
+                            table?.hostId === user?.id || 
+                            table?.creator_user_id === user?.id || 
+                            table?.creatorUserId === user?.id || 
+                            table?.isHost || 
+                            table?.isQuickTable || 
+                            !effectiveGroupId;
+
+      if (isHostOrAdmin || !effectiveGroupId || targetName !== user?.username) {
         await directExit(tableId, {
           playerId: pId,
           name: targetName,
@@ -368,7 +391,7 @@ const TableDetail = () => {
         });
         setSuccessMessage(`Exit of ${amt.toLocaleString()} chips recorded for ${targetName}!`);
       } else {
-        await sendExitRequest(groupId, tableId, amt, nt);
+        await sendExitRequest(effectiveGroupId, tableId, amt, nt);
         setSuccessMessage(`Exit cashout request for ${amt.toLocaleString()} chips submitted successfully!`);
       }
       fetchTableData(true);
