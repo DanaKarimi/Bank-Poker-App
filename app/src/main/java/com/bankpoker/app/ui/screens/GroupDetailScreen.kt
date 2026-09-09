@@ -100,7 +100,6 @@ fun GroupDetailScreen(
     var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     val coroutineScope = rememberCoroutineScope()
 
-    val isOffline by viewModel.isOffline.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
 
@@ -315,15 +314,9 @@ fun GroupDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        text = "BALANCES",
+                        text = "STATS",
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        modifier = Modifier.weight(1f)
-                    )
-                    TabButton(
-                        text = "STATS",
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -342,8 +335,7 @@ fun GroupDetailScreen(
                             onTableClick = onTableClick,
                             onTableLongClick = { table -> selectedTableForAction = table }
                         )
-                        1 -> BalancesTab(balances = balances, isOffline = isOffline)
-                        2 -> GroupStatsTab(
+                        1 -> GroupStatsTab(
                             tables = tables,
                             balances = balances,
                             serverSettlement = serverSettlement,
@@ -695,99 +687,6 @@ fun TableCardSimple(
                     color = Gold
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun BalancesTab(
-    balances: List<GroupBalance>,
-    isOffline: Boolean = false
-) {
-    if (balances.isEmpty()) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = "No balances yet",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Cream.copy(alpha = 0.6f)
-            )
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (isOffline) {
-                item {
-                    Surface(
-                        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Showing offline cached balances",
-                            color = Color(0xFFF59E0B),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-            items(balances) { balance ->
-                BalanceCard(balance = balance)
-            }
-        }
-    }
-}
-
-@Composable
-fun BalanceCard(
-    balance: GroupBalance
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                width = 1.5.dp,
-                color = Gold.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .animateContentSize(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = FeltCard
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            UserBadge(
-                displayName = balance.playerName,
-                username = null,
-                avatarId = null,
-                avatarSize = 38.dp,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Text(
-                text = "$${balance.balance}",
-                style = MaterialTheme.typography.titleMedium,
-                color = if (balance.balance >= 0) WinGreen else LoseRed,
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }

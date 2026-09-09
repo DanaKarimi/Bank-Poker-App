@@ -346,63 +346,6 @@ fun GroupCard(
                     )
                 }
             }
-
-            if (serverGroup != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (serverGroup.isStale) {
-                        Surface(
-                            color = Color(0xFFF59E0B).copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.5f))
-                        ) {
-                            Text(
-                                text = "stale",
-                                color = Color(0xFFF59E0B),
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                    val net = serverGroup.netBalance
-                    Surface(
-                        color = when {
-                            net > 0 -> WinGreen.copy(alpha = 0.2f)
-                            net < 0 -> LoseRed.copy(alpha = 0.2f)
-                            else -> FeltDark
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            when {
-                                net > 0 -> WinGreen
-                                net < 0 -> LoseRed
-                                else -> Cream.copy(alpha = 0.2f)
-                            }
-                        )
-                    ) {
-                        Text(
-                            text = when {
-                                net > 0 -> "+$net"
-                                net < 0 -> "$net"
-                                else -> "0"
-                            },
-                            color = when {
-                                net > 0 -> WinGreen
-                                net < 0 -> LoseRed
-                                else -> Cream.copy(alpha = 0.8f)
-                            },
-                            fontWeight = FontWeight.Black,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }
