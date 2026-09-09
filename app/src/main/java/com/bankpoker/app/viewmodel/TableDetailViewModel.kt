@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -29,7 +30,9 @@ class TableDetailViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    val players: Flow<List<Player>> = repository.getPlayersByTableId(tableId)
+    val players: Flow<List<Player>> = repository.getPlayersByTableId(tableId).map { list ->
+        list.distinctBy { it.id }
+    }
     val buyIns: Flow<List<BuyIn>> = repository.getBuyInsByTableId(tableId)
     val exitRecords: Flow<List<ExitRecord>> = repository.getExitRecordsByTableId(tableId)
     val savedPlayerNames: Flow<List<String>> = MutableStateFlow<List<String>>(emptyList()).also { flow ->
@@ -146,7 +149,16 @@ class TableDetailViewModel(
                         player
                     }
                     if (roomPlayers.isNotEmpty()) {
-                        repository.insertOrUpdatePlayers(roomPlayers)
+                        val localPlayers = repository.getPlayersForTableOnce(tableId)
+                        val serverIds = roomPlayers.map { it.id }.toSet()
+                        val serverNames = roomPlayers.map { it.name.trim().lowercase() }.toSet()
+                        localPlayers.forEach { localP ->
+                            if (!serverIds.contains(localP.id) && serverNames.contains(localP.name.trim().lowercase())) {
+                                Log.d("TableDetail", "Removing duplicate local player ${localP.name} (${localP.id}) in favor of server player")
+                                repository.deletePlayer(localP.id)
+                            }
+                        }
+                        repository.insertOrUpdatePlayers(roomPlayers.distinctBy { it.id })
                     }
                 } else {
                     Log.w("TableDetail", "Failed to fetch players: ${playersResult.exceptionOrNull()?.message}")
@@ -249,6 +261,25 @@ class TableDetailViewModel(
             if (isTableOnline()) {
                 val remoteResult = remoteRepository?.addTablePlayer(tableId, cleanName)
                 if (remoteResult != null && remoteResult.isSuccess) {
+                    val serverPlayerObj = remoteResult.getOrNull()?.getAsJsonObject("player")
+                    val serverPlayerId = serverPlayerObj?.get("id")?.asString
+                    if (serverPlayerId != null) {
+                        val localDuplicates = repository.getPlayersForTableOnce(tableId).filter {
+                            it.name.equals(cleanName, ignoreCase = true)
+                        }
+                        localDuplicates.filter { it.id != serverPlayerId }.forEach {
+                            repository.deletePlayer(it.id)
+                        }
+                        repository.insertOrUpdatePlayers(listOf(
+                            Player(
+                                id = serverPlayerId,
+                                tableId = tableId,
+                                name = cleanName,
+                                status = "PLAYING",
+                                createdAt = System.currentTimeMillis()
+                            )
+                        ))
+                    }
                     onResult?.invoke(true, null)
                 } else {
                     val errorMsg = remoteResult?.exceptionOrNull()?.message
@@ -456,12 +487,32 @@ class TableDetailViewModel(
      */
     fun closeTable(onResult: ((Boolean, String?) -> Unit)? = null) {
         viewModelScope.launch {
+            // Clean up any duplicate players in Room before applying close calculations
+            val playersBeforeClose = repository.getPlayersForTableOnce(tableId)
+            val uniquePlayers = playersBeforeClose.distinctBy { it.name.trim().lowercase() }
+            if (playersBeforeClose.size > uniquePlayers.size) {
+                Log.w("TableDetail", "Duplicate players found before close: ${playersBeforeClose.size} -> ${uniquePlayers.size}. Cleaning up.")
+                val keepIds = uniquePlayers.map { it.id }.toSet()
+                playersBeforeClose.filterNot { keepIds.contains(it.id) }.forEach { dup ->
+                    repository.deletePlayer(dup.id)
+                }
+            }
+
             if (isTableOnline()) {
                 Log.d("TableDetail", "ONLINE mode: closing table on server: $tableId")
                 val result = remoteRepository?.closeTable(tableId)
                 if (result != null && result.isSuccess) {
                     Log.d("TableDetail", "Server close success. Updating local Room table.")
                     repository.closeTableAndApplyToGroup(tableId)
+
+                    // Post-close assertion: player list has exactly N unique players
+                    val playersAfterClose = repository.getPlayersForTableOnce(tableId)
+                    val distinctById = playersAfterClose.distinctBy { it.id }
+                    assert(playersAfterClose.size == distinctById.size) {
+                        "Duplicate players detected after table close! Total: ${playersAfterClose.size}, Unique: ${distinctById.size}"
+                    }
+                    Log.d("TableDetail", "Table close assertion passed: exactly ${distinctById.size} unique players present.")
+
                     loadTableData()
                     onRefreshCounts?.invoke()
                     val table = repository.getTableById(tableId)
@@ -488,6 +539,15 @@ class TableDetailViewModel(
                 Log.d("TableDetail", "Using local only for OFFLINE group: closing table locally: $tableId")
                 try {
                     repository.closeTableAndApplyToGroup(tableId)
+
+                    // Post-close assertion: player list has exactly N unique players
+                    val playersAfterClose = repository.getPlayersForTableOnce(tableId)
+                    val distinctById = playersAfterClose.distinctBy { it.id }
+                    assert(playersAfterClose.size == distinctById.size) {
+                        "Duplicate players detected after table close! Total: ${playersAfterClose.size}, Unique: ${distinctById.size}"
+                    }
+                    Log.d("TableDetail", "Table close assertion passed: exactly ${distinctById.size} unique players present.")
+
                     loadTableData()
                     onRefreshCounts?.invoke()
                     onResult?.invoke(true, null)

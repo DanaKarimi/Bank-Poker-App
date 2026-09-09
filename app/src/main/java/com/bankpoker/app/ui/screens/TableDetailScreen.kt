@@ -90,7 +90,8 @@ fun TableDetailScreen(
     onNavigateToRequests: ((String, String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val players by viewModel.players.collectAsState(initial = emptyList())
+    val rawPlayers by viewModel.players.collectAsState(initial = emptyList())
+    val players = remember(rawPlayers) { rawPlayers.distinctBy { it.id } }
     val buyIns by viewModel.buyIns.collectAsState(initial = emptyList())
     val exitRecords by viewModel.exitRecords.collectAsState(initial = emptyList())
     val context = LocalContext.current
@@ -698,8 +699,9 @@ fun PlayersTab(
         return buy - exit
     }
 
-    val sortedPlayersWithRank = remember(players, buyIns, exitRecords) {
-        players.sortedByDescending { balanceOf(it.id) }.mapIndexed { index, player ->
+    val deduplicatedPlayers = remember(players) { players.distinctBy { it.id } }
+    val sortedPlayersWithRank = remember(deduplicatedPlayers, buyIns, exitRecords) {
+        deduplicatedPlayers.sortedByDescending { balanceOf(it.id) }.mapIndexed { index, player ->
             Pair(player, index + 1)
         }
     }
@@ -1486,9 +1488,11 @@ fun ResultsTab(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
+    val deduplicatedPlayers = remember(players) { players.distinctBy { it.id } }
+
     // Calculate results for each player
-    val playerResults = remember(players, buyIns, exitRecords) {
-        players.map { player ->
+    val playerResults = remember(deduplicatedPlayers, buyIns, exitRecords) {
+        deduplicatedPlayers.map { player ->
             val totalBuyIns = buyIns.filter { it.playerId == player.id }.sumOf { it.amount }
             val totalExits = exitRecords.filter { it.playerId == player.id }.sumOf { it.amount }
             val netResult = totalExits - totalBuyIns
@@ -1502,7 +1506,7 @@ fun ResultsTab(
     }
     
     // Check if all players are exited
-    val allExited = players.all { it.status == "EXITED" } && players.isNotEmpty()
+    val allExited = deduplicatedPlayers.all { it.status == "EXITED" } && deduplicatedPlayers.isNotEmpty()
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
