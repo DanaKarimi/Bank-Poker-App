@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,6 +101,7 @@ fun GroupDetailScreen(
     var selectedTableForDelete by remember { mutableStateOf<PokerTable?>(null) }
     var tableDeleteDetails by remember { mutableStateOf(Pair(0, 0)) }
     val coroutineScope = rememberCoroutineScope()
+    val isOffline by viewModel.isOffline.collectAsState()
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
@@ -314,9 +317,15 @@ fun GroupDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TabButton(
-                        text = "STATS",
+                        text = "BALANCES",
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
+                        modifier = Modifier.weight(1f)
+                    )
+                    TabButton(
+                        text = "STATS",
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -335,7 +344,12 @@ fun GroupDetailScreen(
                             onTableClick = onTableClick,
                             onTableLongClick = { table -> selectedTableForAction = table }
                         )
-                        1 -> GroupStatsTab(
+                        1 -> BalancesTab(
+                            balances = balances,
+                            isOffline = isOffline,
+                            onPlayerClick = onPlayerClick
+                        )
+                        2 -> GroupStatsTab(
                             tables = tables,
                             balances = balances,
                             serverSettlement = serverSettlement,
@@ -691,6 +705,190 @@ fun TableCardSimple(
     }
 }
 
+fun formatGroupBalance(balance: Long): String {
+    val absFormatted = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(kotlin.math.abs(balance))
+    return when {
+        balance > 0 -> "+$$absFormatted"
+        balance < 0 -> "-$$absFormatted"
+        else -> "$0"
+    }
+}
+
+@Composable
+fun BalancesTab(
+    balances: List<GroupBalance>,
+    isOffline: Boolean = false,
+    onPlayerClick: ((String) -> Unit)? = null
+) {
+    if (balances.isEmpty()) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+        ) {
+            Text(
+                text = "No player balances recorded in this group yet.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Cream.copy(alpha = 0.6f)
+            )
+        }
+    } else {
+        val sortedBalances = remember(balances) {
+            balances.sortedByDescending { it.balance }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (isOffline) {
+                item {
+                    Surface(
+                        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Showing offline cached balances",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "PLAYER BALANCES (${sortedBalances.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Gold,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Ranked by net results",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Cream.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            itemsIndexed(sortedBalances) { index, balance ->
+                BalanceCard(
+                    balance = balance,
+                    rank = index + 1,
+                    onPlayerClick = onPlayerClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BalanceCard(
+    balance: GroupBalance,
+    rank: Int = 0,
+    onPlayerClick: ((String) -> Unit)? = null
+) {
+    val isPositive = balance.balance > 0
+    val isNegative = balance.balance < 0
+    val balanceColor = when {
+        isPositive -> WinGreen
+        isNegative -> LoseRed
+        else -> Gold
+    }
+
+    val formattedBalance = formatGroupBalance(balance.balance)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Gold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(enabled = onPlayerClick != null) {
+                onPlayerClick?.invoke(balance.playerName)
+            }
+            .animateContentSize(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                if (rank > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(FeltDark, RoundedCornerShape(8.dp))
+                            .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "#$rank",
+                            color = Gold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                UserBadge(
+                    displayName = balance.playerName,
+                    username = null,
+                    avatarId = null,
+                    avatarSize = 38.dp
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = formattedBalance,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = balanceColor,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "NET BALANCE",
+                    fontSize = 9.sp,
+                    color = Cream.copy(alpha = 0.5f),
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun GroupStatsTab(
     tables: List<PokerTable>,
@@ -791,8 +989,9 @@ fun GroupStatsTab(
                             color = Gold,
                             letterSpacing = 1.sp
                         )
+                        val formattedWin = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(biggestWinner.balance)
                         Text(
-                            text = "${biggestWinner.playerName}  +${biggestWinner.balance}",
+                            text = "${biggestWinner.playerName}  +$formattedWin",
                             style = MaterialTheme.typography.titleMedium,
                             color = WinGreen,
                             fontWeight = FontWeight.Bold
@@ -829,8 +1028,9 @@ fun GroupStatsTab(
                             color = Gold,
                             letterSpacing = 1.sp
                         )
+                        val formattedDebt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(kotlin.math.abs(biggestDebtor.balance))
                         Text(
-                            text = "${biggestDebtor.playerName}  ${biggestDebtor.balance}",
+                            text = "${biggestDebtor.playerName}  -$formattedDebt",
                             style = MaterialTheme.typography.titleMedium,
                             color = LoseRed,
                             fontWeight = FontWeight.Bold
@@ -1788,8 +1988,7 @@ fun buildGroupShareResultsText(
         sb.appendLine("No player balances yet")
     } else {
         sorted.forEachIndexed { index, b ->
-            val sign = if (b.balance > 0) "+" else ""
-            sb.appendLine("${index + 1}. ${b.playerName}: $sign${b.balance}")
+            sb.appendLine("${index + 1}. ${b.playerName}: ${formatGroupBalance(b.balance)}")
         }
     }
     sb.appendLine("Settlement:")
