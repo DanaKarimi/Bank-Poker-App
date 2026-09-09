@@ -42,7 +42,24 @@ class GroupDetailViewModel(
 
     init {
         viewModelScope.launch {
-            _group.value = repository.getGroupById(groupId)
+            var g = repository.getGroupById(groupId)
+            if (g == null && remoteRepository != null) {
+                try {
+                    val groupsRes = remoteRepository.getMyGroups()
+                    val match = groupsRes.getOrNull()?.find { it.id == groupId }
+                    if (match != null) {
+                        g = repository.createGroup(
+                            name = match.name,
+                            mode = "ONLINE",
+                            serverId = match.id,
+                            customId = match.id
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w("GroupDetailVM", "Failed to resolve group from server on init", e)
+                }
+            }
+            _group.value = g
             fetchServerBalances()
             fetchServerSettlement()
         }
@@ -155,17 +172,23 @@ class GroupDetailViewModel(
     ) {
         viewModelScope.launch {
             val currentGroup = _group.value ?: repository.getGroupById(groupId)
+            val isOnline = (currentGroup == null || !currentGroup.mode.equals("OFFLINE", ignoreCase = true)) && remoteRepository != null
             val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
-            if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+            if (isOnline) {
                 // Online group: API call -> Server success -> Room Insert
-                val result = remoteRepository.createTable(
+                val result = remoteRepository!!.createTable(
                     groupId = serverGroupId,
                     name = name.trim(),
                     chipValue = chipValue,
                     entryFee = if (hasEntryFee) entryFee else null
                 )
                 if (result.isSuccess) {
-                    val serverTableId = result.getOrNull()?.tableId
+                    val resObj = result.getOrNull()
+                    val serverTableId = resObj?.resolvedTableId?.takeIf { it.isNotBlank() } ?: resObj?.tableId
+                    if (serverTableId.isNullOrBlank()) {
+                        onError?.invoke("Server failed to return a valid table ID.")
+                        return@launch
+                    }
                     val table = repository.createTable(
                         name = name.trim(),
                         chipValue = chipValue,

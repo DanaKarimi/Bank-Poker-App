@@ -115,7 +115,19 @@ fun HomeScreen(
                             activeTables = tablesRes.getOrNull() ?: emptyList()
                         }
                         if (groupsRes.isSuccess) {
-                            myGroups = groupsRes.getOrNull() ?: emptyList()
+                            val list = groupsRes.getOrNull() ?: emptyList()
+                            myGroups = list
+                            list.forEach { g ->
+                                val existing = repository.getGroupById(g.id)
+                                if (existing == null) {
+                                    repository.createGroup(
+                                        name = g.name,
+                                        mode = "ONLINE",
+                                        serverId = g.id,
+                                        customId = g.id
+                                    )
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {

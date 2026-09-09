@@ -109,10 +109,11 @@ router.post('/quick', authenticateToken, async (req, res) => {
 router.post('/:id/publish', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
         if (!isAllowed) {
@@ -127,9 +128,9 @@ router.post('/:id/publish', authenticateToken, async (req, res) => {
 
         await run(
             `UPDATE tables 
-             SET code = ?, published_at = COALESCE(published_at, ?), updated_at = ?
+             SET code = ?, published_at = COALESCE(published_at, ?), updated_at = ? 
              WHERE id = ?`,
-            [code, now, now, tableId]
+            [code, now, now, resolvedTableId]
         );
 
         const publishedData = { tableId, code, publishedAt: table.published_at || now };
@@ -307,6 +308,7 @@ const handleCreateTable = async (req, res) => {
         return res.status(201).json({
             message: 'Table created successfully',
             tableId,
+            id: tableId,
             code,
             table: tablePayload,
             players: createdPlayers
@@ -329,10 +331,11 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
     try {
         const { tableId, playerId } = req.params;
 
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         if (table.status === 'CLOSED' || table.is_active === 0) {
             return res.status(400).json({ error: 'Table is closed. Deleting players is forbidden.' });
@@ -343,7 +346,7 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
             return res.status(403).json({ error: 'Permission denied to delete player' });
         }
 
-        const player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [playerId, tableId]);
+        const player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [playerId, resolvedTableId]);
         if (!player) {
             return res.status(404).json({ error: 'Player not found on this table' });
         }
@@ -351,7 +354,7 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
         // Check if player has any buy-ins
         const buyInCountRow = await get(
             'SELECT COUNT(*) as cnt FROM buy_ins WHERE player_id = ? AND table_id = ? AND is_deleted = 0',
-            [playerId, tableId]
+            [playerId, resolvedTableId]
         );
 
         if (buyInCountRow && buyInCountRow.cnt > 0) {
@@ -389,10 +392,11 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Player name is required' });
         }
 
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         if (table.status === 'CLOSED' || table.is_active === 0) {
             return res.status(400).json({ error: 'Table is closed. Adding players is forbidden.' });
@@ -406,7 +410,7 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
         // Check if player with this name already exists in this table
         const existing = await get(
             'SELECT * FROM players WHERE table_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND is_deleted = 0',
-            [tableId, chosenName]
+            [resolvedTableId, chosenName]
         );
 
         if (existing) {
@@ -419,7 +423,7 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
                 message: 'Player already seated in this table',
                 player: {
                     id: existing.id,
-                    tableId,
+                    tableId: resolvedTableId,
                     userId: existing.user_id,
                     name: existing.name,
                     status: existing.status,
@@ -434,12 +438,12 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
         await run(
             `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
              VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-            [playerId, tableId, userId || null, chosenName, now, playerId, now]
+            [playerId, resolvedTableId, userId || null, chosenName, now, playerId, now]
         );
 
         const newPlayer = {
             id: playerId,
-            tableId,
+            tableId: resolvedTableId,
             userId: userId || null,
             name: chosenName,
             status: 'ACTIVE',
@@ -449,7 +453,7 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
             createdAt: now
         };
 
-        emitToTable(tableId, 'player_added', newPlayer);
+        emitToTable(resolvedTableId, 'player_added', newPlayer);
         if (table.group_id) {
             emitToGroup(table.group_id, 'player_added', newPlayer);
         }
@@ -478,10 +482,11 @@ const handleRecordBuyIn = async (req, res) => {
             return res.status(400).json({ error: 'amount must be a positive number' });
         }
 
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         if (table.status === 'CLOSED' || table.is_active === 0) {
             return res.status(400).json({ error: 'Table is closed. Recording transactions is forbidden.' });
@@ -498,13 +503,13 @@ const handleRecordBuyIn = async (req, res) => {
 
         let player = null;
         if (targetPlayerId) {
-            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, tableId]);
+            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, resolvedTableId]);
         }
         if (!player && targetUserId) {
-            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, tableId]);
+            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, resolvedTableId]);
         }
         if (!player && targetName) {
-            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, tableId]);
+            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, resolvedTableId]);
         }
 
         const now = Date.now();
@@ -519,12 +524,12 @@ const handleRecordBuyIn = async (req, res) => {
             await run(
                 `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
                  VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
-                [newPlayerId, tableId, targetUserId || null, targetName, now, newPlayerId, now]
+                [newPlayerId, resolvedTableId, targetUserId || null, targetName, now, newPlayerId, now]
             );
 
             player = {
                 id: newPlayerId,
-                table_id: tableId,
+                table_id: resolvedTableId,
                 user_id: targetUserId || null,
                 name: targetName,
                 status: 'ACTIVE',
@@ -533,7 +538,7 @@ const handleRecordBuyIn = async (req, res) => {
 
             const newPlayerPayload = {
                 id: newPlayerId,
-                tableId,
+                tableId: resolvedTableId,
                 userId: targetUserId || null,
                 name: targetName,
                 status: 'ACTIVE',
@@ -543,7 +548,7 @@ const handleRecordBuyIn = async (req, res) => {
                 createdAt: now
             };
 
-            emitToTable(tableId, 'player_added', newPlayerPayload);
+            emitToTable(resolvedTableId, 'player_added', newPlayerPayload);
             if (table.group_id) {
                 emitToGroup(table.group_id, 'player_added', newPlayerPayload);
             }
@@ -556,19 +561,19 @@ const handleRecordBuyIn = async (req, res) => {
         await run(
             `INSERT INTO buy_ins (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-            [buyInId, tableId, player.id, numAmount, note || null, req.user.id, now, buyInId, now]
+            [buyInId, resolvedTableId, player.id, numAmount, note || null, req.user.id, now, buyInId, now]
         );
 
         const eventData = {
             buyInId,
-            tableId,
+            tableId: resolvedTableId,
             playerId: player.id,
             playerName: player.name,
             amount: numAmount,
             timestamp: now
         };
 
-        emitToTable(tableId, 'buyin_recorded', eventData);
+        emitToTable(resolvedTableId, 'buyin_recorded', eventData);
         if (table.group_id) {
             emitToGroup(table.group_id, 'buyin_recorded', eventData);
         }
@@ -604,10 +609,11 @@ const handleRecordExit = async (req, res) => {
             return res.status(400).json({ error: 'amount must be a non-negative number' });
         }
 
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         if (table.status === 'CLOSED' || table.is_active === 0) {
             return res.status(400).json({ error: 'Table is closed. Recording transactions is forbidden.' });
@@ -624,13 +630,13 @@ const handleRecordExit = async (req, res) => {
 
         let player = null;
         if (targetPlayerId) {
-            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, tableId]);
+            player = await get('SELECT * FROM players WHERE id = ? AND table_id = ? AND is_deleted = 0', [targetPlayerId, resolvedTableId]);
         }
         if (!player && targetUserId) {
-            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, tableId]);
+            player = await get('SELECT * FROM players WHERE user_id = ? AND table_id = ? AND is_deleted = 0', [targetUserId, resolvedTableId]);
         }
         if (!player && targetName) {
-            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, tableId]);
+            player = await get('SELECT * FROM players WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND table_id = ? AND is_deleted = 0', [targetName, resolvedTableId]);
         }
 
         const now = Date.now();
@@ -645,12 +651,12 @@ const handleRecordExit = async (req, res) => {
             await run(
                 `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
                  VALUES (?, ?, ?, ?, 'EXITED', ?, ?, ?, 1, 0)`,
-                [newPlayerId, tableId, targetUserId || null, targetName, now, newPlayerId, now]
+                [newPlayerId, resolvedTableId, targetUserId || null, targetName, now, newPlayerId, now]
             );
 
             player = {
                 id: newPlayerId,
-                table_id: tableId,
+                table_id: resolvedTableId,
                 user_id: targetUserId || null,
                 name: targetName,
                 status: 'EXITED',
@@ -659,7 +665,7 @@ const handleRecordExit = async (req, res) => {
 
             const newPlayerPayload = {
                 id: newPlayerId,
-                tableId,
+                tableId: resolvedTableId,
                 userId: targetUserId || null,
                 name: targetName,
                 status: 'EXITED',
@@ -669,7 +675,7 @@ const handleRecordExit = async (req, res) => {
                 createdAt: now
             };
 
-            emitToTable(tableId, 'player_added', newPlayerPayload);
+            emitToTable(resolvedTableId, 'player_added', newPlayerPayload);
             if (table.group_id) {
                 emitToGroup(table.group_id, 'player_added', newPlayerPayload);
             }
@@ -682,19 +688,19 @@ const handleRecordExit = async (req, res) => {
         await run(
             `INSERT INTO exit_records (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-            [exitId, tableId, player.id, numAmount, note || null, req.user.id, now, exitId, now]
+            [exitId, resolvedTableId, player.id, numAmount, note || null, req.user.id, now, exitId, now]
         );
 
         const eventData = {
             exitId,
-            tableId,
+            tableId: resolvedTableId,
             playerId: player.id,
             playerName: player.name,
             amount: numAmount,
             timestamp: now
         };
 
-        emitToTable(tableId, 'exit_recorded', eventData);
+        emitToTable(resolvedTableId, 'exit_recorded', eventData);
         if (table.group_id) {
             emitToGroup(table.group_id, 'exit_recorded', eventData);
         }
@@ -722,10 +728,11 @@ router.post('/:id/exit-direct', authenticateToken, handleRecordExit);
 router.post('/:id/close', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
+        const resolvedTableId = table.id;
 
         const isAllowed = await canManageTable(req.user.id, req.user.role, table);
         if (!isAllowed) {
@@ -737,18 +744,18 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
             `UPDATE tables 
              SET status = 'CLOSED', closed_at = ?, updated_at = ? 
              WHERE id = ?`,
-            [now, now, tableId]
+            [now, now, resolvedTableId]
         );
 
-        emitToTable(tableId, 'table_closed', { tableId, closedAt: now });
+        emitToTable(resolvedTableId, 'table_closed', { tableId: resolvedTableId, closedAt: now });
         if (table.group_id) {
-            emitToGroup(table.group_id, 'table_closed', { tableId, closedAt: now });
+            emitToGroup(table.group_id, 'table_closed', { tableId: resolvedTableId, closedAt: now });
             emitToGroup(table.group_id, 'settlement_done', { groupId: table.group_id });
         }
 
         return res.status(200).json({
             message: 'Table closed',
-            tableId,
+            tableId: resolvedTableId,
             status: 'CLOSED',
             closedAt: now
         });
@@ -869,14 +876,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.get('/:id/status', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const table = await get('SELECT * FROM tables WHERE id = ? AND is_deleted = 0', [tableId]);
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
         if (!table) {
             return res.status(404).json({ error: 'Table not found' });
         }
 
         const isClosed = table.status === 'CLOSED';
         return res.status(200).json({
-            tableId,
+            tableId: table.id,
             status: table.status,
             isActive: !isClosed,
             closedAt: table.closed_at
@@ -893,6 +900,8 @@ router.get('/:id/status', authenticateToken, async (req, res) => {
 router.get('/:id/players', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
+        const table = await get('SELECT id FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
+        const resolvedTableId = table ? table.id : tableId;
         const rawPlayers = await all(
             `SELECT p.id, p.table_id, p.user_id, p.name, p.status, p.created_at, p.entry_fee_paid, 
                     u.username, u.display_name, u.avatar_id,
@@ -902,7 +911,7 @@ router.get('/:id/players', authenticateToken, async (req, res) => {
              LEFT JOIN users u ON p.user_id = u.id
              WHERE p.table_id = ? AND p.is_deleted = 0
              ORDER BY p.created_at ASC`,
-            [tableId]
+            [resolvedTableId]
         );
 
         const players = rawPlayers.map(p => {
@@ -926,7 +935,7 @@ router.get('/:id/players', authenticateToken, async (req, res) => {
             };
         });
 
-        return res.status(200).json({ tableId, players });
+        return res.status(200).json({ tableId: resolvedTableId, players });
     } catch (error) {
         console.error('Error fetching table players:', error);
         return res.status(500).json({ error: 'Failed to fetch table players' });
@@ -939,13 +948,15 @@ router.get('/:id/players', authenticateToken, async (req, res) => {
 router.get('/:id/buy-ins', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
+        const table = await get('SELECT id FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
+        const resolvedTableId = table ? table.id : tableId;
         const rawBuyIns = await all(
             `SELECT b.id, b.table_id, b.player_id, b.amount, b.note, b.created_at, p.name as player_name
              FROM buy_ins b
              JOIN players p ON b.player_id = p.id
              WHERE b.table_id = ? AND b.is_deleted = 0
              ORDER BY b.created_at ASC`,
-            [tableId]
+            [resolvedTableId]
         );
 
         const buyIns = rawBuyIns.map(b => ({
@@ -958,7 +969,7 @@ router.get('/:id/buy-ins', authenticateToken, async (req, res) => {
             createdAt: b.created_at
         }));
 
-        return res.status(200).json({ tableId, buyIns });
+        return res.status(200).json({ tableId: resolvedTableId, buyIns });
     } catch (error) {
         console.error('Error fetching table buy-ins:', error);
         return res.status(500).json({ error: 'Failed to fetch table buy-ins' });
@@ -971,13 +982,15 @@ router.get('/:id/buy-ins', authenticateToken, async (req, res) => {
 router.get('/:id/exits', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
+        const table = await get('SELECT id FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
+        const resolvedTableId = table ? table.id : tableId;
         const rawExits = await all(
             `SELECT e.id, e.table_id, e.player_id, e.amount, e.note, e.created_at, p.name as player_name
              FROM exit_records e
              JOIN players p ON e.player_id = p.id
              WHERE e.table_id = ? AND e.is_deleted = 0
              ORDER BY e.created_at ASC`,
-            [tableId]
+            [resolvedTableId]
         );
 
         const exits = rawExits.map(e => ({
@@ -990,7 +1003,7 @@ router.get('/:id/exits', authenticateToken, async (req, res) => {
             createdAt: e.created_at
         }));
 
-        return res.status(200).json({ tableId, exits });
+        return res.status(200).json({ tableId: resolvedTableId, exits });
     } catch (error) {
         console.error('Error fetching table exits:', error);
         return res.status(500).json({ error: 'Failed to fetch table exits' });
