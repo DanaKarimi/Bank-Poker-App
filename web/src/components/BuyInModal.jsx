@@ -112,26 +112,30 @@ const BuyInModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#064e3b] border-2 border-[#d4af37] rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-[#f5f5dc] animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-[#f5f5dc]/70 hover:text-[#f5f5dc] p-1.5 rounded-xl hover:bg-black/20 transition active:scale-95 cursor-pointer"
-          aria-label="Close modal"
-        >
-          <X className="w-5 h-5" />
-        </button>
+      <div className="bg-[#064e3b] border-2 border-[#d4af37] rounded-[28px] w-full max-w-md p-6 shadow-2xl relative text-[#f5f5dc] animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        {/* Drag Handle */}
+        <div className="w-10 h-1 bg-[#d4af37]/60 rounded-full mx-auto mb-3" />
 
-        {/* 1. Header */}
-        <div className="mb-4">
-          <h2 className="text-xl font-black text-[#d4af37] tracking-tight flex items-center gap-2">
-            <Coins className="w-5 h-5" />
-            <span>Record Buy-In</span>
-          </h2>
-          <p className="text-xs text-[#f5f5dc]/70 mt-0.5">
-            Record chips for a seated player or auto-seat a new player
-          </p>
+        {/* 1. Header matching Android SectionHeader */}
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#d4af37]/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[#d4af37] text-sm font-bold">♠</span>
+            <h3 className="text-xs sm:text-sm font-bold text-[#f5f5dc] uppercase tracking-[2px] truncate">
+              {selectedPlayer
+                ? `ADD BUY-IN: ${(selectedPlayer.name || selectedPlayer.username).toUpperCase()}`
+                : effectivePlayerName
+                ? `ADD BUY-IN: ${effectivePlayerName.toUpperCase()}`
+                : 'RECORD BUY-IN'}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#f5f5dc]/70 hover:text-[#f5f5dc] p-1 rounded-lg transition active:scale-95 cursor-pointer shrink-0"
+            aria-label="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Player Selection / Name Input (when not fixed to an initial player) */}
@@ -319,9 +323,10 @@ const BuyInModal = ({
             <button
               type="submit"
               disabled={isSubmitting || numAmount <= 0}
-              className="w-full py-3.5 bg-gradient-to-r from-[#d4af37] via-[#f3d068] to-[#d4af37] hover:brightness-105 active:scale-[0.98] text-black font-black uppercase tracking-wider text-sm rounded-xl shadow-lg transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+              className="w-full py-3.5 bg-gradient-to-r from-[#d4af37] via-[#f3d068] to-[#d4af37] hover:brightness-105 active:scale-[0.98] text-black font-extrabold uppercase tracking-wider text-sm rounded-xl shadow-lg transition-all disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
             >
-              {isSubmitting ? 'Submitting...' : 'CONFIRM BUY-IN'}
+              <span className="text-black font-bold text-base">♠</span>
+              <span>{isSubmitting ? 'SUBMITTING...' : 'CONFIRM BUY-IN'}</span>
             </button>
           </div>
         </form>

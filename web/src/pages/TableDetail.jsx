@@ -1330,49 +1330,68 @@ const TableDetail = () => {
         </button>
       )}
 
-      {/* Add Player Modal */}
+      {/* Add Player Modal (Matches Android AddPlayerBottomSheet) */}
       {isAddPlayerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-black text-gold-accent uppercase tracking-wide mb-2 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-gold-accent" />
-              <span>Add Player to Table</span>
-            </h3>
-            <p className="text-xs text-cream-text/70 mb-4 leading-relaxed">
-              Manually add a player to this table by name.
-            </p>
+          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            {/* Drag Handle */}
+            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3" />
+
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gold-accent/30">
+              <div className="flex items-center gap-2">
+                <span className="text-gold-accent text-sm font-bold">♠</span>
+                <h3 className="text-sm font-bold text-cream-text uppercase tracking-[2px]">
+                  ADD PLAYER
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddPlayerModalOpen(false);
+                  setNewPlayerName('');
+                }}
+                disabled={isAddingPlayer}
+                className="text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Live Chip-Style Avatar Preview (Matches Android) */}
+            <div className="flex flex-col items-center mb-4">
+              <span className="text-[10px] font-bold text-gold-accent/75 uppercase tracking-[1.5px] mb-2">
+                AVATAR PREVIEW
+              </span>
+              <PokerAvatar
+                avatarId={null}
+                name={newPlayerName.trim() || '?'}
+                size={72}
+              />
+            </div>
+
             <form onSubmit={handleAddPlayerSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-cream-text/70 uppercase mb-1">
+                <label className="block text-xs font-bold text-cream-text/70 uppercase tracking-wider mb-1.5">
                   Player Name
                 </label>
                 <input
                   type="text"
                   value={newPlayerName}
                   onChange={(e) => setNewPlayerName(e.target.value)}
-                  placeholder="Enter player name..."
+                  placeholder="e.g. DANA"
                   autoFocus
-                  className="w-full px-3 py-2 bg-felt-dark border border-gold-accent/30 rounded-xl text-cream-text text-sm focus:outline-none focus:border-gold-accent"
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent uppercase placeholder:normal-case"
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddPlayerModalOpen(false);
-                    setNewPlayerName('');
-                  }}
-                  disabled={isAddingPlayer}
-                  className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
-                >
-                  Cancel
-                </button>
+
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isAddingPlayer || !newPlayerName.trim()}
-                  className="px-4 py-2 bg-gradient-to-r from-gold-accent to-yellow-500 hover:from-yellow-400 hover:to-gold-accent text-black rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3.5 bg-gradient-to-r from-gold-accent via-[#f3d068] to-gold-accent text-black font-extrabold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  {isAddingPlayer ? 'Adding...' : 'Add Player'}
+                  <span className="text-black font-bold text-base">♠</span>
+                  <span>{isAddingPlayer ? 'ADDING...' : 'ADD PLAYER'}</span>
                 </button>
               </div>
             </form>
@@ -1380,23 +1399,23 @@ const TableDetail = () => {
         </div>
       )}
 
-      {/* Delete Player Modal */}
+      {/* Delete Player Modal (Matches Android AlertDialog) */}
       {playerToDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-red-500/80 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-black text-red-400 uppercase tracking-wide mb-2 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
+          <div className="bg-felt-card border-2 border-gold-accent/60 rounded-[20px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-base font-black text-gold-accent uppercase tracking-wide mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-gold-accent" />
               <span>Remove Player</span>
             </h3>
             <p className="text-xs text-cream-text/80 mb-5 leading-relaxed">
-              Are you sure you want to remove <strong>{playerToDelete.name || playerToDelete.username}</strong> from this table? This player has 0 buy-ins.
+              Are you sure you want to remove <strong>"{playerToDelete.name || playerToDelete.username}"</strong> from this table? They have 0 buy-ins and will be completely removed.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setPlayerToDelete(null)}
                 disabled={isDeletingPlayer}
-                className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                className="px-4 py-2 bg-transparent text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
               >
                 Cancel
               </button>
@@ -1404,32 +1423,38 @@ const TableDetail = () => {
                 type="button"
                 onClick={handleConfirmDeletePlayer}
                 disabled={isDeletingPlayer}
-                className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 bg-lose-red hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                {isDeletingPlayer ? 'Removing...' : 'Confirm Remove'}
+                {isDeletingPlayer ? 'Removing...' : 'Remove'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Close Table Confirmation Modal */}
+      {/* Close Table Confirmation Modal (Matches Android CloseTableBottomSheet) */}
       {isCloseModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-red-500 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-black text-red-400 uppercase tracking-wide mb-2 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <span>Close Table Session</span>
+          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 text-center">
+            {/* Drag Handle */}
+            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-4" />
+
+            <div className="w-14 h-14 rounded-full bg-lose-red/15 border border-lose-red/40 flex items-center justify-center text-lose-red mx-auto mb-3 shadow-inner">
+              <X className="w-7 h-7 stroke-[2.5]" />
+            </div>
+
+            <h3 className="text-base font-black text-gold-accent uppercase tracking-[1.5px] mb-2">
+              CLOSE TABLE
             </h3>
-            <p className="text-xs text-cream-text/80 mb-5 leading-relaxed">
-              Are you sure you want to close this table? All transaction history will be locked and no further buy-ins or exits will be allowed.
+            <p className="text-xs text-cream-text/85 mb-6 leading-relaxed">
+              Are you sure you want to close this table? No new buy-in or exit transactions will be allowed.
             </p>
-            <div className="flex justify-end gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setIsCloseModalOpen(false)}
                 disabled={isClosingTable}
-                className="px-4 py-2 bg-felt-dark border border-gold-accent/30 text-cream-text/70 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                className="py-2.5 bg-transparent border border-gold-accent/60 text-cream-text rounded-xl text-xs font-bold hover:bg-gold-accent/10 transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1437,9 +1462,9 @@ const TableDetail = () => {
                 type="button"
                 onClick={handleCloseTableConfirm}
                 disabled={isClosingTable}
-                className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="py-2.5 bg-lose-red hover:bg-red-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                {isClosingTable ? 'Closing...' : 'Confirm Close Table'}
+                {isClosingTable ? 'Closing...' : 'Close Table'}
               </button>
             </div>
           </div>

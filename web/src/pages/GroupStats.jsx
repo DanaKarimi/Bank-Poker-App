@@ -579,27 +579,24 @@ const GroupStats = () => {
       {/* CREATE TABLE MODAL (Checklist + Manual + Entry Fee) */}
       {isCreateTableOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setIsCreateTableOpen(false)}
-              disabled={createTableLoading}
-              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            {/* Drag Handle */}
+            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3" />
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
-                <span className="text-xl">♠</span>
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
-                  New Group Table
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gold-accent/30">
+              <div className="flex items-center gap-2">
+                <span className="text-gold-accent text-sm font-bold">♠</span>
+                <h3 className="text-sm font-bold text-cream-text uppercase tracking-[2px]">
+                  NEW GROUP TABLE
                 </h3>
-                <p className="text-xs text-cream-text/60">
-                  Host a game in {group?.name || 'this group'}
-                </p>
               </div>
+              <button
+                onClick={() => setIsCreateTableOpen(false)}
+                disabled={createTableLoading}
+                className="text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {createTableError && (
@@ -740,21 +737,14 @@ const GroupStats = () => {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateTableOpen(false)}
-                  disabled={createTableLoading}
-                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
-                >
-                  Cancel
-                </button>
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={createTableLoading || !newTableName.trim()}
-                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3.5 bg-gradient-to-r from-gold-accent via-[#f3d068] to-gold-accent text-black font-extrabold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  {createTableLoading ? 'Creating...' : 'Create Table'}
+                  <span className="text-black font-bold text-base">♠</span>
+                  <span>{createTableLoading ? 'CREATING...' : 'CREATE TABLE'}</span>
                 </button>
               </div>
             </form>

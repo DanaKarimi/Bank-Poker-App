@@ -1197,36 +1197,51 @@ const Dashboard = () => {
       {/* Create Group Modal */}
       {isCreateGroupOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            <button
-              onClick={() => setIsCreateGroupOpen(false)}
-              disabled={createGroupLoading}
-              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
-                <Users className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
-                  Create New Group
+          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            {/* Drag Handle */}
+            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3" />
+
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gold-accent/30">
+              <div className="flex items-center gap-2">
+                <span className="text-gold-accent text-sm font-bold">♠</span>
+                <h3 className="text-sm font-bold text-cream-text uppercase tracking-[2px]">
+                  NEW POKER GROUP
                 </h3>
-                <p className="text-xs text-cream-text/60">
-                  Enter a name for your poker group. You will become the group host.
-                </p>
+              </div>
+              <button
+                onClick={() => setIsCreateGroupOpen(false)}
+                disabled={createGroupLoading}
+                className="text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Live Card Preview (Matches Android) */}
+            <div className="flex flex-col items-center mb-5">
+              <span className="text-[10px] font-bold text-gold-accent/70 uppercase tracking-[1.5px] mb-2">
+                CARD PREVIEW
+              </span>
+              <div className="w-48 bg-felt-dark/90 border-[1.5px] border-gold-accent/80 rounded-[20px] p-4 text-center shadow-lg flex flex-col items-center">
+                <div className="w-12 h-12 rounded-full bg-gold-accent/15 border border-gold-accent/40 flex items-center justify-center text-2xl mb-2 shadow-inner">
+                  👥
+                </div>
+                <span className="text-sm font-bold text-cream-text truncate max-w-full">
+                  {newGroupName.trim() || 'Group Name'}
+                </span>
               </div>
             </div>
+
             {createGroupError && (
               <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
                 <span>{createGroupError}</span>
               </div>
             )}
+
             <form onSubmit={handleCreateGroup} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-bold text-cream-text/70 uppercase tracking-wider mb-1.5">
                   Group Name
                 </label>
                 <input
@@ -1240,21 +1255,14 @@ const Dashboard = () => {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateGroupOpen(false)}
-                  disabled={createGroupLoading}
-                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
-                >
-                  Cancel
-                </button>
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={createGroupLoading || !newGroupName.trim()}
-                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3.5 bg-gradient-to-r from-gold-accent via-[#f3d068] to-gold-accent text-black font-extrabold uppercase tracking-wider text-sm rounded-xl shadow-lg transition active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  {createGroupLoading ? 'Creating...' : 'Create Group'}
+                  <span className="text-black font-bold text-base">♠</span>
+                  <span>{createGroupLoading ? 'CREATING...' : 'CREATE GROUP'}</span>
                 </button>
               </div>
             </form>
