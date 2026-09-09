@@ -844,20 +844,7 @@ fun BalanceCard(
                 modifier = Modifier.weight(1f, fill = false)
             ) {
                 if (rank > 0) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .background(FeltDark, RoundedCornerShape(8.dp))
-                            .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "#$rank",
-                            color = Gold,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    com.bankpoker.app.ui.components.UnifiedRankBadge(rank = rank)
                 }
                 UserBadge(
                     displayName = balance.playerName,

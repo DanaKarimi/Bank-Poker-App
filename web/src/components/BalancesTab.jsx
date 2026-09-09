@@ -101,8 +101,18 @@ const BalancesTab = ({ balances = [], groupBalances = null, loading = false }) =
               } hover:border-gold-accent/80 rounded-2xl p-4 shadow-lg transition-all duration-150 flex items-center justify-between gap-3`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-felt-dark border border-gold-accent/30 flex items-center justify-center font-bold text-xs text-gold-accent shrink-0">
-                  #{idx + 1}
+                <div
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-black shrink-0 ${
+                    idx === 0
+                      ? 'bg-gold-accent text-black shadow'
+                      : idx === 1
+                      ? 'bg-[#c0c0c0] text-black shadow'
+                      : idx === 2
+                      ? 'bg-[#cd7f32] text-white shadow'
+                      : 'bg-felt-dark border border-gold-accent/40 text-gold-accent'
+                  }`}
+                >
+                  {idx === 0 ? '1st' : idx === 1 ? '2nd' : idx === 2 ? '3rd' : `#${idx + 1}`}
                 </div>
                 <UserBadge
                   displayName={item.name || item.username || 'Player'}

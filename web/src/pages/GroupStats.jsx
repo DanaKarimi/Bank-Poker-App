@@ -9,6 +9,8 @@ import {
   getGroupBalances,
   getGroupSettlementPlan,
   getGroupStatsDetails,
+  createTable,
+  getGroupPlayersList,
 } from '../api';
 import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
@@ -29,7 +31,12 @@ import {
   Plus,
   Users,
   BarChart3,
+  X,
+  Check,
+  AlertCircle
 } from 'lucide-react';
+
+const CHIP_PRESETS = [5, 10, 25, 50, 100];
 
 const GroupStats = () => {
   const { id: groupId } = useParams();
@@ -51,6 +58,19 @@ const GroupStats = () => {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Create Table Modal State (mirrors Android CreateTableBottomSheet)
+  const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState('');
+  const [newChipPreset, setNewChipPreset] = useState(25);
+  const [newChipCustom, setNewChipCustom] = useState('');
+  const [newHasEntryFee, setNewHasEntryFee] = useState(false);
+  const [newEntryFeeAmount, setNewEntryFeeAmount] = useState('');
+  const [groupPlayers, setGroupPlayers] = useState([]);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState(new Set());
+  const [manualPlayerNames, setManualPlayerNames] = useState('');
+  const [createTableLoading, setCreateTableLoading] = useState(false);
+  const [createTableError, setCreateTableError] = useState('');
 
   // 1. Fetch group info
   const fetchGroupInfo = async () => {
@@ -149,27 +169,25 @@ const GroupStats = () => {
           }
         });
 
-        setBalances(deduplicated.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0)));
+        setBalances(deduplicated);
       }
 
       if (settlementRes.status === 'fulfilled') {
-        const rawSettlement = settlementRes.value.data?.settlement || [];
-        const sMap = new Map();
-        rawSettlement.forEach((s) => {
-          const key = s.id || `${s.debtorName || s.payerName}-${s.creditorName || s.receiverName}-${s.amount}`;
-          sMap.set(key, s);
-        });
-        setSettlementPlan(Array.from(sMap.values()));
+        setSettlementPlan(settlementRes.value.data?.settlement || []);
       }
 
       if (groupStatsRes.status === 'fulfilled') {
-        setGroupStatsDetails(groupStatsRes.value.data || null);
+        setGroupStatsDetails(groupStatsRes.value.data?.stats || groupStatsRes.value.data || null);
       }
     } catch (err) {
-      console.error('Error fetching group data:', err);
-      if (!isBackground) setError('Failed to load group details.');
+      console.error('Failed to load group details:', err);
+      if (!isBackground) {
+        setError('Failed to load group data. Please try again.');
+      }
     } finally {
-      if (!isBackground) setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   };
 
@@ -177,8 +195,9 @@ const GroupStats = () => {
     fetchGroupInfo();
     fetchData();
 
-    // 1. Join Socket.IO group room and listen for real-time events
+    // Join WebSocket room for this group
     joinGroup(groupId);
+
     const socket = getSocket();
 
     const handleRefresh = () => {
@@ -186,7 +205,7 @@ const GroupStats = () => {
     };
 
     const handleTableClosed = (payload) => {
-      if (payload?.tableId) {
+      if (payload && payload.tableId) {
         setTables((prev) =>
           prev.map((t) => (t.id === payload.tableId ? { ...t, status: 'CLOSED', isActive: false } : t))
         );
@@ -210,7 +229,6 @@ const GroupStats = () => {
     socket.on('settlement_done', handleRefresh);
     socket.on('entry_fee_updated', handleRefresh);
 
-    // 2. High-frequency API polling fallback (3.5 seconds) ensuring real-time parity
     const interval = setInterval(() => {
       fetchData(true);
     }, 3500);
@@ -240,7 +258,84 @@ const GroupStats = () => {
     navigate(`/group/${groupId}/table/${table.id}`);
   };
 
-  // Server is the ONLY balance authority: read directly from server-computed groupBalances array
+  const handleOpenCreateTable = async () => {
+    setNewTableName('');
+    setNewChipPreset(25);
+    setNewChipCustom('');
+    setNewHasEntryFee(false);
+    setNewEntryFeeAmount('');
+    setSelectedPlayerIds(new Set());
+    setManualPlayerNames('');
+    setCreateTableError('');
+    setIsCreateTableOpen(true);
+
+    try {
+      const res = await getGroupPlayersList(groupId);
+      setGroupPlayers(res.data?.players || []);
+    } catch (err) {
+      console.warn('Failed to load group players list:', err);
+    }
+  };
+
+  const togglePlayerSelection = (playerId) => {
+    setSelectedPlayerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerId)) {
+        next.delete(playerId);
+      } else {
+        next.add(playerId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateTableSubmit = async (e) => {
+    e.preventDefault();
+    const trimmedName = newTableName.trim();
+    if (!trimmedName) {
+      setCreateTableError('Table name is required');
+      return;
+    }
+    setCreateTableLoading(true);
+    setCreateTableError('');
+
+    try {
+      const effectiveChipValue = newChipCustom
+        ? Number(newChipCustom)
+        : Number(newChipPreset) || 25;
+      const numEntryFee = newHasEntryFee && newEntryFeeAmount
+        ? Number(newEntryFeeAmount)
+        : null;
+      const extraNames = manualPlayerNames
+        .split(/[,\n]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+
+      const res = await createTable({
+        groupId,
+        name: trimmedName,
+        chipValue: effectiveChipValue,
+        default_buy_in: effectiveChipValue,
+        entryFee: numEntryFee,
+        memberPlayerIds: Array.from(selectedPlayerIds),
+        newPlayerNames: extraNames,
+      });
+
+      setIsCreateTableOpen(false);
+      fetchData(true);
+      const createdId = res.data?.tableId || res.data?.table?.id || res.data?.id;
+      if (createdId) {
+        navigate(`/group/${groupId}/table/${createdId}`);
+      }
+    } catch (err) {
+      console.error('Failed to create group table:', err);
+      setCreateTableError(err.response?.data?.error || 'Failed to create table.');
+    } finally {
+      setCreateTableLoading(false);
+    }
+  };
+
+  // Server is the ONLY balance authority
   const myPlayerInBalances = balances.find((b) =>
     (user && (b.userId === user.id || b.user_id === user.id)) ||
     b.isMe ||
@@ -253,7 +348,6 @@ const GroupStats = () => {
   const myExits = myPlayerInBalances?.totalExits ?? stats?.myExits ?? stats?.userTotalExits ?? stats?.totalExits ?? 0;
   const isPositive = myBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
-  const closedTablesCount = tables.filter((t) => t.status === 'CLOSED' || t.isActive === false).length;
 
   return (
     <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
@@ -403,9 +497,15 @@ const GroupStats = () => {
                   <Layers className="w-4 h-4" />
                   <span>Poker Tables & Rooms ({tables.length})</span>
                 </h2>
-                <span className="text-xs text-cream-text/50">
-                  Click any table to view ledger or buy-in
-                </span>
+
+                <button
+                  type="button"
+                  onClick={handleOpenCreateTable}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-felt-card hover:bg-felt-card/80 border border-gold-accent/50 text-gold-accent text-xs font-bold uppercase rounded-xl shadow transition active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-gold-accent" />
+                  <span>New Table</span>
+                </button>
               </div>
 
               {loading && tables.length === 0 ? (
@@ -413,8 +513,17 @@ const GroupStats = () => {
                   Loading active tables...
                 </div>
               ) : tables.length === 0 ? (
-                <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
-                  No poker tables have been created in this group yet.
+                <div className="p-8 bg-felt-card rounded-2xl text-center space-y-3 border border-gold-accent/20">
+                  <p className="text-xs text-cream-text/60">
+                    No poker tables have been created in this group yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleOpenCreateTable}
+                    className="px-4 py-2 bg-gold-accent text-black font-bold text-xs rounded-xl shadow hover:bg-gold-light transition cursor-pointer"
+                  >
+                    + Create First Table
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -464,6 +573,188 @@ const GroupStats = () => {
           />
         )}
       </div>
+
+      {/* CREATE TABLE MODAL (Checklist + Manual + Entry Fee) */}
+      {isCreateTableOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setIsCreateTableOpen(false)}
+              disabled={createTableLoading}
+              className="absolute top-4 right-4 text-cream-text/60 hover:text-cream-text p-1 rounded-lg transition disabled:opacity-40 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-felt-dark text-gold-accent border border-gold-accent/40 rounded-xl">
+                <span className="text-xl">♠</span>
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gold-accent uppercase tracking-wide">
+                  New Group Table
+                </h3>
+                <p className="text-xs text-cream-text/60">
+                  Host a game in {group?.name || 'this group'}
+                </p>
+              </div>
+            </div>
+
+            {createTableError && (
+              <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-xl text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{createTableError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateTableSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Table Name
+                </label>
+                <input
+                  type="text"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  placeholder="e.g. Friday Game #1"
+                  autoFocus
+                  maxLength={40}
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+
+              {/* Chip Presets */}
+              <div>
+                <label className="block text-[10px] font-bold text-gold-accent/80 uppercase tracking-wider mb-1.5">
+                  CHIP VALUE
+                </label>
+                <div className="grid grid-cols-5 gap-1.5 mb-2">
+                  {CHIP_PRESETS.map((preset) => {
+                    const isSelected = newChipPreset === preset && !newChipCustom;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setNewChipPreset(preset);
+                          setNewChipCustom('');
+                        }}
+                        className={`py-2 px-1 rounded-xl text-xs font-black transition border cursor-pointer ${
+                          isSelected
+                            ? 'bg-gold-accent text-black border-gold-accent shadow'
+                            : 'bg-felt-dark text-cream-text border-gold-accent/30 hover:border-gold-accent/60'
+                        }`}
+                      >
+                        ${preset}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <input
+                  type="number"
+                  value={newChipCustom}
+                  onChange={(e) => setNewChipCustom(e.target.value)}
+                  placeholder="Custom Chip Value (optional)"
+                  className="w-full px-4 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+
+              {/* Entry Fee Toggle & Input */}
+              <div className="p-3.5 bg-felt-dark/80 border border-gold-accent/30 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-cream-text block">Entry Fee</span>
+                    <span className="text-[11px] text-cream-text/60">Require entry fee for this game</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newHasEntryFee}
+                    onChange={(e) => setNewHasEntryFee(e.target.checked)}
+                    className="w-4 h-4 accent-[#d4af37] rounded cursor-pointer"
+                  />
+                </div>
+
+                {newHasEntryFee && (
+                  <div>
+                    <input
+                      type="number"
+                      value={newEntryFeeAmount}
+                      onChange={(e) => setNewEntryFeeAmount(e.target.value)}
+                      placeholder="Entry Fee Amount"
+                      className="w-full px-3 py-2 bg-felt-card border border-gold-accent/40 rounded-xl text-cream-text font-mono text-xs focus:outline-none focus:border-gold-accent"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Member Checklist (Select group members to auto-seat) */}
+              {groupPlayers.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                    Select Group Members to Seat ({selectedPlayerIds.size} selected)
+                  </label>
+                  <div className="max-h-36 overflow-y-auto bg-felt-dark/90 border border-gold-accent/30 rounded-xl p-2 space-y-1">
+                    {groupPlayers.map((p) => {
+                      const isSelected = selectedPlayerIds.has(p.id);
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => togglePlayerSelection(p.id)}
+                          className={`flex items-center justify-between px-3 py-1.5 rounded-lg cursor-pointer transition text-xs ${
+                            isSelected
+                              ? 'bg-gold-accent/20 border border-gold-accent/50 text-gold-accent font-bold'
+                              : 'hover:bg-felt-card text-cream-text/80'
+                          }`}
+                        >
+                          <span className="truncate">{p.name}</span>
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                            isSelected ? 'bg-gold-accent border-gold-accent text-black' : 'border-gold-accent/40'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Player Names */}
+              <div>
+                <label className="block text-xs font-bold text-cream-text/80 uppercase tracking-wider mb-1.5">
+                  Additional Player Names (optional)
+                </label>
+                <input
+                  type="text"
+                  value={manualPlayerNames}
+                  onChange={(e) => setManualPlayerNames(e.target.value)}
+                  placeholder="e.g. Guest1, Guest2 (comma separated)"
+                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTableOpen(false)}
+                  disabled={createTableLoading}
+                  className="px-4 py-2.5 bg-felt-dark border border-gold-accent/30 text-cream-text/80 rounded-xl text-xs font-bold hover:text-cream-text cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createTableLoading || !newTableName.trim()}
+                  className="px-5 py-2.5 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-extrabold uppercase tracking-wider text-xs rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {createTableLoading ? 'Creating...' : 'Create Table'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
