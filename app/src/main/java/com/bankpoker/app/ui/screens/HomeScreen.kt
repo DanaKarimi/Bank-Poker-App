@@ -48,8 +48,10 @@ import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.components.AuthDialog
+import com.bankpoker.app.ui.components.GoldGradientButton
 import com.bankpoker.app.ui.components.PokerAvatar
 import com.bankpoker.app.ui.components.ProfileDialog
+import com.bankpoker.app.ui.components.SectionHeader
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -100,8 +102,6 @@ fun HomeScreen(
     // FAB Bottom Sheet state
     var showFabBottomSheet by remember { mutableStateOf(false) }
     var showQuickTableCreateDialog by remember { mutableStateOf(false) }
-    var quickTableNameInput by remember { mutableStateOf("") }
-    var quickTableChipInput by remember { mutableStateOf("100000") }
     var isCreatingQuickTable by remember { mutableStateOf(false) }
 
     suspend fun loadFeedAndGroups() {
@@ -795,8 +795,6 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .clickable {
                             showFabBottomSheet = false
-                            quickTableNameInput = ""
-                            quickTableChipInput = "100000"
                             showQuickTableCreateDialog = true
                         },
                     color = FeltDark,
@@ -828,98 +826,46 @@ fun HomeScreen(
         }
     }
 
-    // --- CREATE QUICK TABLE DIALOG ---
+    // --- CREATE QUICK TABLE BOTTOM SHEET ---
     if (showQuickTableCreateDialog) {
-        AlertDialog(
-            onDismissRequest = { if (!isCreatingQuickTable) showQuickTableCreateDialog = false },
-            containerColor = FeltCard,
-            title = { Text("New Quick Table", color = Gold, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = quickTableNameInput,
-                        onValueChange = { quickTableNameInput = it },
-                        label = { Text("Table Name") },
-                        placeholder = { Text("e.g. Friday Night Game") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            unfocusedBorderColor = Gold.copy(alpha = 0.5f),
-                            focusedTextColor = Cream,
-                            unfocusedTextColor = Cream
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = quickTableChipInput,
-                        onValueChange = { quickTableChipInput = it },
-                        label = { Text("Default Buy-In / Chips") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Gold,
-                            unfocusedBorderColor = Gold.copy(alpha = 0.5f),
-                            focusedTextColor = Cream,
-                            unfocusedTextColor = Cream
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val name = quickTableNameInput.trim().ifBlank { "Quick Table" }
-                        val chip = quickTableChipInput.trim().toLongOrNull() ?: 100000L
-                        isCreatingQuickTable = true
-                        coroutineScope.launch {
-                            val res = remoteRepository.createQuickTable(name, chip, null)
-                            isCreatingQuickTable = false
-                            if (res.isSuccess) {
-                                showQuickTableCreateDialog = false
-                                val obj = res.getOrNull()
-                                val tableId = obj?.getAsJsonObject("table")?.get("id")?.asString
-                                    ?: obj?.get("tableId")?.asString
-                                if (tableId != null) {
-                                    repository.createTable(
-                                        name = name,
-                                        chipValue = chip,
-                                        groupId = null,
-                                        customId = tableId
-                                    )
-                                    onNavigateToTable(tableId)
-                                } else {
-                                    refreshConnection()
-                                }
-                            } else {
-                                // Fallback for offline usage: create local quick table in Room
-                                val localTable = repository.createTable(
-                                    name = name,
-                                    chipValue = chip,
-                                    groupId = null
-                                )
-                                showQuickTableCreateDialog = false
-                                onNavigateToTable(localTable.id)
-                            }
+        CreateQuickTableBottomSheet(
+            onDismiss = { showQuickTableCreateDialog = false },
+            isCreating = isCreatingQuickTable,
+            onCreateTable = { name, chip, hasEntryFee, entryFeeLong ->
+                isCreatingQuickTable = true
+                coroutineScope.launch {
+                    val res = remoteRepository.createQuickTable(name, chip, entryFeeLong)
+                    isCreatingQuickTable = false
+                    if (res.isSuccess) {
+                        showQuickTableCreateDialog = false
+                        val obj = res.getOrNull()
+                        val tableId = obj?.getAsJsonObject("table")?.get("id")?.asString
+                            ?: obj?.get("tableId")?.asString
+                        if (tableId != null) {
+                            repository.createTable(
+                                name = name,
+                                chipValue = chip,
+                                groupId = null,
+                                hasEntryFee = hasEntryFee,
+                                entryFee = entryFeeLong,
+                                customId = tableId
+                            )
+                            onNavigateToTable(tableId)
+                        } else {
+                            refreshConnection()
                         }
-                    },
-                    enabled = !isCreatingQuickTable,
-                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
-                ) {
-                    if (isCreatingQuickTable) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black)
                     } else {
-                        Text("Create & Enter", fontWeight = FontWeight.Bold)
+                        // Fallback for offline usage: create local quick table in Room
+                        val localTable = repository.createTable(
+                            name = name,
+                            chipValue = chip,
+                            groupId = null,
+                            hasEntryFee = hasEntryFee,
+                            entryFee = entryFeeLong
+                        )
+                        showQuickTableCreateDialog = false
+                        onNavigateToTable(localTable.id)
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showQuickTableCreateDialog = false },
-                    enabled = !isCreatingQuickTable
-                ) {
-                    Text("Cancel", color = Cream)
                 }
             }
         )
@@ -1143,6 +1089,224 @@ fun HomeGroupCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateQuickTableBottomSheet(
+    onDismiss: () -> Unit,
+    isCreating: Boolean = false,
+    onCreateTable: (String, Long?, Boolean, Long?) -> Unit
+) {
+    var tableName by remember { mutableStateOf("") }
+    var chipValue by remember { mutableStateOf("100") }
+    var hasEntryFee by remember { mutableStateOf(false) }
+    var entryFeeAmount by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val chipPresets = listOf(5L, 10L, 25L, 50L, 100L)
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!isCreating) onDismiss() },
+        sheetState = sheetState,
+        containerColor = FeltCard,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SectionHeader(title = "NEW QUICK TABLE", suit = "♠")
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = tableName,
+                onValueChange = { 
+                    tableName = it
+                    if (error != null) error = null
+                },
+                label = { Text("Table Name", color = Cream.copy(alpha = 0.7f)) },
+                placeholder = { Text("e.g. Quick Game #1", color = Cream.copy(alpha = 0.4f)) },
+                singleLine = true,
+                isError = error != null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = error!!,
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Chip Value Selector
+            Text(
+                text = "DEFAULT CHIP VALUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                chipPresets.forEach { preset ->
+                    val isSelected = chipValue == preset.toString()
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) Gold else Gold.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable {
+                                chipValue = if (isSelected) "" else preset.toString()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) Gold.copy(alpha = 0.25f) else FeltBackground
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$$preset",
+                                color = if (isSelected) Gold else Cream,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = chipValue,
+                onValueChange = { chipValue = it.filter { c -> c.isDigit() } },
+                label = { Text("Custom Chip Value (optional)", color = Cream.copy(alpha = 0.7f)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Gold,
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    focusedTextColor = Cream,
+                    unfocusedTextColor = Cream,
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
+                )
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Entry Fee Toggle Row
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Entry Fee",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Cream,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Require entry fee for this game",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Cream.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(
+                            checked = hasEntryFee,
+                            onCheckedChange = { hasEntryFee = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Gold,
+                                checkedTrackColor = Gold.copy(alpha = 0.5f),
+                                uncheckedThumbColor = Cream.copy(alpha = 0.5f),
+                                uncheckedTrackColor = Gold.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+
+                    if (hasEntryFee) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = entryFeeAmount,
+                            onValueChange = { entryFeeAmount = it.filter { c -> c.isDigit() } },
+                            label = { Text("Entry Fee Amount", color = Cream.copy(alpha = 0.7f)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                                focusedTextColor = Cream,
+                                unfocusedTextColor = Cream,
+                                cursorColor = Gold,
+                                focusedContainerColor = FeltCard,
+                                unfocusedContainerColor = FeltCard
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GoldGradientButton(
+                text = if (isCreating) "CREATING..." else "CREATE & ENTER",
+                enabled = !isCreating,
+                onClick = {
+                    val name = tableName.trim().ifBlank { "Quick Table" }
+                    val chipValueLong = chipValue.toLongOrNull()
+                    val entryFeeLong = if (hasEntryFee) {
+                        entryFeeAmount.toLongOrNull() ?: chipValueLong ?: 0L
+                    } else null
+                    onCreateTable(name, chipValueLong, hasEntryFee, entryFeeLong)
+                }
+            )
         }
     }
 }
