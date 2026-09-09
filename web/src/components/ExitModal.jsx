@@ -6,7 +6,7 @@ const ExitModal = ({
   onClose,
   players = [],
   initialPlayer = null,
-  playerName = 'Player',
+  playerName = '',
   currentBalance = 0,
   onSubmit,
 }) => {
@@ -30,7 +30,7 @@ const ExitModal = ({
 
   if (!isOpen) return null;
 
-  const effectivePlayerName = selectedPlayer?.name || selectedPlayer?.username || typedName.trim() || playerName;
+  const effectivePlayerName = selectedPlayer?.name || selectedPlayer?.username || typedName.trim() || playerName || '';
   const effectiveBalance = selectedPlayer
     ? (selectedPlayer.balance ?? (Number(selectedPlayer.totalBuyIns || 0) - Number(selectedPlayer.totalExits || 0)))
     : currentBalance;
@@ -70,7 +70,7 @@ const ExitModal = ({
     if (isSubmitting) return;
     setError('');
 
-    const targetName = (selectedPlayer?.name || selectedPlayer?.username || typedName || playerName).trim();
+    const targetName = (selectedPlayer?.name || selectedPlayer?.username || typedName || (initialPlayer ? playerName : '')).trim();
     if (!targetName) {
       setError('Please enter or select a player name');
       return;
@@ -88,6 +88,7 @@ const ExitModal = ({
         await onSubmit({
           playerId: selectedPlayer?.id || null,
           name: targetName,
+          playerName: targetName,
           amount: numAmount,
           note: note || '',
         }, numAmount, note);

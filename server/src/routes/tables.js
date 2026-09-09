@@ -385,8 +385,8 @@ router.delete('/:tableId/players/:playerId', authenticateToken, async (req, res)
 router.post('/:id/players', authenticateToken, async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { name, playerName, userId } = req.body;
-        const chosenName = (name || playerName || '').trim();
+        const { name, playerName, player_name, userId, user_id } = req.body;
+        const chosenName = (name || playerName || player_name || '').trim();
 
         if (!chosenName) {
             return res.status(400).json({ error: 'Player name is required' });
@@ -475,7 +475,7 @@ router.post('/:id/players', authenticateToken, async (req, res) => {
 const handleRecordBuyIn = async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { playerId, player_id, userId, user_id, username, name, playerName, amount, note } = req.body;
+        const { playerId, player_id, userId, user_id, username, name, playerName, player_name, amount, note } = req.body;
 
         const numAmount = Number(amount);
         if (isNaN(numAmount) || numAmount <= 0) {
@@ -499,7 +499,7 @@ const handleRecordBuyIn = async (req, res) => {
 
         const targetPlayerId = playerId || player_id;
         const targetUserId = userId || user_id;
-        const targetName = (name || playerName || username || '').trim();
+        const targetName = (name || playerName || player_name || username || '').trim();
 
         let player = null;
         if (targetPlayerId) {
@@ -602,11 +602,11 @@ router.post('/:id/buy-in-direct', authenticateToken, handleRecordBuyIn);
 const handleRecordExit = async (req, res) => {
     try {
         const tableId = req.params.id;
-        const { playerId, player_id, userId, user_id, username, name, playerName, amount, note } = req.body;
+        const { playerId, player_id, userId, user_id, username, name, playerName, player_name, amount, note } = req.body;
 
         const numAmount = Number(amount);
         if (isNaN(numAmount) || numAmount < 0) {
-            return res.status(400).json({ error: 'amount must be a non-negative number' });
+            return res.status(400).json({ error: 'amount must be zero or a positive number' });
         }
 
         const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
@@ -626,7 +626,7 @@ const handleRecordExit = async (req, res) => {
 
         const targetPlayerId = playerId || player_id;
         const targetUserId = userId || user_id;
-        const targetName = (name || playerName || username || '').trim();
+        const targetName = (name || playerName || player_name || username || '').trim();
 
         let player = null;
         if (targetPlayerId) {

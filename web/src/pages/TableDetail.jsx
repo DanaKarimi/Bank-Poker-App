@@ -307,7 +307,7 @@ const TableDetail = () => {
     setIsAddingPlayer(true);
     setError('');
     try {
-      await addTablePlayer(tableId, { name: cleanName });
+      await addTablePlayer(tableId, { name: cleanName, playerName: cleanName });
       setSuccessMessage(`Player "${cleanName}" added to table.`);
       setIsAddPlayerModalOpen(false);
       setNewPlayerName('');
@@ -324,7 +324,7 @@ const TableDetail = () => {
   const handleBuyInSubmit = async (payload, legacyAmount, legacyNote) => {
     try {
       const pId = typeof payload === 'object' ? payload.playerId : null;
-      const targetName = typeof payload === 'object' ? payload.name : (myPlayer?.name || user?.username);
+      const targetName = typeof payload === 'object' ? (payload.name || payload.playerName) : (myPlayer?.name || user?.username);
       const amt = Number(typeof payload === 'object' ? payload.amount : payload);
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
@@ -333,6 +333,7 @@ const TableDetail = () => {
         await directBuyIn(tableId, {
           playerId: pId,
           name: targetName,
+          playerName: targetName,
           amount: amt,
           note: nt,
         });
@@ -352,7 +353,7 @@ const TableDetail = () => {
   const handleExitSubmit = async (payload, legacyAmount, legacyNote) => {
     try {
       const pId = typeof payload === 'object' ? payload.playerId : null;
-      const targetName = typeof payload === 'object' ? payload.name : (myPlayer?.name || user?.username);
+      const targetName = typeof payload === 'object' ? (payload.name || payload.playerName) : (myPlayer?.name || user?.username);
       const amt = Number(typeof payload === 'object' ? payload.amount : payload);
       const nt = typeof payload === 'object' ? payload.note : legacyNote;
 
@@ -361,6 +362,7 @@ const TableDetail = () => {
         await directExit(tableId, {
           playerId: pId,
           name: targetName,
+          playerName: targetName,
           amount: amt,
           note: nt,
         });
@@ -1046,7 +1048,7 @@ const TableDetail = () => {
         }}
         players={players}
         initialPlayer={selectedPlayerForBuyIn}
-        playerName={selectedPlayerForBuyIn?.name || myPlayer?.name || user?.username || 'Player'}
+        playerName={selectedPlayerForBuyIn?.name || (isPlayerSeated ? myPlayer?.name : '') || ''}
         currentBalance={selectedPlayerForBuyIn ? (selectedPlayerForBuyIn.balance ?? 0) : myTableNetBalance}
         onSubmit={handleBuyInSubmit}
       />
@@ -1060,7 +1062,7 @@ const TableDetail = () => {
         }}
         players={players}
         initialPlayer={selectedPlayerForExit}
-        playerName={selectedPlayerForExit?.name || myPlayer?.name || user?.username || 'Player'}
+        playerName={selectedPlayerForExit?.name || (isPlayerSeated ? myPlayer?.name : '') || ''}
         currentBalance={selectedPlayerForExit ? (selectedPlayerForExit.balance ?? 0) : myTableNetBalance}
         onSubmit={handleExitSubmit}
       />

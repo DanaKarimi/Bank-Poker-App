@@ -2049,7 +2049,7 @@ router.post('/:id/claim-player', authenticateToken, async (req, res) => {
 router.post('/:id/join-new-player', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
-        const { playerName } = req.body;
+        const { playerName, name, player_name } = req.body;
         const userId = req.user.id;
 
         const group = await get('SELECT * FROM groups WHERE id = ? AND is_deleted = 0', [groupId]);
@@ -2057,7 +2057,7 @@ router.post('/:id/join-new-player', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        const chosenName = (playerName && playerName.trim()) ? playerName.trim() : req.user.username;
+        const chosenName = (playerName || name || player_name || '').trim() || req.user.username;
         const now = Date.now();
 
         await run(
