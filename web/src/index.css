@@ -4,8 +4,32 @@
 
 :root {
   --felt-green: #0b4625;
+  --felt-dark: #062815;
+  --felt-card: #0f532d;
+  --felt-card-dark: #0a3a20;
   --gold-accent: #d4af37;
+  --gold-light: #f3e5ab;
+  --gold-dark: #aa8c2c;
   --cream-text: #f5f5dc;
+  --cream-muted: rgba(245, 245, 220, 0.6);
+  --win-green: #4caf50;
+  --lose-red: #f44336;
+  --live-red: #e53935;
+  --silver: #c0c0c0;
+  --bronze: #cd7f32;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-xxl: 24px;
 }
 
 body {
