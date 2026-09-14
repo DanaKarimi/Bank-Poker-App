@@ -192,7 +192,7 @@ fun TableDetailScreen(
                     }) {
                         Icon(Icons.Default.Share, contentDescription = "Share Results", tint = Gold)
                     }
-                    if (uiState.table?.status == "ACTIVE") {
+                    if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
                         IconButton(onClick = { showCloseTableDialog = true }) {
                             Text(
                                 text = "Close",
@@ -227,13 +227,24 @@ fun TableDetailScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Summary bar
-                TableSummaryBar(
-                    totalBuyIns = uiState.totalBuyIns,
-                    totalExits = uiState.totalExits,
-                    remainingBalance = uiState.remainingBalance,
-                    chipValue = uiState.table?.chipValue
-                )
+                // Summary bar (Admin) or My Table Stats (Non-Admin)
+                if (uiState.isHostOrAdmin) {
+                    TableSummaryBar(
+                        totalBuyIns = uiState.totalBuyIns,
+                        totalExits = uiState.totalExits,
+                        remainingBalance = uiState.remainingBalance,
+                        chipValue = uiState.table?.chipValue
+                    )
+                } else {
+                    MyTableStatsCard(
+                        avatarId = uiState.currentUserAvatarId ?: "avatar_1",
+                        name = uiState.currentUsername ?: "Player",
+                        totalBuyIns = uiState.myTotalBuyIns,
+                        totalExits = uiState.myTotalExits,
+                        netBalance = uiState.myNetBalance,
+                        chipValue = uiState.table?.chipValue
+                    )
+                }
 
                 if (uiState.table?.status == "CLOSED") {
                     Surface(
@@ -279,7 +290,7 @@ fun TableDetailScreen(
                             groupName = uiState.table?.name ?: "Table"
                         )
                     }
-                } else if (uiState.table?.status == "ACTIVE") {
+                } else if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -344,7 +355,8 @@ fun TableDetailScreen(
                     viewModel = viewModel,
                     isTableActive = uiState.table?.status != "CLOSED",
                     tableHasEntryFee = uiState.table?.hasEntryFee == true,
-                    onPlayerClick = onPlayerClick
+                    onPlayerClick = onPlayerClick,
+                    isHostOrAdmin = uiState.isHostOrAdmin
                 )
             }
         }
@@ -498,6 +510,119 @@ fun TableDetailScreen(
 }
 
 @Composable
+fun MyTableStatsCard(
+    avatarId: String,
+    name: String,
+    totalBuyIns: Long,
+    totalExits: Long,
+    netBalance: Long,
+    chipValue: Long?,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .border(
+                width = 1.5.dp,
+                color = Gold.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .animateContentSize(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = FeltCard
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "♠", color = Gold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "MY TABLE STATS",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Cream,
+                    letterSpacing = 3.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // User Avatar & Name
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PokerAvatar(
+                    avatarId = avatarId,
+                    name = name,
+                    size = 44.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = name,
+                        color = Cream,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Text(
+                        text = "PLAYER STATS",
+                        color = Gold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                HeroStat(
+                    label = "BUY-INS",
+                    value = formatAmount(totalBuyIns, chipValue),
+                    color = WinGreen
+                )
+                HeroStat(
+                    label = "EXITS",
+                    value = formatAmount(totalExits, chipValue),
+                    color = Amber80
+                )
+                val signFormatted = when {
+                    netBalance > 0 -> "+$$netBalance"
+                    netBalance < 0 -> "-$${Math.abs(netBalance)}"
+                    else -> "$0"
+                }
+                HeroStat(
+                    label = "NET BALANCE",
+                    value = signFormatted,
+                    color = when {
+                        netBalance > 0 -> WinGreen
+                        netBalance < 0 -> LoseRed
+                        else -> Cream
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun TableSummaryBar(
     totalBuyIns: Long,
     totalExits: Long,
@@ -604,7 +729,8 @@ fun HorizontalPagerTabs(
     isTableActive: Boolean,
     tableHasEntryFee: Boolean = false,
     onPlayerClick: ((String) -> Unit)? = null,
-    onDeletePlayer: ((Player) -> Unit)? = null
+    onDeletePlayer: ((Player) -> Unit)? = null,
+    isHostOrAdmin: Boolean = true
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -656,7 +782,8 @@ fun HorizontalPagerTabs(
                     isTableActive = isTableActive,
                     tableHasEntryFee = tableHasEntryFee,
                     viewModel = viewModel,
-                    onPlayerClick = onPlayerClick
+                    onPlayerClick = onPlayerClick,
+                    isHostOrAdmin = isHostOrAdmin
                 )
                 1 -> HistoryTab(
                     buyIns = buyIns,
@@ -691,7 +818,8 @@ fun PlayersTab(
     tableHasEntryFee: Boolean = false,
     viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
     onPlayerClick: ((String) -> Unit)? = null,
-    onDeletePlayer: ((Player) -> Unit)? = null
+    onDeletePlayer: ((Player) -> Unit)? = null,
+    isHostOrAdmin: Boolean = true
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -716,7 +844,7 @@ fun PlayersTab(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            if (isTableActive) {
+            if (isTableActive && isHostOrAdmin) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -800,27 +928,18 @@ fun PlayersTab(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "♠",
-                            fontSize = 64.sp,
-                            color = Gold.copy(alpha = 0.4f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(32.dp)
+                    ) {
                         Text(
                             text = "No players yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Cream.copy(alpha = 0.7f),
-                            fontWeight = FontWeight.Medium
+                            color = Cream.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodyLarge
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Tap + to add players",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Cream.copy(alpha = 0.4f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        if (isTableActive) {
+                        if (isTableActive && isHostOrAdmin) {
+                            Spacer(modifier = Modifier.height(16.dp))
                             Button(
                                 onClick = onAddPlayer,
                                 colors = ButtonDefaults.buttonColors(
@@ -861,23 +980,23 @@ fun PlayersTab(
                             player = player,
                             currentBalance = balance,
                             finalResult = -balance,
-                            onBuyInClick = { onBuyInClick(player) },
-                            onExitClick = { onExitClick(player) },
+                            onBuyInClick = if (isHostOrAdmin) { { onBuyInClick(player) } } else null,
+                            onExitClick = if (isHostOrAdmin) { { onExitClick(player) } } else null,
                             isTableActive = isTableActive,
                             rank = rank,
                             tableHasEntryFee = tableHasEntryFee,
-                            onToggleEntryFee = if (tableHasEntryFee && player.status == "PLAYING") {
+                            onToggleEntryFee = if (isHostOrAdmin && tableHasEntryFee && player.status == "PLAYING") {
                                 { viewModel?.toggleEntryFee(player.id, !player.entryFeePaid) }
                             } else null,
                             onPlayerClick = onPlayerClick,
-                            onDeleteClick = if (isTableActive && onDeletePlayer != null) { { onDeletePlayer(player) } } else null
+                            onDeleteClick = if (isTableActive && isHostOrAdmin && onDeletePlayer != null) { { onDeletePlayer(player) } } else null
                         )
                     }
                 }
             }
         }
 
-        if (isTableActive) {
+        if (isTableActive && isHostOrAdmin) {
             FloatingActionButton(
                 onClick = onAddPlayer,
                 modifier = Modifier
@@ -903,8 +1022,8 @@ fun PlayerCard(
     player: Player,
     currentBalance: Long,
     finalResult: Long,
-    onBuyInClick: () -> Unit,
-    onExitClick: () -> Unit,
+    onBuyInClick: (() -> Unit)? = null,
+    onExitClick: (() -> Unit)? = null,
     isTableActive: Boolean,
     rank: Int = 0,
     tableHasEntryFee: Boolean = false,
@@ -1031,21 +1150,34 @@ fun PlayerCard(
                         )
                         if (tableHasEntryFee && player.status == "PLAYING") {
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Entry Fee: ${if (player.entryFeePaid) "Paid" else "Unpaid"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (player.entryFeePaid) WinGreen else LoseRed,
-                                fontWeight = FontWeight.Medium
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = if (onToggleEntryFee != null) {
+                                    Modifier.clickable { onToggleEntryFee() }
+                                } else {
+                                    Modifier
+                                }
+                            ) {
+                                Text(
+                                    text = "Entry Fee: ",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Cream.copy(alpha = 0.6f)
+                                )
+                                Text(
+                                    text = if (player.entryFeePaid) "Paid" else "Unpaid",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (player.entryFeePaid) WinGreen else LoseRed,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         } else {
-
                             Spacer(modifier = Modifier.height(4.dp))
                             StatusBadge(status = player.status)
                         }
                     }
                 }
 
-                if (player.status == "PLAYING") {
+                if (player.status != "EXITED") {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "${if (currentBalance >= 0) "+" else ""}$currentBalance",
@@ -1104,7 +1236,7 @@ fun PlayerCard(
                     )
                 }
 
-                if (isTableActive) {
+                if (isTableActive && onBuyInClick != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = onBuyInClick,
@@ -1123,7 +1255,7 @@ fun PlayerCard(
                 }
             }
 
-            if (player.status == "PLAYING" && isTableActive) {
+            if (player.status == "PLAYING" && isTableActive && onBuyInClick != null && onExitClick != null) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -869,6 +869,34 @@ router.get('/:id', authenticateToken, async (req, res) => {
         const isClosed = table.status === 'CLOSED';
         const isHost = Boolean(userId && table.creator_user_id === userId);
         const isQuickTable = !table.group_id;
+        const isAllowedToManage = await canManageTable(userId, req.user?.role, table);
+
+        let myStats = null;
+        if (userId) {
+            const myPlayer = await get(
+                `SELECT p.id, p.name, p.user_id, u.username, u.display_name, u.avatar_id,
+                    COALESCE((SELECT SUM(amount) FROM buy_ins WHERE player_id = p.id AND is_deleted = 0), 0) as total_buy_ins,
+                    COALESCE((SELECT SUM(amount) FROM exit_records WHERE player_id = p.id AND is_deleted = 0), 0) as total_exits
+                 FROM players p
+                 LEFT JOIN users u ON p.user_id = u.id
+                 WHERE p.table_id = ? AND (p.user_id = ? OR p.name = (SELECT username FROM users WHERE id = ?)) AND p.is_deleted = 0
+                 LIMIT 1`,
+                [table.id, userId, userId]
+            );
+            if (myPlayer) {
+                const totalBuyIns = Number(myPlayer.total_buy_ins) || 0;
+                const totalExits = Number(myPlayer.total_exits) || 0;
+                myStats = {
+                    playerId: myPlayer.id,
+                    name: myPlayer.display_name || myPlayer.name || myPlayer.username,
+                    avatarId: myPlayer.avatar_id || 'avatar_1',
+                    totalBuyIns,
+                    totalExits,
+                    netBalance: totalExits - totalBuyIns
+                };
+            }
+        }
+
         const formattedTable = {
             id: table.id,
             groupId: table.group_id,
@@ -890,10 +918,13 @@ router.get('/:id', authenticateToken, async (req, res) => {
             host_id: table.creator_user_id,
             hostId: table.creator_user_id,
             isHost,
-            isQuickTable
+            isQuickTable,
+            isHostOrAdmin: Boolean(isAllowedToManage),
+            canManage: Boolean(isAllowedToManage),
+            myStats
         };
 
-        return res.status(200).json({ table: formattedTable });
+        return res.status(200).json({ table: formattedTable, myStats });
     } catch (error) {
         console.error('Error fetching table detail:', error);
         return res.status(500).json({ error: 'Internal server error while fetching table detail' });

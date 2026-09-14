@@ -75,26 +75,68 @@ class TableDetailViewModel(
     fun loadTableData() {
         viewModelScope.launch {
             var table = repository.getTableById(tableId)
-            if (table == null && remoteRepository != null) {
+            var isHostOrAdmin = true
+            var myBuyIns = 0L
+            var myExits = 0L
+            var myNet = 0L
+
+            val currentUser = remoteRepository?.tokenManager?.getUser()
+            val currentUserId = currentUser?.id
+            val currentUsername = currentUser?.displayName ?: currentUser?.username
+            val currentUserAvatarId = currentUser?.avatarId ?: "avatar_1"
+
+            if (remoteRepository != null && isTableOnline()) {
                 try {
                     val tableRes = remoteRepository.getTableDetail(tableId)
                     if (tableRes.isSuccess) {
                         val dto = tableRes.getOrNull()
                         if (dto != null) {
-                            table = repository.createTable(
-                                name = dto.name,
-                                chipValue = dto.chipValue,
-                                groupId = dto.groupId,
-                                hasEntryFee = dto.hasEntryFee,
-                                entryFee = dto.entryFee,
-                                customId = dto.id
-                            )
+                            if (table == null) {
+                                table = repository.createTable(
+                                    name = dto.name,
+                                    chipValue = dto.chipValue,
+                                    groupId = dto.groupId,
+                                    hasEntryFee = dto.hasEntryFee,
+                                    entryFee = dto.entryFee,
+                                    customId = dto.id
+                                )
+                            }
+                            if (currentUser?.role.equals("SUPER_ADMIN", ignoreCase = true)) {
+                                isHostOrAdmin = true
+                            } else if (dto.isHostOrAdmin != null) {
+                                isHostOrAdmin = dto.isHostOrAdmin == true
+                            } else if (dto.canManage != null) {
+                                isHostOrAdmin = dto.canManage == true
+                            } else if (!currentUserId.isNullOrBlank() && dto.creatorUserId == currentUserId) {
+                                isHostOrAdmin = true
+                            } else {
+                                isHostOrAdmin = false
+                            }
+
+                            if (dto.myStats != null) {
+                                myBuyIns = dto.myStats.totalBuyIns
+                                myExits = dto.myStats.totalExits
+                                myNet = dto.myStats.netBalance
+                            }
                         }
                     }
                 } catch (e: Exception) {
                     Log.w("TableDetail", "Failed to fetch table details: ${e.message}")
                 }
             }
+
+            // Fallback computation for personal stats if not returned directly by server
+            if (myBuyIns == 0L && myExits == 0L && !currentUsername.isNullOrBlank()) {
+                val matchingPlayer = repository.getPlayersForTableOnce(tableId).firstOrNull {
+                    it.name.equals(currentUsername, ignoreCase = true) || (!currentUserId.isNullOrBlank() && it.id == currentUserId)
+                }
+                if (matchingPlayer != null) {
+                    myBuyIns = repository.getTotalBuyInsForPlayer(matchingPlayer.id)
+                    myExits = repository.getTotalExitsForPlayer(matchingPlayer.id)
+                    myNet = myExits - myBuyIns
+                }
+            }
+
             val group = table?.groupId?.let { repository.getGroupById(it) }
             val isOnline = (group == null || group.mode?.equals("OFFLINE", ignoreCase = true) != true) && remoteRepository != null
             val totalBuyIns = repository.getTotalBuyInsForTable(tableId)
@@ -104,7 +146,14 @@ class TableDetailViewModel(
                 isOnline = isOnline,
                 totalBuyIns = totalBuyIns,
                 totalExits = totalExits,
-                remainingBalance = totalBuyIns - totalExits
+                remainingBalance = totalBuyIns - totalExits,
+                isHostOrAdmin = isHostOrAdmin,
+                currentUserId = currentUserId,
+                currentUsername = currentUsername,
+                currentUserAvatarId = currentUserAvatarId,
+                myTotalBuyIns = myBuyIns,
+                myTotalExits = myExits,
+                myNetBalance = myNet
             )
         }
     }
@@ -698,5 +747,12 @@ data class TableDetailUiState(
     val isOnline: Boolean = false,
     val totalBuyIns: Long = 0L,
     val totalExits: Long = 0L,
-    val remainingBalance: Long = 0L
+    val remainingBalance: Long = 0L,
+    val isHostOrAdmin: Boolean = true,
+    val currentUserId: String? = null,
+    val currentUsername: String? = null,
+    val currentUserAvatarId: String? = null,
+    val myTotalBuyIns: Long = 0L,
+    val myTotalExits: Long = 0L,
+    val myNetBalance: Long = 0L
 )

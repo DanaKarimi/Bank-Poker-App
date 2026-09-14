@@ -256,13 +256,12 @@ const TableDetail = () => {
 
   const isHostOrAdmin =
     user?.role === 'SUPER_ADMIN' ||
-    table?.host_id === user?.id ||
-    table?.hostId === user?.id ||
-    table?.creator_user_id === user?.id ||
-    table?.creatorUserId === user?.id ||
-    table?.isHost ||
-    table?.isQuickTable ||
-    !(groupId || table?.groupId);
+    (table?.isHostOrAdmin != null
+      ? Boolean(table.isHostOrAdmin)
+      : Boolean(
+          table?.canManage ||
+          (user?.id && (table?.creator_user_id === user.id || table?.creatorUserId === user.id || table?.host_id === user.id || table?.hostId === user.id || table?.isHost))
+        ));
 
   const pendingJoinReq = (myRequests.joinRequests || []).find(
     (jr) => (jr.table_id === tableId || jr.tableId === tableId) && jr.status === 'PENDING'
@@ -336,6 +335,22 @@ const TableDetail = () => {
   };
 
   const myTableNetBalance = myPlayer ? getPlayerBalance(myPlayer) : 0;
+
+  const myTotalBuyIns = table?.myStats?.totalBuyIns != null
+    ? Number(table.myStats.totalBuyIns)
+    : myPlayer
+    ? getPlayerBuyIns(myPlayer.id)
+    : 0;
+
+  const myTotalExits = table?.myStats?.totalExits != null
+    ? Number(table.myStats.totalExits)
+    : myPlayer
+    ? getPlayerExits(myPlayer.id)
+    : 0;
+
+  const myNetBalance = table?.myStats?.netBalance != null
+    ? Number(table.myStats.netBalance)
+    : (myTotalExits - myTotalBuyIns);
 
   // Deduplicated & ranked players
   const sortedPlayersWithRank = useMemo(() => {
@@ -751,77 +766,163 @@ const TableDetail = () => {
           </div>
         )}
 
-        {/* Table Summary Bar (Exact Match to Android TableSummaryBar Hero Card) */}
-        <div className="bg-felt-card border-[1.5px] border-gold-accent/70 rounded-[20px] p-5 sm:p-6 shadow-2xl relative overflow-hidden">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <span className="text-gold-accent text-lg font-bold">♠</span>
-            <h3 className="text-xs sm:text-sm font-bold text-cream-text uppercase tracking-[3px]">
-              TABLE SUMMARY
-            </h3>
-          </div>
+        {/* Table Summary Bar (Admin) or My Table Stats (Non-Admin) */}
+        {!isHostOrAdmin ? (
+          <div className="bg-felt-card border-[1.5px] border-gold-accent/70 rounded-[20px] p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <span className="text-gold-accent text-lg font-bold">♠</span>
+              <h3 className="text-xs sm:text-sm font-bold text-cream-text uppercase tracking-[3px]">
+                MY TABLE STATS
+              </h3>
+            </div>
 
-          <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
-            <div className="px-2">
-              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
-                BUY-INS
-              </div>
-              <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
-                ${totalBuyIns.toLocaleString()}
+            {/* My Profile Header */}
+            <div className="flex items-center justify-center gap-3 mb-5 pb-4 border-b border-gold-accent/20">
+              <PokerAvatar
+                avatarId={table?.myStats?.avatarId || myPlayer?.avatar_id || myPlayer?.avatarId || user?.avatar_id || user?.avatarId || 'avatar_1'}
+                name={table?.myStats?.name || myPlayer?.name || user?.display_name || user?.username || 'Player'}
+                size={44}
+              />
+              <div className="text-left">
+                <div className="text-sm sm:text-base font-bold text-cream-text">
+                  {table?.myStats?.name || myPlayer?.name || user?.display_name || user?.username || 'Player'}
+                </div>
+                <div className="text-[11px] text-gold-accent font-semibold tracking-wide uppercase">
+                  {myPlayer ? 'Seated Player' : 'Viewer'}
+                </div>
               </div>
             </div>
-            <div className="px-2">
-              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
-                EXITS
+
+            {/* Personal Stats Grid */}
+            <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  BUY-INS
+                </div>
+                <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
+                  ${myTotalBuyIns.toLocaleString()}
+                </div>
               </div>
-              <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
-                ${totalExits.toLocaleString()}
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  EXITS
+                </div>
+                <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
+                  ${myTotalExits.toLocaleString()}
+                </div>
+              </div>
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  NET BALANCE
+                </div>
+                <div
+                  className={`text-lg sm:text-2xl font-bold font-mono ${
+                    myNetBalance > 0
+                      ? 'text-win-green'
+                      : myNetBalance < 0
+                      ? 'text-lose-red'
+                      : 'text-cream-text'
+                  }`}
+                >
+                  {myNetBalance > 0
+                    ? `+$${myNetBalance.toLocaleString()}`
+                    : myNetBalance < 0
+                    ? `-$${Math.abs(myNetBalance).toLocaleString()}`
+                    : '$0'}
+                </div>
               </div>
             </div>
-            <div className="px-2">
-              <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
-                REMAINING
-              </div>
-              <div
-                className={`text-lg sm:text-2xl font-bold font-mono ${
-                  remainingBalance < 0
-                    ? 'text-lose-red'
-                    : remainingBalance === 0
-                    ? 'text-cream-text'
-                    : 'text-win-green'
-                }`}
-              >
-                ${remainingBalance.toLocaleString()}
-              </div>
+
+            {/* Table Code / Details */}
+            <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
+              {table?.code ? (
+                <GroupCodeChip code={table.code} label="Table Code" />
+              ) : null}
+
+              {(table?.chip_value || table?.chipValue) && (
+                <span className="px-3 py-1 bg-felt-dark rounded-xl border border-gold-accent/30 text-[11px] font-bold text-gold-accent">
+                  Chip: ${table.chip_value || table.chipValue}
+                </span>
+              )}
+              {(table?.has_entry_fee || table?.hasEntryFee) && (
+                <span className="px-3 py-1 bg-felt-dark rounded-xl border border-amber-500/40 text-[11px] font-bold text-amber-400">
+                  Entry Fee: ${table.entry_fee || table.entryFee}
+                </span>
+              )}
             </div>
           </div>
+        ) : (
+          <div className="bg-felt-card border-[1.5px] border-gold-accent/70 rounded-[20px] p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <span className="text-gold-accent text-lg font-bold">♠</span>
+              <h3 className="text-xs sm:text-sm font-bold text-cream-text uppercase tracking-[3px]">
+                TABLE SUMMARY
+              </h3>
+            </div>
 
-          {/* Table Code / Publish Bar */}
-          <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
-            {table?.code ? (
-              <GroupCodeChip code={table.code} label="Table Code" />
-            ) : !isClosed ? (
-              <button
-                onClick={handlePublishTable}
-                disabled={isPublishing}
-                className="px-4 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <Share2 className="w-3.5 h-3.5 text-gold-accent" />
-                <span>{isPublishing ? 'Publishing...' : 'Publish / Share Table'}</span>
-              </button>
-            ) : null}
+            <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  BUY-INS
+                </div>
+                <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
+                  ${totalBuyIns.toLocaleString()}
+                </div>
+              </div>
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  EXITS
+                </div>
+                <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
+                  ${totalExits.toLocaleString()}
+                </div>
+              </div>
+              <div className="px-2">
+                <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
+                  REMAINING
+                </div>
+                <div
+                  className={`text-lg sm:text-2xl font-bold font-mono ${
+                    remainingBalance < 0
+                      ? 'text-lose-red'
+                      : remainingBalance === 0
+                      ? 'text-cream-text'
+                      : 'text-win-green'
+                  }`}
+                >
+                  ${remainingBalance.toLocaleString()}
+                </div>
+              </div>
+            </div>
 
-            {(table?.chip_value || table?.chipValue) && (
-              <span className="px-3 py-1 bg-felt-dark rounded-xl border border-gold-accent/30 text-[11px] font-bold text-gold-accent">
-                Chip: ${table.chip_value || table.chipValue}
-              </span>
-            )}
-            {(table?.has_entry_fee || table?.hasEntryFee) && (
-              <span className="px-3 py-1 bg-felt-dark rounded-xl border border-amber-500/40 text-[11px] font-bold text-amber-400">
-                Entry Fee: ${table.entry_fee || table.entryFee}
-              </span>
-            )}
+            {/* Table Code / Publish Bar */}
+            <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
+              {table?.code ? (
+                <GroupCodeChip code={table.code} label="Table Code" />
+              ) : !isClosed ? (
+                <button
+                  onClick={handlePublishTable}
+                  disabled={isPublishing}
+                  className="px-4 py-1.5 bg-felt-dark hover:bg-felt-dark/80 border border-gold-accent/50 text-gold-accent font-bold text-xs uppercase tracking-wider rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-gold-accent" />
+                  <span>{isPublishing ? 'Publishing...' : 'Publish / Share Table'}</span>
+                </button>
+              ) : null}
+
+              {(table?.chip_value || table?.chipValue) && (
+                <span className="px-3 py-1 bg-felt-dark rounded-xl border border-gold-accent/30 text-[11px] font-bold text-gold-accent">
+                  Chip: ${table.chip_value || table.chipValue}
+                </span>
+              )}
+              {(table?.has_entry_fee || table?.hasEntryFee) && (
+                <span className="px-3 py-1 bg-felt-dark rounded-xl border border-amber-500/40 text-[11px] font-bold text-amber-400">
+                  Entry Fee: ${table.entry_fee || table.entryFee}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tab Navigation (Matching Android HorizontalPagerTabs: PLAYERS | HISTORY | STATS) */}
         <div className="grid grid-cols-3 gap-2 p-1.5 bg-felt-card/80 border border-gold-accent/30 rounded-2xl shadow-md">
@@ -864,7 +965,7 @@ const TableDetail = () => {
         {activeTab === 'players' && (
           <div className="space-y-4">
             {/* Action Row Below Tabs (Matching Android: Record Buy-In + Record Exit side-by-side) */}
-            {!isClosed && (
+            {!isClosed && isHostOrAdmin && (
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -1064,7 +1165,7 @@ const TableDetail = () => {
                             </div>
                           )}
 
-                          {!isClosed && playerBuyIns === 0 && (
+                          {!isClosed && isHostOrAdmin && playerBuyIns === 0 && (
                             <button
                               type="button"
                               onClick={() => handleDeletePlayerClick(p)}
@@ -1096,7 +1197,7 @@ const TableDetail = () => {
                               : 'Break-even'}
                           </div>
 
-                          {!isClosed && (
+                          {!isClosed && isHostOrAdmin && (
                             <button
                               type="button"
                               onClick={() => handleOpenBuyInModal(p)}
@@ -1110,7 +1211,7 @@ const TableDetail = () => {
                       )}
 
                       {/* PLAYING Status Action Buttons */}
-                      {!isExited && !isClosed && (
+                      {!isExited && !isClosed && isHostOrAdmin && (
                         <div className="mt-3 grid grid-cols-2 gap-2 pt-2 border-t border-gold-accent/10">
                           <button
                             type="button"
@@ -1316,7 +1417,7 @@ const TableDetail = () => {
       </div>
 
       {/* Floating Action Button (+) for Add Player (Matches Android lines 881-896) */}
-      {!isClosed && (
+      {!isClosed && isHostOrAdmin && (
         <button
           type="button"
           onClick={() => {
