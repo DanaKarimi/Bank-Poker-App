@@ -213,6 +213,39 @@ const GroupStats = () => {
       fetchData(true);
     };
 
+    const handleEntryFeeUpdated = async (payload) => {
+      if (payload) {
+        const { tableId, paid } = payload;
+        if (tableId) {
+          setTables((prev) =>
+            prev.map((t) => {
+              if (t.id === tableId || t.serverId === tableId) {
+                return {
+                  ...t,
+                  myEntryFeePaid: Boolean(paid),
+                  my_entry_fee_paid: paid ? 1 : 0
+                };
+              }
+              return t;
+            })
+          );
+        }
+      }
+      try {
+        const freshTables = await getGroupTables(groupId);
+        if (Array.isArray(freshTables) && freshTables.length > 0) {
+          const tMap = new Map();
+          freshTables.forEach((t) => {
+            if (t.id) tMap.set(t.id, t);
+          });
+          setTables(Array.from(tMap.values()));
+        }
+      } catch (err) {
+        console.error('Failed to refetch tables on entry_fee_updated:', err);
+      }
+      fetchData(true);
+    };
+
     socket.on('table_created', handleRefresh);
     socket.on('table_closed', handleTableClosed);
     socket.on('table_updated', handleRefresh);
@@ -229,14 +262,20 @@ const GroupStats = () => {
     socket.on('group_updated', handleRefresh);
     socket.on('claim_done', handleRefresh);
     socket.on('settlement_done', handleRefresh);
-    socket.on('entry_fee_updated', handleRefresh);
+    socket.on('entry_fee_updated', handleEntryFeeUpdated);
 
     const interval = setInterval(() => {
       fetchData(true);
     }, 3500);
 
+    const handleFocus = () => {
+      fetchData(true);
+    };
+    window.addEventListener('focus', handleFocus);
+
     return () => {
       clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
       leaveGroup(groupId);
       socket.off('table_created', handleRefresh);
       socket.off('table_closed', handleTableClosed);
@@ -254,7 +293,7 @@ const GroupStats = () => {
       socket.off('group_updated', handleRefresh);
       socket.off('claim_done', handleRefresh);
       socket.off('settlement_done', handleRefresh);
-      socket.off('entry_fee_updated', handleRefresh);
+      socket.off('entry_fee_updated', handleEntryFeeUpdated);
     };
   }, [groupId]);
 

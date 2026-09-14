@@ -1916,7 +1916,15 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
         );
 
         // Synchronize with players table if this entry fee is tied to a table (even if closed)
+        let matchedPlayerId = null;
         if (record.table_id && record.player_name) {
+            const matchedPlayer = await get(
+                `SELECT id FROM players WHERE table_id = ? AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                [record.table_id, record.player_name]
+            );
+            if (matchedPlayer) {
+                matchedPlayerId = matchedPlayer.id;
+            }
             await run(
                 `UPDATE players
                  SET entry_fee_paid = ?, updated_at = ?
@@ -1925,6 +1933,7 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             );
             emitToTable(record.table_id, 'player_updated', {
                 tableId: record.table_id,
+                playerId: matchedPlayerId,
                 playerName: record.player_name,
                 entryFeePaid: Boolean(newPaid)
             });
@@ -1939,7 +1948,8 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             paid: Boolean(newPaid),
             amount: newAmount,
             playerName: record.player_name,
-            tableId: record.table_id
+            tableId: record.table_id,
+            playerId: matchedPlayerId
         };
 
         // Emit entry_fee_updated to group room

@@ -26,7 +26,8 @@ import kotlinx.coroutines.launch
 class GroupDetailViewModel(
     private val repository: PokerRepository,
     private val groupId: String,
-    private val remoteRepository: RemoteRepository? = null
+    private val remoteRepository: RemoteRepository? = null,
+    private val socketManager: com.bankpoker.app.data.remote.SocketManager? = null
 ) : ViewModel() {
 
     private val _group = MutableStateFlow<PlayerGroup?>(null)
@@ -73,8 +74,66 @@ class GroupDetailViewModel(
                 }
             }
             _group.value = g
+            val sId = g?.serverId ?: g?.id ?: groupId
+            socketManager?.joinGroup(sId)
             fetchServerBalances()
             fetchServerSettlement()
+            fetchServerTables()
+        }
+
+        if (socketManager != null) {
+            viewModelScope.launch {
+                socketManager.events.collect { event ->
+                    when (event.event) {
+                        "entry_fee_updated" -> {
+                            val eventGroupId = event.payload?.optString("groupId", "")
+                            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                            val sId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+                            if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == groupId) {
+                                handleEntryFeeUpdated(event.payload)
+                            }
+                        }
+                        "table_created", "table_closed", "table_updated", "table_published" -> {
+                            val eventGroupId = event.payload?.optString("groupId", "")
+                            val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                            val sId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+                            if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == groupId) {
+                                fetchServerTables()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun handleEntryFeeUpdated(payload: org.json.JSONObject?) {
+        if (payload == null) {
+            fetchServerTables()
+            return
+        }
+        val tableId = payload.optString("tableId", "")
+        val paid = payload.optBoolean("paid", false)
+        val playerId = payload.optString("playerId", "")
+
+        viewModelScope.launch {
+            val matchedTableId = if (tableId.isNotEmpty()) {
+                tableId
+            } else if (playerId.isNotEmpty()) {
+                repository.getPlayerById(playerId)?.tableId
+            } else {
+                null
+            }
+
+            if (!matchedTableId.isNullOrEmpty()) {
+                _serverTables.value = _serverTables.value.map { t ->
+                    if (t.id == matchedTableId) {
+                        t.copy(myEntryFeePaid = paid)
+                    } else {
+                        t
+                    }
+                }
+            }
             fetchServerTables()
         }
     }
@@ -535,12 +594,13 @@ class GroupDetailViewModel(
 class GroupDetailViewModelFactory(
     private val repository: PokerRepository,
     private val groupId: String,
-    private val remoteRepository: RemoteRepository? = null
+    private val remoteRepository: RemoteRepository? = null,
+    private val socketManager: com.bankpoker.app.data.remote.SocketManager? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GroupDetailViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return GroupDetailViewModel(repository, groupId, remoteRepository) as T
+            return GroupDetailViewModel(repository, groupId, remoteRepository, socketManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

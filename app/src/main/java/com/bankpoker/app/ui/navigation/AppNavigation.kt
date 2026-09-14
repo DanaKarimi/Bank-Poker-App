@@ -12,6 +12,7 @@ import androidx.navigation.navArgument
 import com.bankpoker.app.data.local.BankPokerDatabase
 import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.TokenManager
+import com.bankpoker.app.data.remote.SocketManager
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.screens.HomeScreen
@@ -179,12 +180,13 @@ fun AppNavigation(
             val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
             val context = LocalContext.current
             val tokenManager = remember { TokenManager.getInstance(context) }
+            val socketManager = remember { SocketManager.getInstance(context) }
             val remoteRepository = remember {
                 val service = ApiClient.getApiService(tokenManager)
                 RemoteRepository(service, tokenManager)
             }
             val viewModel: GroupDetailViewModel = viewModel(
-                factory = GroupDetailViewModelFactory(repository, groupId, remoteRepository)
+                factory = GroupDetailViewModelFactory(repository, groupId, remoteRepository, socketManager)
             )
             GroupDetailScreen(
                 viewModel = viewModel,

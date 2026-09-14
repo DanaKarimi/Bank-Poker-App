@@ -7,6 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateContentSize
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -109,6 +112,21 @@ fun GroupDetailScreen(
 
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.fetchServerTables()
+                viewModel.fetchServerBalances()
+                viewModel.fetchServerSettlement()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(socketManager, group?.id, group?.serverId) {
         val sId = group?.serverId ?: group?.id
@@ -117,7 +135,13 @@ fun GroupDetailScreen(
         }
         socketManager.events.collect { event ->
             when (event.event) {
-                "settlement_done", "payment_created", "payment_updated", "payment_deleted", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published", "entry_fee_updated" -> {
+                "entry_fee_updated" -> {
+                    val eventGroupId = event.payload?.optString("groupId", "")
+                    if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
+                        viewModel.handleEntryFeeUpdated(event.payload)
+                    }
+                }
+                "settlement_done", "payment_created", "payment_updated", "payment_deleted", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published" -> {
                     val eventGroupId = event.payload?.optString("groupId", "")
                     if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
                         viewModel.fetchServerBalances()
