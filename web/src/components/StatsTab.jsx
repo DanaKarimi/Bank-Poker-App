@@ -55,14 +55,25 @@ const StatsTab = ({
           });
         }
       }
-      setRows((prev) =>
-        prev.map((r) => {
-          const rPayer = r.debtorName || r.payerName || r.fromPlayer;
-          const rReceiver = r.creditorName || r.receiverName || r.toPlayer;
-          const rKey = r.id || `${rPayer}->${rReceiver}->${r.amount}`;
-          return rKey === key ? { ...r, paid: nextPaid ? 1 : 0, isPaid: nextPaid } : r;
-        })
-      );
+      if (nextPaid) {
+        setRows((prev) =>
+          prev.filter((r) => {
+            const rPayer = r.debtorName || r.payerName || r.fromPlayer;
+            const rReceiver = r.creditorName || r.receiverName || r.toPlayer;
+            const rKey = r.id || `${rPayer}->${rReceiver}->${r.amount}`;
+            return rKey !== key;
+          })
+        );
+      } else {
+        setRows((prev) =>
+          prev.map((r) => {
+            const rPayer = r.debtorName || r.payerName || r.fromPlayer;
+            const rReceiver = r.creditorName || r.receiverName || r.toPlayer;
+            const rKey = r.id || `${rPayer}->${rReceiver}->${r.amount}`;
+            return rKey === key ? { ...r, paid: 0, isPaid: false } : r;
+          })
+        );
+      }
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Failed to toggle settlement paid status:', err);

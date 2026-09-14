@@ -1383,7 +1383,7 @@ async function generateOrUpdateSettlementPlan(groupId, forceRegenerate = false) 
     }
 
     const existingRecords = await all(
-        `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
+        `SELECT * FROM settlement_records WHERE group_id = ? AND paid = 0 AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
         [groupId]
     );
 
@@ -1426,7 +1426,7 @@ async function generateOrUpdateSettlementPlan(groupId, forceRegenerate = false) 
     }
 
     return all(
-        `SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
+        `SELECT * FROM settlement_records WHERE group_id = ? AND paid = 0 AND is_deleted = 0 ORDER BY timestamp ASC, id ASC`,
         [groupId]
     );
 }
@@ -1434,7 +1434,7 @@ async function generateOrUpdateSettlementPlan(groupId, forceRegenerate = false) 
 /**
  * GET /api/groups/:id/settlement-plan and GET /api/groups/:id/settlement
  * (Requires Auth)
- * Return the settlement plan (who pays whom). Generates on demand if empty.
+ * Return pending settlement plan (unpaid transfers only). Generates on demand if empty.
  */
 const handleGetSettlementPlan = async (req, res) => {
     try {
@@ -1445,7 +1445,8 @@ const handleGetSettlementPlan = async (req, res) => {
         }
 
         const records = await generateOrUpdateSettlementPlan(groupId, false);
-        const settlement = (records || []).map(formatSettlementRecord);
+        const unpaidRecords = (records || []).filter(r => Number(r.paid) === 0);
+        const settlement = unpaidRecords.map(formatSettlementRecord);
         return res.status(200).json({ settlement });
     } catch (error) {
         console.error('Error fetching settlement plan:', error);
@@ -1533,7 +1534,7 @@ router.post('/:id/settlement', authenticateToken, async (req, res) => {
         }
 
         emitToGroup(groupId, 'settlement_done', { groupId });
-        const records = await all('SELECT * FROM settlement_records WHERE group_id = ? AND is_deleted = 0 ORDER BY timestamp ASC, id ASC', [groupId]);
+        const records = await all('SELECT * FROM settlement_records WHERE group_id = ? AND paid = 0 AND is_deleted = 0 ORDER BY timestamp ASC, id ASC', [groupId]);
         const settlement = (records || []).map(formatSettlementRecord);
         return res.status(200).json({ message: 'Settlement plan synced successfully', settlement });
     } catch (error) {
@@ -1571,12 +1572,41 @@ const handleToggleSettlementPaid = async (req, res) => {
             [nextPaid, now, record.id]
         );
 
+        let createdPaymentId = null;
+        if (nextPaid === 1) {
+            // Check if payment row already created for this settlement transfer to ensure exactly once
+            const existingPayment = await get(
+                `SELECT id FROM payments 
+                 WHERE group_id = ? AND UPPER(TRIM(from_player)) = UPPER(TRIM(?)) AND UPPER(TRIM(to_player)) = UPPER(TRIM(?)) AND amount = ? AND is_deleted = 0
+                 AND created_at >= ?`,
+                [groupId, record.payer_name, record.receiver_name, record.amount, now - 120000]
+            );
+
+            if (!existingPayment) {
+                createdPaymentId = crypto.randomUUID();
+                await run(
+                    `INSERT INTO payments (id, group_id, from_player, to_player, amount, created_at, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [createdPaymentId, groupId, record.payer_name.trim(), record.receiver_name.trim(), Number(record.amount) || 0, now, createdPaymentId, now]
+                );
+
+                emitToGroup(groupId, 'payment_created', {
+                    groupId,
+                    paymentId: createdPaymentId,
+                    fromPlayer: record.payer_name.trim(),
+                    toPlayer: record.receiver_name.trim(),
+                    amount: Number(record.amount) || 0
+                });
+            }
+        }
+
         emitToGroup(groupId, 'settlement_done', { groupId, recordId: record.id, paid: Boolean(nextPaid) });
         return res.status(200).json({
             message: 'Settlement record updated',
             recordId: record.id,
             isPaid: Boolean(nextPaid),
-            paid: Boolean(nextPaid)
+            paid: Boolean(nextPaid),
+            paymentId: createdPaymentId
         });
     } catch (error) {
         console.error('Error toggling settlement paid:', error);

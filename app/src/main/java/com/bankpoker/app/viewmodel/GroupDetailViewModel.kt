@@ -251,14 +251,16 @@ class GroupDetailViewModel(
             val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
             val nextPaid = !settlement.isPaid
             if (currentGroup?.mode == "ONLINE" && remoteRepository != null) {
+                // Optimistically remove from pending settlements list
+                if (nextPaid) {
+                    _serverSettlement.value = _serverSettlement.value.filter { it.id != settlement.id }
+                    repository.recordPayment(groupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
+                }
                 if (settlement.id.isNotBlank()) {
                     remoteRepository.toggleSettlementPaid(serverGroupId, settlement.id, nextPaid)
                 }
-                if (nextPaid) {
-                    repository.recordPayment(groupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
-                    remoteRepository.recordPayment(serverGroupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
-                }
                 fetchServerSettlement()
+                fetchServerBalances()
             } else {
                 repository.recordPayment(groupId, settlement.fromPlayer, settlement.toPlayer, settlement.amount)
             }
