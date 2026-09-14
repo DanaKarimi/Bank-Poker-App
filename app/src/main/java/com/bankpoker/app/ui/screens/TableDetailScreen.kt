@@ -2,11 +2,18 @@ package com.bankpoker.app.ui.screens
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -123,6 +130,21 @@ fun TableDetailScreen(
     var playerDeleteError by remember { mutableStateOf<String?>(null) }
     
     val coroutineScope = rememberCoroutineScope()
+    var isHeaderCollapsed by remember { mutableStateOf(false) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < -12f && !isHeaderCollapsed) {
+                    isHeaderCollapsed = true
+                } else if (delta > 20f && isHeaderCollapsed) {
+                    isHeaderCollapsed = false
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -225,101 +247,126 @@ fun TableDetailScreen(
             CasinoWatermarks()
 
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(nestedScrollConnection)
             ) {
-                // Summary bar (Admin) or My Table Stats (Non-Admin)
-                if (uiState.isHostOrAdmin) {
-                    TableSummaryBar(
-                        totalBuyIns = uiState.totalBuyIns,
-                        totalExits = uiState.totalExits,
-                        remainingBalance = uiState.remainingBalance,
-                        chipValue = uiState.table?.chipValue
-                    )
-                } else {
-                    MyTableStatsCard(
-                        avatarId = uiState.currentUserAvatarId ?: "avatar_1",
-                        name = uiState.currentUsername ?: "Player",
-                        totalBuyIns = uiState.myTotalBuyIns,
-                        totalExits = uiState.myTotalExits,
-                        netBalance = uiState.myNetBalance,
-                        chipValue = uiState.table?.chipValue
-                    )
-                }
-
-                if (uiState.table?.status == "CLOSED") {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        color = LoseRed.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, LoseRed.copy(alpha = 0.6f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = null,
-                                tint = LoseRed,
-                                modifier = Modifier.size(18.dp)
+                // Expanded Table Summary Header (collapses on scroll down, expands on scroll to top)
+                AnimatedVisibility(
+                    visible = !isHeaderCollapsed,
+                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(250)),
+                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Summary bar (Admin) or My Table Stats (Non-Admin)
+                        if (uiState.isHostOrAdmin) {
+                            TableSummaryBar(
+                                totalBuyIns = uiState.totalBuyIns,
+                                totalExits = uiState.totalExits,
+                                remainingBalance = uiState.remainingBalance,
+                                chipValue = uiState.table?.chipValue
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "TABLE CLOSED • HISTORY LOCKED",
-                                color = LoseRed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                letterSpacing = 1.sp
+                        } else {
+                            MyTableStatsCard(
+                                avatarId = uiState.currentUserAvatarId ?: "avatar_1",
+                                name = uiState.currentUsername ?: "Player",
+                                totalBuyIns = uiState.myTotalBuyIns,
+                                totalExits = uiState.myTotalExits,
+                                netBalance = uiState.myNetBalance,
+                                chipValue = uiState.table?.chipValue
                             )
                         }
-                    }
-                }
 
-                if (!uiState.table?.code.isNullOrBlank()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        GroupCodeChip(
-                            code = uiState.table!!.code!!,
-                            groupName = uiState.table?.name ?: "Table"
-                        )
-                    }
-                } else if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Button(
-                            onClick = {
-                                viewModel.publishTable { success, code, errorMsg ->
-                                    if (success) {
-                                        Toast.makeText(context, "Table published! Code: $code", Toast.LENGTH_SHORT).show()
-                                    } else if (errorMsg != null) {
-                                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
-                                    }
+                        if (uiState.table?.status == "CLOSED") {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                color = LoseRed.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, LoseRed.copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = null,
+                                        tint = LoseRed,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "TABLE CLOSED • HISTORY LOCKED",
+                                        color = LoseRed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        letterSpacing = 1.sp
+                                    )
                                 }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = FeltCard,
-                                contentColor = Gold
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Publish / Share Table", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        if (!uiState.table?.code.isNullOrBlank()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                GroupCodeChip(
+                                    code = uiState.table!!.code!!,
+                                    groupName = uiState.table?.name ?: "Table"
+                                )
+                            }
+                        } else if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Button(
+                                    onClick = {
+                                        viewModel.publishTable { success, code, errorMsg ->
+                                            if (success) {
+                                                Toast.makeText(context, "Table published! Code: $code", Toast.LENGTH_SHORT).show()
+                                            } else if (errorMsg != null) {
+                                                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = FeltCard,
+                                        contentColor = Gold
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Publish / Share Table", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
+                }
+
+                // Collapsed Compact Header (Table name + Status badge)
+                AnimatedVisibility(
+                    visible = isHeaderCollapsed,
+                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200))
+                ) {
+                    CompactTableBar(
+                        tableName = uiState.table?.name ?: "Table",
+                        status = uiState.table?.status ?: "ACTIVE",
+                        chipValue = uiState.table?.chipValue,
+                        onClick = { isHeaderCollapsed = false }
+                    )
                 }
 
                 HorizontalPagerTabs(
@@ -506,6 +553,69 @@ fun TableDetailScreen(
             containerColor = FeltCard,
             shape = RoundedCornerShape(16.dp)
         )
+    }
+}
+
+@Composable
+fun CompactTableBar(
+    tableName: String,
+    status: String,
+    chipValue: Long? = null,
+    onClick: () -> Unit = {}
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { onClick() },
+        color = FeltCard,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Text(
+                    text = "♠",
+                    color = Gold,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = tableName,
+                    color = Cream,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (chipValue != null && chipValue > 0) {
+                    Text(
+                        text = "Chip: $$chipValue",
+                        color = Gold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                StatusBadge(status = status)
+            }
+        }
     }
 }
 
