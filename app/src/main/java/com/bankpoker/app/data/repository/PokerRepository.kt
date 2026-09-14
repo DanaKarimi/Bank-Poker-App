@@ -302,6 +302,10 @@ class PokerRepository(
 
     fun getTablesByGroupId(groupId: String): Flow<List<PokerTable>> = pokerTableDao.getTablesByGroupId(groupId)
 
+    suspend fun cacheGroupTables(tables: List<PokerTable>) {
+        pokerTableDao.insertTables(tables)
+    }
+
     fun getBalancesByGroupId(groupId: String): Flow<List<GroupBalance>> = groupBalanceDao.getBalancesByGroupId(groupId)
 
     suspend fun getBalancesByGroupIdOnce(groupId: String): List<GroupBalance> = groupBalanceDao.getBalancesByGroupIdOnce(groupId)

@@ -13,10 +13,14 @@ import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
 import com.bankpoker.app.data.remote.dto.CreateTableResponse
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
+import com.bankpoker.app.data.remote.dto.GroupTableItem
+import com.bankpoker.app.data.remote.dto.toGroupTableItem
+import com.bankpoker.app.data.remote.dto.toPokerTable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class GroupDetailViewModel(
@@ -29,6 +33,15 @@ class GroupDetailViewModel(
     val group: StateFlow<PlayerGroup?> = _group.asStateFlow()
 
     val tables: Flow<List<PokerTable>> = repository.getTablesByGroupId(groupId)
+
+    private val _serverTables = MutableStateFlow<List<GroupTableItem>>(emptyList())
+    val groupTables: Flow<List<GroupTableItem>> = combine(_serverTables, repository.getTablesByGroupId(groupId)) { serverList, localList ->
+        if (serverList.isNotEmpty()) {
+            serverList
+        } else {
+            localList.map { it.toGroupTableItem() }
+        }
+    }
     val balances: Flow<List<GroupBalance>> = repository.getBalancesByGroupId(groupId)
     val payments: Flow<List<Payment>> = repository.getPaymentsByGroupId(groupId)
     val entryFeeDebtors: Flow<List<UnpaidEntryFeeInfo>> = repository.getUnpaidEntryFeeDebtorsByGroupId(groupId)
@@ -62,6 +75,31 @@ class GroupDetailViewModel(
             _group.value = g
             fetchServerBalances()
             fetchServerSettlement()
+            fetchServerTables()
+        }
+    }
+
+    fun fetchServerTables() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val currentGroup = _group.value ?: repository.getGroupById(groupId)
+                val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
+                val result = remoteRepository.getGroupTables(serverGroupId)
+                if (result.isSuccess) {
+                    val serverList = result.getOrNull() ?: emptyList()
+                    val mapped = serverList.map { it.toGroupTableItem() }
+                    _serverTables.value = mapped
+
+                    // Cache in Room as fallback
+                    val roomTables = mapped.map { it.toPokerTable() }
+                    repository.cacheGroupTables(roomTables)
+                } else {
+                    Log.w("GroupDetailVM", "Failed to fetch server tables: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e("GroupDetailVM", "Error in fetchServerTables: ${e.message}")
+            }
         }
     }
 
@@ -197,6 +235,7 @@ class GroupDetailViewModel(
                         entryFee = entryFee,
                         customId = serverTableId
                     )
+                    fetchServerTables()
                     onSuccess?.invoke(table)
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "Failed to create online table on server."
@@ -211,6 +250,7 @@ class GroupDetailViewModel(
                     hasEntryFee = hasEntryFee,
                     entryFee = entryFee
                 )
+                fetchServerTables()
                 onSuccess?.invoke(table)
             }
         }
@@ -219,12 +259,14 @@ class GroupDetailViewModel(
     fun updateTable(tableId: String, name: String, chipValue: Long?, hasEntryFee: Boolean, entryFee: Long?) {
         viewModelScope.launch {
             repository.updateTable(tableId, name, chipValue, hasEntryFee, entryFee)
+            fetchServerTables()
         }
     }
 
     fun deleteTable(tableId: String) {
         viewModelScope.launch {
             repository.deleteTableCascade(tableId)
+            fetchServerTables()
         }
     }
 

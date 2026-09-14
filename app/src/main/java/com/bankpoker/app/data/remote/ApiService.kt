@@ -217,6 +217,12 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.google.gson.JsonObject>
 
+    @GET("api/groups/{groupId}/tables")
+    suspend fun getGroupTables(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.GroupTablesResponse>
+
     @GET("api/groups/{groupId}/balances")
     suspend fun getGroupBalances(
         @Path("groupId") groupId: String,

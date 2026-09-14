@@ -851,6 +851,26 @@ class RemoteRepository(
     }
 
     /**
+     * Fetch all tables for a group from server (both ACTIVE and CLOSED)
+     */
+    suspend fun getGroupTables(groupId: String): Result<List<com.bankpoker.app.data.remote.dto.GroupTableItemDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupTables(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tables)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch group tables (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetch server-computed balances for a group
      */
     suspend fun getGroupBalances(groupId: String): Result<List<com.bankpoker.app.data.remote.dto.ServerPlayerBalanceDto>> = withContext(Dispatchers.IO) {

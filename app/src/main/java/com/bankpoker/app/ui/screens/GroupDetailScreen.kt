@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -45,6 +46,8 @@ import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.GroupBalance
 import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.data.local.entity.PokerTable
+import com.bankpoker.app.data.remote.dto.GroupTableItem
+import com.bankpoker.app.data.remote.dto.toPokerTable
 import com.bankpoker.app.ui.components.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,6 +79,7 @@ fun GroupDetailScreen(
     val context = LocalContext.current
     val group by viewModel.group.collectAsState(initial = null)
     val tables by viewModel.tables.collectAsState(initial = emptyList())
+    val groupTables by viewModel.groupTables.collectAsState(initial = emptyList())
     val rawBalances by viewModel.balances.collectAsState(initial = emptyList())
     val balances = remember(rawBalances) {
         rawBalances
@@ -113,11 +117,12 @@ fun GroupDetailScreen(
         }
         socketManager.events.collect { event ->
             when (event.event) {
-                "settlement_done", "payment_created", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "entry_fee_updated" -> {
+                "settlement_done", "payment_created", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published", "entry_fee_updated" -> {
                     val eventGroupId = event.payload?.optString("groupId", "")
                     if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
                         viewModel.fetchServerBalances()
                         viewModel.fetchServerSettlement()
+                        viewModel.fetchServerTables()
                     }
                 }
             }
@@ -127,6 +132,7 @@ fun GroupDetailScreen(
     LaunchedEffect(selectedTab, balances, group?.id, group?.serverId) {
         viewModel.fetchServerBalances()
         viewModel.fetchServerSettlement()
+        viewModel.fetchServerTables()
     }
 
     Scaffold(
@@ -340,9 +346,9 @@ fun GroupDetailScreen(
                 ) { page ->
                     when (page) {
                         0 -> TablesTab(
-                            tables = tables,
+                            tables = groupTables,
                             onTableClick = onTableClick,
-                            onTableLongClick = { table -> selectedTableForAction = table }
+                            onTableLongClick = { tableItem -> selectedTableForAction = tableItem.toPokerTable() }
                         )
                         1 -> BalancesTab(
                             balances = balances,
@@ -350,7 +356,7 @@ fun GroupDetailScreen(
                             onPlayerClick = onPlayerClick
                         )
                         2 -> GroupStatsTab(
-                            tables = tables,
+                            tables = if (groupTables.isNotEmpty()) groupTables.map { it.toPokerTable() } else tables,
                             balances = balances,
                             serverSettlement = serverSettlement,
                             isOnline = true,
@@ -407,7 +413,7 @@ fun GroupDetailScreen(
     if (showDeleteDialog) {
         DeleteGroupBottomSheet(
             groupName = group?.name ?: "Group",
-            tablesCount = tables.size,
+            tablesCount = if (groupTables.isNotEmpty()) groupTables.size else tables.size,
             playersCount = balances.size,
             onDismiss = { showDeleteDialog = false },
             onConfirm = {
@@ -470,9 +476,9 @@ fun GroupDetailScreen(
 
 @Composable
 fun TablesTab(
-    tables: List<PokerTable>,
+    tables: List<GroupTableItem>,
     onTableClick: (String) -> Unit,
-    onTableLongClick: (PokerTable) -> Unit
+    onTableLongClick: (GroupTableItem) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val filteredTables = remember(tables, searchQuery) {
@@ -595,7 +601,7 @@ fun TablesTab(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TableCardSimple(
-    table: PokerTable,
+    table: GroupTableItem,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -607,6 +613,16 @@ fun TableCardSimple(
         animationSpec = tween(150),
         label = "tableCardScale"
     )
+
+    val isClosed = table.status == "CLOSED"
+    val formattedDate = remember(table.createdAt) {
+        try {
+            val sdf = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US)
+            "Created: ${sdf.format(java.util.Date(table.createdAt))}"
+        } catch (e: Exception) {
+            ""
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -627,13 +643,13 @@ fun TableCardSimple(
             )
             .border(
                 width = 1.5.dp,
-                color = if (table.status == "ACTIVE") WinGreen.copy(alpha = 0.6f) else Gold.copy(alpha = 0.7f),
+                color = if (isClosed) Color(0xFF3F3F46).copy(alpha = 0.6f) else WinGreen.copy(alpha = 0.6f),
                 shape = RoundedCornerShape(20.dp)
             )
             .animateContentSize(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = FeltCard
+            containerColor = if (isClosed) Color(0xFF18181B).copy(alpha = 0.85f) else FeltCard
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
@@ -645,60 +661,137 @@ fun TableCardSimple(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Surface(
-                        color = Gold.copy(alpha = 0.2f),
+                        color = if (isClosed) Color(0xFF27272A) else Gold.copy(alpha = 0.2f),
                         shape = CircleShape,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = "♠",
-                                color = Gold,
+                                color = if (isClosed) Cream.copy(alpha = 0.4f) else Gold,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = table.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Cream,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = table.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isClosed) Cream.copy(alpha = 0.8f) else Cream,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (formattedDate.isNotBlank()) {
+                            Text(
+                                text = formattedDate,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Cream.copy(alpha = 0.5f),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
                 }
+
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (table.hasEntryFee) {
-                        Surface(
-                            color = Gold.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "ENTRY FEE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Gold,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-
+                    if (table.hasEntryFee && (table.entryFee ?: 0L) > 0) {
+                        if (table.myEntryFeePaid == true) {
+                            Surface(
+                                color = Color(0xFF064E3B),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = "Entry Fee Paid ✓",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF6EE7B7),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                color = Color(0xFF450A0A),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = "UNPAID",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFFCA5A5),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                     StatusBadge(status = table.status)
                 }
             }
-            
-            if (table.chipValue != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+
+            // Info row: Chip Value & Seated Players
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "Chip Value: $${table.chipValue}",
+                    text = if (table.chipValue != null && table.chipValue > 0) "$${table.chipValue} / chip" else "1:1 Standard",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Gold
+                    color = if (isClosed) Cream.copy(alpha = 0.6f) else Gold,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (table.playerCount > 0) {
+                    Text(
+                        text = "${table.playerCount} players seated",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Cream.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            if (table.hasEntryFee && (table.entryFee ?: 0L) > 0) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Entry Fee: $${table.entryFee}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gold.copy(alpha = 0.9f)
+                )
+            }
+
+            // Footer row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isClosed) "View Table Record" else "Enter Table Room",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isClosed) Cream.copy(alpha = 0.5f) else Gold,
+                    fontWeight = FontWeight.Bold
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = if (isClosed) Cream.copy(alpha = 0.4f) else Gold,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
