@@ -938,19 +938,99 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Group not found' });
         }
 
+        const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === userId || group.created_by === userId;
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND (group_id = ? OR group_id = ?)', [userId, group.id, groupId]);
+        const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+
+        // Current user identity names for matching seated player
+        const myNames = new Set();
+        if (req.user?.username) myNames.add(req.user.username.trim().toLowerCase());
+        if (req.user?.display_name) myNames.add(req.user.display_name.trim().toLowerCase());
+
+        if (userId) {
+            const userClaimedPlayers = await all(
+                `SELECT DISTINCT p.name FROM players p
+                 JOIN tables t ON p.table_id = t.id
+                 WHERE p.user_id = ? AND (t.group_id = ? OR t.group_id = ?) AND p.is_deleted = 0`,
+                [userId, group.id, groupId]
+            );
+            for (const row of userClaimedPlayers) {
+                if (row.name) myNames.add(row.name.trim().toLowerCase());
+            }
+        }
+
         const rawTables = await all(
             `SELECT t.*, 
-                (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE') as playerCount,
-                (SELECT p.entry_fee_paid FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myEntryFeePaid,
-                (SELECT p.id FROM players p WHERE p.table_id = t.id AND p.user_id = ? AND p.is_deleted = 0 LIMIT 1) as myPlayerId
+                (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0 AND p.status = 'ACTIVE') as playerCount
              FROM tables t
-             WHERE t.group_id = ? AND t.is_deleted = 0
+             WHERE (t.group_id = ? OR t.group_id = ?) AND t.is_deleted = 0
              ORDER BY t.created_at DESC`,
-            [userId, userId, group.id]
+            [group.id, groupId]
         );
+
+        // Fetch all active players for this group's tables
+        const allPlayers = await all(
+            `SELECT p.id, p.table_id, p.user_id, p.name, p.entry_fee_paid, p.status
+             FROM players p
+             JOIN tables t ON p.table_id = t.id
+             WHERE (t.group_id = ? OR t.group_id = ?) AND p.is_deleted = 0`,
+            [group.id, groupId]
+        );
+
+        // Fetch all active entry fee records for this group
+        const allFeeRecords = await all(
+            `SELECT id, table_id, player_name, paid, amount
+             FROM entry_fee_records
+             WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [group.id, groupId]
+        );
+
+        const playersByTable = new Map();
+        for (const p of allPlayers) {
+            if (!playersByTable.has(p.table_id)) playersByTable.set(p.table_id, []);
+            playersByTable.get(p.table_id).push(p);
+        }
+
+        const feesByTable = new Map();
+        for (const f of allFeeRecords) {
+            if (!feesByTable.has(f.table_id)) feesByTable.set(f.table_id, []);
+            feesByTable.get(f.table_id).push(f);
+        }
 
         const tables = rawTables.map(t => {
             const isClosed = t.status === 'CLOSED' || t.is_active === 0;
+            const hasFee = Boolean((t.has_entry_fee === 1 || t.has_entry_fee === true || (t.entry_fee && Number(t.entry_fee) > 0)));
+            const tablePlayers = playersByTable.get(t.id) || [];
+            const tableFees = feesByTable.get(t.id) || [];
+
+            // Find current user's player row if any
+            let myPlayer = null;
+            if (userId) {
+                myPlayer = tablePlayers.find(p => p.user_id === userId) ||
+                           tablePlayers.find(p => myNames.has((p.name || '').trim().toLowerCase()));
+            }
+
+            let myEntryFeePaid = null;
+            if (hasFee) {
+                if (myPlayer) {
+                    const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (myPlayer.name || '').trim().toLowerCase());
+                    myEntryFeePaid = Boolean(myPlayer.entry_fee_paid || (matchedFee && matchedFee.paid));
+                } else if (isGroupAdmin || (t.creator_user_id && t.creator_user_id === userId)) {
+                    // Admin/creator table overview: true if all seated players paid, false if any unpaid
+                    if (tablePlayers.length > 0 || tableFees.length > 0) {
+                        const anyUnpaidPlayer = tablePlayers.some(p => {
+                            const feeRec = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                            return !p.entry_fee_paid && (!feeRec || !feeRec.paid);
+                        });
+                        const anyUnpaidFee = tableFees.some(f => !f.paid);
+                        myEntryFeePaid = !anyUnpaidPlayer && !anyUnpaidFee;
+                    } else {
+                        myEntryFeePaid = false;
+                    }
+                }
+            }
+
             return {
                 id: t.id,
                 groupId: t.group_id,
@@ -965,9 +1045,9 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
                 has_entry_fee: t.has_entry_fee,
                 entryFee: t.entry_fee,
                 entry_fee: t.entry_fee,
-                myEntryFeePaid: t.myEntryFeePaid != null ? Boolean(t.myEntryFeePaid) : null,
-                my_entry_fee_paid: t.myEntryFeePaid != null ? Number(t.myEntryFeePaid) : null,
-                hasJoinedTable: Boolean(t.myPlayerId),
+                myEntryFeePaid: myEntryFeePaid != null ? Boolean(myEntryFeePaid) : null,
+                my_entry_fee_paid: myEntryFeePaid != null ? (myEntryFeePaid ? 1 : 0) : null,
+                hasJoinedTable: Boolean(myPlayer),
                 createdAt: t.created_at,
                 created_at: t.created_at,
                 closedAt: t.closed_at,
@@ -1829,25 +1909,79 @@ router.put('/:id/payments/:paymentId', authenticateToken, async (req, res) => {
 
 /**
  * GET /api/groups/:id/entry-fees
- * Return all entry fee records for this group
+ * Return all entry fee records for this group (single source of truth with players table)
  */
 router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
-        const group = await get('SELECT id FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        const group = await get('SELECT id, owner_user_id, created_by FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const actualGroupId = group.id;
+
+        // Auto-seed and synchronize any missing or out-of-sync entry fee records from active players
+        const seatedPlayers = await all(
+            `SELECT p.id, p.table_id, p.name, p.entry_fee_paid, p.created_at, t.name as table_name, t.entry_fee
+             FROM players p
+             JOIN tables t ON p.table_id = t.id
+             WHERE (t.group_id = ? OR t.group_id = ?) 
+               AND (t.has_entry_fee = 1 OR (t.entry_fee IS NOT NULL AND t.entry_fee > 0)) 
+               AND p.is_deleted = 0 AND t.is_deleted = 0`,
+            [actualGroupId, groupId]
+        );
+
+        const existingFeeRecords = await all(
+            `SELECT id, table_id, player_name, paid, amount
+             FROM entry_fee_records
+             WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [actualGroupId, groupId]
+        );
+
+        const now = Date.now();
+        for (const p of seatedPlayers) {
+            const matched = existingFeeRecords.find(f => 
+                (f.table_id === p.table_id) && 
+                ((f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase())
+            );
+
+            if (!matched) {
+                const newEfId = crypto.randomUUID();
+                const numFee = Number(p.entry_fee) || 0;
+                await run(
+                    `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                    [
+                        newEfId,
+                        actualGroupId,
+                        p.table_id,
+                        p.table_name || 'Table',
+                        p.name,
+                        numFee,
+                        p.entry_fee_paid ? 1 : 0,
+                        p.created_at || now,
+                        newEfId,
+                        now
+                    ]
+                );
+            } else if (Boolean(matched.paid) !== Boolean(p.entry_fee_paid)) {
+                // Reconcile: if either is paid, both become paid; if records was updated, sync player
+                const unifiedPaid = (matched.paid || p.entry_fee_paid) ? 1 : 0;
+                await run('UPDATE entry_fee_records SET paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, matched.id]);
+                await run('UPDATE players SET entry_fee_paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, p.id]);
+            }
+        }
 
         const records = await all(
             `SELECT id, group_id, table_id, table_name, player_name, amount, paid, timestamp, updated_at
              FROM entry_fee_records
              WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0
              ORDER BY timestamp DESC`,
-            [group.id, groupId]
+            [actualGroupId, groupId]
         );
 
         const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
         const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
-        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, group.id]);
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
         const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
         return res.json({
@@ -1895,11 +2029,51 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Permission denied: admin privileges required' });
         }
 
-        const record = await get(
+        let record = await get(
             `SELECT * FROM entry_fee_records 
              WHERE (id = ? OR server_id = ?) AND (group_id = ? OR group_id = ?) AND is_deleted = 0`,
             [feeId, feeId, actualGroupId, groupId]
         );
+
+        if (!record) {
+            // Check if feeId is a player id
+            const player = await get(
+                `SELECT p.*, t.name as table_name, t.entry_fee, t.group_id
+                 FROM players p
+                 JOIN tables t ON p.table_id = t.id
+                 WHERE (p.id = ? OR p.server_id = ?) AND (t.group_id = ? OR t.group_id = ?) AND p.is_deleted = 0`,
+                [feeId, feeId, actualGroupId, groupId]
+            );
+            if (player) {
+                record = await get(
+                    `SELECT * FROM entry_fee_records
+                     WHERE (table_id = ? OR table_id = ?) AND UPPER(TRIM(player_name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                    [player.table_id, player.table_id, player.name]
+                );
+                if (!record) {
+                    const newEfId = crypto.randomUUID();
+                    const now = Date.now();
+                    await run(
+                        `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                        [
+                            newEfId,
+                            actualGroupId,
+                            player.table_id,
+                            player.table_name || 'Table',
+                            player.name,
+                            Number(player.entry_fee) || 0,
+                            player.entry_fee_paid ? 1 : 0,
+                            player.created_at || now,
+                            newEfId,
+                            now
+                        ]
+                    );
+                    record = await get('SELECT * FROM entry_fee_records WHERE id = ?', [newEfId]);
+                }
+            }
+        }
+
         if (!record) {
             return res.status(404).json({ error: 'Entry fee record not found' });
         }
@@ -1908,6 +2082,7 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
         const newPaid = paid !== undefined ? ((paid === true || paid === 1 || paid === 'true') ? 1 : 0) : record.paid;
         const newAmount = (amount !== undefined && !isNaN(Number(amount))) ? Number(amount) : record.amount;
 
+        // Atomic update of both stores
         await run(
             `UPDATE entry_fee_records
              SET paid = ?, amount = ?, updated_at = ?, is_synced = 1
@@ -1915,12 +2090,14 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             [newPaid, newAmount, now, record.id]
         );
 
-        // Synchronize with players table if this entry fee is tied to a table (even if closed)
+        // Synchronize with players table
         let matchedPlayerId = null;
         if (record.table_id && record.player_name) {
             const matchedPlayer = await get(
-                `SELECT id FROM players WHERE table_id = ? AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
-                [record.table_id, record.player_name]
+                `SELECT id FROM players 
+                 WHERE (table_id = ? OR table_id IN (SELECT id FROM tables WHERE id = ? OR server_id = ?))
+                   AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                [record.table_id, record.table_id, record.table_id, record.player_name]
             );
             if (matchedPlayer) {
                 matchedPlayerId = matchedPlayer.id;
@@ -1928,18 +2105,10 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             await run(
                 `UPDATE players
                  SET entry_fee_paid = ?, updated_at = ?
-                 WHERE table_id = ? AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
-                [newPaid, now, record.table_id, record.player_name]
+                 WHERE (table_id = ? OR table_id IN (SELECT id FROM tables WHERE id = ? OR server_id = ?))
+                   AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                [newPaid, now, record.table_id, record.table_id, record.table_id, record.player_name]
             );
-            emitToTable(record.table_id, 'player_updated', {
-                tableId: record.table_id,
-                playerId: matchedPlayerId,
-                playerName: record.player_name,
-                entryFeePaid: Boolean(newPaid)
-            });
-            emitToTable(record.table_id, 'table_updated', {
-                tableId: record.table_id
-            });
         }
 
         const eventPayload = {
@@ -1956,6 +2125,18 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
         emitToGroup(actualGroupId, 'entry_fee_updated', eventPayload);
         if (actualGroupId !== groupId) {
             emitToGroup(groupId, 'entry_fee_updated', eventPayload);
+        }
+        if (record.table_id) {
+            emitToTable(record.table_id, 'entry_fee_updated', eventPayload);
+            emitToTable(record.table_id, 'player_updated', {
+                tableId: record.table_id,
+                playerId: matchedPlayerId,
+                playerName: record.player_name,
+                entryFeePaid: Boolean(newPaid)
+            });
+            emitToTable(record.table_id, 'table_updated', {
+                tableId: record.table_id
+            });
         }
 
         return res.json({
@@ -2009,15 +2190,29 @@ router.delete('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
         const now = Date.now();
         await run(`UPDATE entry_fee_records SET is_deleted = 1, updated_at = ? WHERE id = ?`, [now, record.id]);
 
+        if (record.table_id && record.player_name) {
+            await run(
+                `UPDATE players
+                 SET entry_fee_paid = 0, updated_at = ?
+                 WHERE (table_id = ? OR table_id IN (SELECT id FROM tables WHERE id = ? OR server_id = ?))
+                   AND UPPER(TRIM(name)) = UPPER(TRIM(?)) AND is_deleted = 0`,
+                [now, record.table_id, record.table_id, record.table_id, record.player_name]
+            );
+        }
+
         const eventPayload = {
             groupId: actualGroupId,
             feeId: record.id,
+            tableId: record.table_id,
             deleted: true
         };
 
         emitToGroup(actualGroupId, 'entry_fee_updated', eventPayload);
         if (actualGroupId !== groupId) {
             emitToGroup(groupId, 'entry_fee_updated', eventPayload);
+        }
+        if (record.table_id) {
+            emitToTable(record.table_id, 'entry_fee_updated', eventPayload);
         }
 
         return res.json({ message: 'Entry fee deleted successfully' });
