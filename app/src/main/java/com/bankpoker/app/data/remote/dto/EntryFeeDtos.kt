@@ -3,7 +3,9 @@ package com.bankpoker.app.data.remote.dto
 import com.google.gson.annotations.SerializedName
 
 data class GroupEntryFeesResponse(
-    @SerializedName("entryFees") val entryFees: List<RemoteEntryFeeDto> = emptyList()
+    @SerializedName("entryFees") val entryFees: List<RemoteEntryFeeDto> = emptyList(),
+    @SerializedName("canManage") val canManage: Boolean = false,
+    @SerializedName("isAdmin") val isAdmin: Boolean = false
 )
 
 data class RemoteEntryFeeDto(

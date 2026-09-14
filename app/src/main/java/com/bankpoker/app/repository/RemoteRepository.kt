@@ -36,6 +36,7 @@ import com.bankpoker.app.data.remote.dto.AdminTablePlayerDto
 import com.bankpoker.app.data.remote.dto.ActiveTableSummaryDto
 import com.bankpoker.app.data.remote.dto.TableDetailDto
 import com.bankpoker.app.data.remote.dto.RemoteEntryFeeDto
+import com.bankpoker.app.data.remote.dto.GroupEntryFeesResponse
 import com.bankpoker.app.data.remote.dto.UpdateEntryFeeRequest
 import com.bankpoker.app.data.remote.dto.UserGroupSummaryDto
 import com.google.gson.Gson
@@ -49,7 +50,7 @@ import java.io.IOException
  */
 class RemoteRepository(
     private var apiService: ApiService,
-    private val tokenManager: TokenManager
+    val tokenManager: TokenManager
 ) {
     private val gson = Gson()
 
@@ -1017,11 +1018,11 @@ class RemoteRepository(
         }
     }
 
-    suspend fun getGroupEntryFees(groupId: String): Result<List<RemoteEntryFeeDto>> = withContext(Dispatchers.IO) {
+    suspend fun getGroupEntryFeesResponse(groupId: String): Result<GroupEntryFeesResponse> = withContext(Dispatchers.IO) {
         try {
             val response = apiService.getGroupEntryFees(groupId, getAuthHeader())
             if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!.entryFees)
+                Result.success(response.body()!!)
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to fetch entry fees (HTTP ${response.code()})"
@@ -1029,6 +1030,15 @@ class RemoteRepository(
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun getGroupEntryFees(groupId: String): Result<List<RemoteEntryFeeDto>> = withContext(Dispatchers.IO) {
+        val res = getGroupEntryFeesResponse(groupId)
+        if (res.isSuccess) {
+            Result.success(res.getOrNull()?.entryFees ?: emptyList())
+        } else {
+            Result.failure(res.exceptionOrNull() ?: Exception("Failed to fetch entry fees"))
         }
     }
 
@@ -1046,6 +1056,24 @@ class RemoteRepository(
             } else {
                 val errorMsg = parseErrorMessage(response.errorBody()?.string())
                     ?: "Failed to update entry fee (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteEntryFeeRecord(
+        groupId: String,
+        feeId: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteEntryFeeRecord(groupId, feeId, getAuthHeader())
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to delete entry fee (HTTP ${response.code()})"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {

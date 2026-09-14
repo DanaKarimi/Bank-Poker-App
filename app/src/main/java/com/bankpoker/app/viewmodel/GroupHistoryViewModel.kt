@@ -26,9 +26,17 @@ class GroupHistoryViewModel(
     val payments: Flow<List<Payment>> = repository.getPaymentsByGroupId(groupId)
     val entryFeeRecords: Flow<List<EntryFeeRecord>> = repository.getEntryFeeRecordsByGroupId(groupId)
 
+    private val _canManageEntryFees = MutableStateFlow(false)
+    val canManageEntryFees: StateFlow<Boolean> = _canManageEntryFees.asStateFlow()
+
     init {
         viewModelScope.launch {
             _group.value = repository.getGroupById(groupId)
+        }
+        if (remoteRepository == null) {
+            _canManageEntryFees.value = true
+        } else if (remoteRepository.tokenManager.getRole() == "SUPER_ADMIN") {
+            _canManageEntryFees.value = true
         }
         fetchEntryFeesFromServer()
     }
@@ -39,9 +47,12 @@ class GroupHistoryViewModel(
             try {
                 val groupObj = repository.getGroupById(groupId)
                 val targetGroupId = groupObj?.serverId ?: groupId
-                val res = remoteRepository.getGroupEntryFees(targetGroupId)
+                val res = remoteRepository.getGroupEntryFeesResponse(targetGroupId)
                 if (res.isSuccess) {
-                    val serverList = res.getOrNull() ?: emptyList()
+                    val body = res.getOrNull()
+                    val serverList = body?.entryFees ?: emptyList()
+                    val isSuperAdmin = remoteRepository.tokenManager.getRole() == "SUPER_ADMIN"
+                    _canManageEntryFees.value = isSuperAdmin || (body?.canManage == true) || (body?.isAdmin == true)
                     val roomRecords = serverList.map { dto ->
                         EntryFeeRecord(
                             id = dto.id,
@@ -78,11 +89,9 @@ class GroupHistoryViewModel(
 
     fun updateEntryFeeRecord(id: String, amount: Long, paid: Boolean) {
         viewModelScope.launch {
-            // Update Room locally for immediate UI responsiveness
-            repository.updateEntryFeeRecord(id, amount, paid)
-
-            // Server-authoritative update via PUT /api/groups/:id/entry-fees/:feeId
             if (remoteRepository != null) {
+                // Optimistic local update
+                repository.updateEntryFeeRecord(id, amount, paid)
                 try {
                     val groupObj = repository.getGroupById(groupId)
                     val targetGroupId = groupObj?.serverId ?: groupId
@@ -92,10 +101,16 @@ class GroupHistoryViewModel(
                         if (updated != null) {
                             repository.updateEntryFeeRecord(updated.id, updated.amount, updated.paid)
                         }
+                    } else {
+                        // Revert on error (e.g. 403 Forbidden)
+                        fetchEntryFeesFromServer()
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("GroupHistoryVM", "Error updating entry fee on server", e)
+                    fetchEntryFeesFromServer()
                 }
+            } else {
+                repository.updateEntryFeeRecord(id, amount, paid)
             }
         }
     }
@@ -103,6 +118,19 @@ class GroupHistoryViewModel(
     fun deleteEntryFeeRecord(id: String) {
         viewModelScope.launch {
             repository.deleteEntryFeeRecord(id)
+            if (remoteRepository != null) {
+                try {
+                    val groupObj = repository.getGroupById(groupId)
+                    val targetGroupId = groupObj?.serverId ?: groupId
+                    val result = remoteRepository.deleteEntryFeeRecord(targetGroupId, id)
+                    if (result.isFailure) {
+                        fetchEntryFeesFromServer()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("GroupHistoryVM", "Error deleting entry fee on server", e)
+                    fetchEntryFeesFromServer()
+                }
+            }
         }
     }
 }

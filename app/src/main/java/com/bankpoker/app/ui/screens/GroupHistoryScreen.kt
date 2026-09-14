@@ -1,5 +1,6 @@
 package com.bankpoker.app.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -55,6 +56,7 @@ fun GroupHistoryScreen(
     val group by viewModel.group.collectAsState(initial = null)
     val payments by viewModel.payments.collectAsState(initial = emptyList())
     val entryFeeRecords by viewModel.entryFeeRecords.collectAsState(initial = emptyList())
+    val canManageEntryFees by viewModel.canManageEntryFees.collectAsState()
 
     val socketManager = remember { com.bankpoker.app.data.remote.SocketManager.getInstance(context) }
 
@@ -182,8 +184,11 @@ fun GroupHistoryScreen(
                         )
                         1 -> EntryFeesHistoryTab(
                             entryFeeRecords = entryFeeRecords,
+                            canManage = canManageEntryFees,
                             onEntryFeeLongClick = { record ->
-                                selectedEntryFeeForAction = record
+                                if (canManageEntryFees) {
+                                    selectedEntryFeeForAction = record
+                                }
                             },
                             onTogglePaid = { record ->
                                 viewModel.updateEntryFeeRecord(record.id, record.amount, !record.paid)
@@ -294,7 +299,7 @@ fun GroupHistoryScreen(
     }
 
     // Entry Fee Action Sheet
-    if (selectedEntryFeeForAction != null) {
+    if (selectedEntryFeeForAction != null && canManageEntryFees) {
         val record = selectedEntryFeeForAction!!
         ModalBottomSheet(
             onDismissRequest = { selectedEntryFeeForAction = null },
@@ -518,6 +523,7 @@ private fun PaymentHistoryCard(
 @Composable
 private fun EntryFeesHistoryTab(
     entryFeeRecords: List<EntryFeeRecord>,
+    canManage: Boolean = true,
     onEntryFeeLongClick: (EntryFeeRecord) -> Unit,
     onTogglePaid: (EntryFeeRecord) -> Unit = {}
 ) {
@@ -544,6 +550,7 @@ private fun EntryFeesHistoryTab(
             items(entryFeeRecords, key = { it.id }) { record ->
                 EntryFeeHistoryCard(
                     record = record,
+                    canManage = canManage,
                     onLongClick = { onEntryFeeLongClick(record) },
                     onTogglePaid = { onTogglePaid(record) }
                 )
@@ -556,9 +563,11 @@ private fun EntryFeesHistoryTab(
 @Composable
 private fun EntryFeeHistoryCard(
     record: EntryFeeRecord,
+    canManage: Boolean = true,
     onLongClick: () -> Unit,
     onTogglePaid: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -582,8 +591,10 @@ private fun EntryFeeHistoryCard(
                 indication = null,
                 onClick = {},
                 onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongClick()
+                    if (canManage) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongClick()
+                    }
                 }
             ),
         shape = RoundedCornerShape(16.dp),
@@ -628,7 +639,17 @@ private fun EntryFeeHistoryCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Surface(
-                    onClick = onTogglePaid,
+                    onClick = {
+                        if (canManage) {
+                            onTogglePaid()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Admin privileges required to modify entry fees",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
                     shape = RoundedCornerShape(8.dp),
                     color = if (record.paid) WinGreen.copy(alpha = 0.2f) else LoseRed.copy(alpha = 0.2f),
                     border = androidx.compose.foundation.BorderStroke(

@@ -271,6 +271,13 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.UpdateEntryFeeResponse>
 
+    @DELETE("api/groups/{groupId}/entry-fees/{feeId}")
+    suspend fun deleteEntryFeeRecord(
+        @Path("groupId") groupId: String,
+        @Path("feeId") feeId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
     @DELETE("api/tables/{tableId}/players/{playerId}")
     suspend fun deleteTablePlayer(
         @Path("tableId") tableId: String,

@@ -1658,7 +1658,14 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
             [group.id, groupId]
         );
 
+        const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, group.id]);
+        const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+
         return res.json({
+            canManage: Boolean(isGroupAdmin),
+            isAdmin: Boolean(isGroupAdmin),
             entryFees: records.map(r => ({
                 id: r.id,
                 groupId: r.group_id,
@@ -1691,13 +1698,13 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
 
         const actualGroupId = group.id;
 
-        // Authorization check: table admin / group admin / owner / super admin
+        // Authorization check: super admin / group creator/owner / group admin
         const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
-        const isOwner = group.owner_user_id === req.user.id;
+        const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
         const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
-        const isGroupAdmin = membership && membership.role === 'ADMIN';
+        const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
-        if (!isSuperAdmin && !isOwner && !isGroupAdmin) {
+        if (!isGroupAdmin) {
             return res.status(403).json({ error: 'Permission denied: admin privileges required' });
         }
 
@@ -1721,7 +1728,7 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             [newPaid, newAmount, now, record.id]
         );
 
-        // Synchronize with players table if this entry fee is tied to a table
+        // Synchronize with players table if this entry fee is tied to a table (even if closed)
         if (record.table_id && record.player_name) {
             await run(
                 `UPDATE players
@@ -1771,6 +1778,55 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Error updating entry fee record:', err);
         return res.status(500).json({ error: 'Failed to update entry fee record' });
+    }
+});
+
+/**
+ * DELETE /api/groups/:id/entry-fees/:feeId
+ * Soft delete entry fee record, admin only, emit entry_fee_updated
+ */
+router.delete('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
+    try {
+        const { id: groupId, feeId } = req.params;
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const actualGroupId = group.id;
+
+        const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
+        const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+
+        if (!isGroupAdmin) {
+            return res.status(403).json({ error: 'Permission denied: admin privileges required' });
+        }
+
+        const record = await get(
+            `SELECT * FROM entry_fee_records 
+             WHERE (id = ? OR server_id = ?) AND (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [feeId, feeId, actualGroupId, groupId]
+        );
+        if (!record) return res.status(404).json({ error: 'Entry fee record not found' });
+
+        const now = Date.now();
+        await run(`UPDATE entry_fee_records SET is_deleted = 1, updated_at = ? WHERE id = ?`, [now, record.id]);
+
+        const eventPayload = {
+            groupId: actualGroupId,
+            feeId: record.id,
+            deleted: true
+        };
+
+        emitToGroup(actualGroupId, 'entry_fee_updated', eventPayload);
+        if (actualGroupId !== groupId) {
+            emitToGroup(groupId, 'entry_fee_updated', eventPayload);
+        }
+
+        return res.json({ message: 'Entry fee deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting entry fee:', err);
+        return res.status(500).json({ error: 'Failed to delete entry fee' });
     }
 });
 

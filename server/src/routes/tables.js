@@ -15,8 +15,10 @@ async function canManageTable(userId, role, table) {
     if (role === 'SUPER_ADMIN') return true;
     if (table.creator_user_id && table.creator_user_id === userId) return true;
     if (table.group_id) {
-        const group = await get('SELECT owner_user_id FROM groups WHERE id = ?', [table.group_id]);
-        if (group && group.owner_user_id === userId) return true;
+        const group = await get('SELECT owner_user_id, created_by FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [table.group_id, table.group_id]);
+        if (group && (group.owner_user_id === userId || group.created_by === userId)) return true;
+        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND (group_id = ? OR group_id = ?)', [userId, table.group_id, group ? group.id : table.group_id]);
+        if (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN')) return true;
     }
     return false;
 }
