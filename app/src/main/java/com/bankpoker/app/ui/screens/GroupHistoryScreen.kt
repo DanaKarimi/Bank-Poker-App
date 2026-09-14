@@ -73,6 +73,12 @@ fun GroupHistoryScreen(
                         viewModel.fetchEntryFeesFromServer()
                     }
                 }
+                "payment_created", "payment_updated", "payment_deleted" -> {
+                    val eventGroupId = event.payload?.optString("groupId", "")
+                    if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
+                        viewModel.fetchPaymentsFromServer()
+                    }
+                }
             }
         }
     }
@@ -80,7 +86,9 @@ fun GroupHistoryScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(selectedTab) {
-        if (selectedTab == 1) {
+        if (selectedTab == 0) {
+            viewModel.fetchPaymentsFromServer()
+        } else if (selectedTab == 1) {
             viewModel.fetchEntryFeesFromServer()
         }
     }

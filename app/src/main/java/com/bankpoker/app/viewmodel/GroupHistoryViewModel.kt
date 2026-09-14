@@ -39,6 +39,34 @@ class GroupHistoryViewModel(
             _canManageEntryFees.value = true
         }
         fetchEntryFeesFromServer()
+        fetchPaymentsFromServer()
+    }
+
+    fun fetchPaymentsFromServer() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val groupObj = repository.getGroupById(groupId)
+                val targetGroupId = groupObj?.serverId ?: groupId
+                val res = remoteRepository.getGroupPayments(targetGroupId)
+                if (res.isSuccess) {
+                    val serverList = res.getOrNull() ?: emptyList()
+                    val roomPayments = serverList.map { dto ->
+                        Payment(
+                            id = dto.id,
+                            groupId = groupId,
+                            fromPlayer = dto.fromPlayer,
+                            toPlayer = dto.toPlayer,
+                            amount = dto.amount,
+                            createdAt = if (dto.createdAt > 0) dto.createdAt else System.currentTimeMillis()
+                        )
+                    }
+                    repository.replaceGroupPayments(groupId, roomPayments)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("GroupHistoryVM", "Error fetching payments from server", e)
+            }
+        }
     }
 
     fun fetchEntryFeesFromServer() {
@@ -77,13 +105,46 @@ class GroupHistoryViewModel(
 
     fun updatePayment(paymentId: String, newAmount: Long) {
         viewModelScope.launch {
+            val existing = repository.getPaymentById(paymentId)
             repository.updatePaymentAmount(paymentId, newAmount)
+            if (remoteRepository != null) {
+                try {
+                    val groupObj = repository.getGroupById(groupId)
+                    val targetGroupId = groupObj?.serverId ?: groupId
+                    val res = remoteRepository.updateGroupPayment(
+                        groupId = targetGroupId,
+                        paymentId = paymentId,
+                        amount = newAmount,
+                        fromPlayer = existing?.fromPlayer,
+                        toPlayer = existing?.toPlayer
+                    )
+                    if (res.isFailure) {
+                        fetchPaymentsFromServer()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("GroupHistoryVM", "Error updating payment on server", e)
+                    fetchPaymentsFromServer()
+                }
+            }
         }
     }
 
     fun deletePayment(paymentId: String) {
         viewModelScope.launch {
             repository.deletePayment(paymentId)
+            if (remoteRepository != null) {
+                try {
+                    val groupObj = repository.getGroupById(groupId)
+                    val targetGroupId = groupObj?.serverId ?: groupId
+                    val res = remoteRepository.deleteGroupPayment(targetGroupId, paymentId)
+                    if (res.isFailure) {
+                        fetchPaymentsFromServer()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("GroupHistoryVM", "Error deleting payment on server", e)
+                    fetchPaymentsFromServer()
+                }
+            }
         }
     }
 

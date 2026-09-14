@@ -1671,6 +1671,163 @@ router.post('/:id/payments', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/groups/:id/payments
+ * (Requires Auth)
+ * Return all active payments for a group (is_deleted = 0)
+ */
+router.get('/:id/payments', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const group = await get('SELECT id FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        const actualGroupId = group.id;
+
+        const payments = await all(
+            `SELECT id, group_id, from_player, to_player, amount, created_at, updated_at
+             FROM payments
+             WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0
+             ORDER BY created_at DESC`,
+            [actualGroupId, groupId]
+        );
+
+        return res.status(200).json({
+            payments: payments.map(p => ({
+                id: p.id,
+                groupId: p.group_id,
+                group_id: p.group_id,
+                fromPlayer: p.from_player,
+                from_player: p.from_player,
+                toPlayer: p.to_player,
+                to_player: p.to_player,
+                amount: p.amount,
+                createdAt: p.created_at,
+                created_at: p.created_at,
+                updatedAt: p.updated_at,
+                updated_at: p.updated_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching group payments:', error);
+        return res.status(500).json({ error: 'Internal server error while fetching group payments' });
+    }
+});
+
+/**
+ * DELETE /api/groups/:id/payments/:paymentId
+ * (Requires Auth)
+ * Soft-delete a payment record (sets is_deleted = 1) and recompute balances live
+ */
+router.delete('/:id/payments/:paymentId', authenticateToken, async (req, res) => {
+    try {
+        const { id: groupId, paymentId } = req.params;
+        const group = await get('SELECT id FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        const actualGroupId = group.id;
+
+        const payment = await get(
+            `SELECT * FROM payments WHERE (id = ? OR server_id = ?) AND (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [paymentId, paymentId, actualGroupId, groupId]
+        );
+        if (!payment) {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        const now = Date.now();
+        await run(
+            `UPDATE payments SET is_deleted = 1, updated_at = ? WHERE id = ?`,
+            [now, payment.id]
+        );
+
+        emitToGroup(actualGroupId, 'payment_deleted', {
+            groupId: actualGroupId,
+            paymentId: payment.id
+        });
+        emitToGroup(actualGroupId, 'settlement_done', { groupId: actualGroupId });
+
+        return res.status(200).json({
+            message: 'Payment deleted successfully',
+            paymentId: payment.id
+        });
+    } catch (error) {
+        console.error('Error deleting payment:', error);
+        return res.status(500).json({ error: 'Internal server error while deleting payment' });
+    }
+});
+
+/**
+ * PUT /api/groups/:id/payments/:paymentId
+ * (Requires Auth)
+ * Edit a payment record (amount, from_player, to_player) and recompute balances live
+ */
+router.put('/:id/payments/:paymentId', authenticateToken, async (req, res) => {
+    try {
+        const { id: groupId, paymentId } = req.params;
+        const { amount, fromPlayer, toPlayer } = req.body;
+
+        const group = await get('SELECT id FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        const actualGroupId = group.id;
+
+        const payment = await get(
+            `SELECT * FROM payments WHERE (id = ? OR server_id = ?) AND (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+            [paymentId, paymentId, actualGroupId, groupId]
+        );
+        if (!payment) {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        const newAmount = amount !== undefined ? Number(amount) : payment.amount;
+        const newFrom = fromPlayer !== undefined ? fromPlayer.trim() : payment.from_player;
+        const newTo = toPlayer !== undefined ? toPlayer.trim() : payment.to_player;
+
+        if (isNaN(newAmount) || newAmount <= 0) {
+            return res.status(400).json({ error: 'Payment amount must be a positive number' });
+        }
+        if (!newFrom || !newTo) {
+            return res.status(400).json({ error: 'From and To players cannot be empty' });
+        }
+
+        const now = Date.now();
+        await run(
+            `UPDATE payments
+             SET amount = ?, from_player = ?, to_player = ?, updated_at = ?
+             WHERE id = ?`,
+            [newAmount, newFrom, newTo, now, payment.id]
+        );
+
+        emitToGroup(actualGroupId, 'payment_updated', {
+            groupId: actualGroupId,
+            paymentId: payment.id,
+            fromPlayer: newFrom,
+            toPlayer: newTo,
+            amount: newAmount
+        });
+        emitToGroup(actualGroupId, 'settlement_done', { groupId: actualGroupId });
+
+        return res.status(200).json({
+            message: 'Payment updated successfully',
+            payment: {
+                id: payment.id,
+                groupId: actualGroupId,
+                fromPlayer: newFrom,
+                toPlayer: newTo,
+                amount: newAmount,
+                updatedAt: now
+            }
+        });
+    } catch (error) {
+        console.error('Error updating payment:', error);
+        return res.status(500).json({ error: 'Internal server error while updating payment' });
+    }
+});
+
+/**
  * GET /api/groups/:id/entry-fees
  * Return all entry fee records for this group
  */

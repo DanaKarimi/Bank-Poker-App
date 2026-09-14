@@ -72,6 +72,9 @@ export const getGroupStatsDetails = (groupId) => api.get(`/api/groups/${groupId}
 export const getGroupByInvite = (code) => api.get(`/api/groups/by-invite/${encodeURIComponent(code)}`);
 export const getGroupPlayersList = (groupId) => api.get(`/api/groups/${groupId}/players-list`);
 export const recordGroupPayment = (groupId, data) => api.post(`/api/groups/${groupId}/payments`, data);
+export const getGroupPayments = (groupId) => api.get(`/api/groups/${groupId}/payments`);
+export const updateGroupPayment = (groupId, paymentId, data) => api.put(`/api/groups/${groupId}/payments/${paymentId}`, data);
+export const deleteGroupPayment = (groupId, paymentId) => api.delete(`/api/groups/${groupId}/payments/${paymentId}`);
 export const claimPlayer = (groupId, data) => api.post(`/api/groups/${groupId}/claim-player`, data);
 export const joinNewPlayer = (groupId, data) => api.post(`/api/groups/${groupId}/join-new-player`, data);
 export const getTables = (groupId) => api.get(`/api/groups/${groupId}/tables`);

@@ -243,6 +243,27 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
 
+    @GET("api/groups/{groupId}/payments")
+    suspend fun getGroupPayments(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.GroupPaymentsResponse>
+
+    @PUT("api/groups/{groupId}/payments/{paymentId}")
+    suspend fun updateGroupPayment(
+        @Path("groupId") groupId: String,
+        @Path("paymentId") paymentId: String,
+        @Body request: com.google.gson.JsonObject,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @DELETE("api/groups/{groupId}/payments/{paymentId}")
+    suspend fun deleteGroupPayment(
+        @Path("groupId") groupId: String,
+        @Path("paymentId") paymentId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
     @POST("api/groups/import")
     suspend fun importGroup(
         @Body request: com.google.gson.JsonObject,

@@ -421,6 +421,13 @@ class PokerRepository(
         applyToGroupBalance(existing.groupId, existing.toPlayer, existing.amount)
     }
 
+    suspend fun getPaymentById(paymentId: String): Payment? = paymentDao.getPaymentById(paymentId)
+
+    suspend fun replaceGroupPayments(groupId: String, payments: List<Payment>) {
+        paymentDao.deletePaymentsByGroupId(groupId)
+        paymentDao.insertPayments(payments)
+    }
+
     // Entry Fee Records operations
     fun getEntryFeeRecordsByGroupId(groupId: String): Flow<List<EntryFeeRecord>> =
         entryFeeRecordDao.getEntryFeeRecordsByGroupId(groupId)

@@ -117,7 +117,7 @@ fun GroupDetailScreen(
         }
         socketManager.events.collect { event ->
             when (event.event) {
-                "settlement_done", "payment_created", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published", "entry_fee_updated" -> {
+                "settlement_done", "payment_created", "payment_updated", "payment_deleted", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published", "entry_fee_updated" -> {
                     val eventGroupId = event.payload?.optString("groupId", "")
                     if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
                         viewModel.fetchServerBalances()

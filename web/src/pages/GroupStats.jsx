@@ -220,6 +220,8 @@ const GroupStats = () => {
     socket.on('buyin_recorded', handleRefresh);
     socket.on('exit_recorded', handleRefresh);
     socket.on('payment_created', handleRefresh);
+    socket.on('payment_updated', handleRefresh);
+    socket.on('payment_deleted', handleRefresh);
     socket.on('request_created', handleRefresh);
     socket.on('request_resolved', handleRefresh);
     socket.on('player_added', handleRefresh);
@@ -243,6 +245,8 @@ const GroupStats = () => {
       socket.off('buyin_recorded', handleRefresh);
       socket.off('exit_recorded', handleRefresh);
       socket.off('payment_created', handleRefresh);
+      socket.off('payment_updated', handleRefresh);
+      socket.off('payment_deleted', handleRefresh);
       socket.off('request_created', handleRefresh);
       socket.off('request_resolved', handleRefresh);
       socket.off('player_added', handleRefresh);

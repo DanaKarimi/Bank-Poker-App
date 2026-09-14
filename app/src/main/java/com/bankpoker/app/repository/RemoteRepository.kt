@@ -958,6 +958,76 @@ class RemoteRepository(
     }
 
     /**
+     * Fetch all payments for a group from server (excluding soft-deleted)
+     */
+    suspend fun getGroupPayments(
+        groupId: String
+    ): Result<List<com.bankpoker.app.data.remote.dto.GroupPaymentDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupPayments(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.payments)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to fetch payments (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update an existing payment on server
+     */
+    suspend fun updateGroupPayment(
+        groupId: String,
+        paymentId: String,
+        amount: Long,
+        fromPlayer: String? = null,
+        toPlayer: String? = null
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = JsonObject().apply {
+                addProperty("amount", amount)
+                if (!fromPlayer.isNullOrBlank()) addProperty("fromPlayer", fromPlayer)
+                if (!toPlayer.isNullOrBlank()) addProperty("toPlayer", toPlayer)
+            }
+            val response = apiService.updateGroupPayment(groupId, paymentId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to update payment (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Soft delete a payment on server
+     */
+    suspend fun deleteGroupPayment(
+        groupId: String,
+        paymentId: String
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteGroupPayment(groupId, paymentId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to delete payment (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Bulk import offline group data to server and convert to online
      */
     suspend fun importGroup(
