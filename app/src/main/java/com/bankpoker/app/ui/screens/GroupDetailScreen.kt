@@ -729,31 +729,56 @@ fun TableCardSimple(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (table.hasEntryFee && (table.entryFee ?: 0L) > 0) {
-                        if (table.myEntryFeePaid == true) {
-                            Surface(
-                                color = Color(0xFF064E3B),
-                                shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.6f))
-                            ) {
-                                Text(
-                                    text = "Entry Fee Paid ✓",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF6EE7B7),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 10.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                        if (table.myEntryFeePaid != null) {
+                            if (table.myEntryFeePaid == true) {
+                                Surface(
+                                    color = Color(0xFF064E3B),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                                ) {
+                                    Text(
+                                        text = "Entry Fee Paid ✓",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF6EE7B7),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    color = Color(0xFF450A0A),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                                ) {
+                                    Text(
+                                        text = "UNPAID",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFFCA5A5),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
-                        } else {
+                        }
+                        if (table.isHostOrAdmin || table.canManage) {
+                            val paid = table.paidCount ?: 0
+                            val seated = table.seatedCount ?: table.playerCount
+                            val allPaid = paid >= seated && seated > 0
+                            val bgCol = if (allPaid) Color(0xFF064E3B) else Color(0xFF78350F)
+                            val textCol = if (allPaid) Color(0xFF6EE7B7) else Color(0xFFFDE68A)
+                            val borderCol = if (allPaid) Color(0xFF10B981).copy(alpha = 0.6f) else Color(0xFFF59E0B).copy(alpha = 0.6f)
+
                             Surface(
-                                color = Color(0xFF450A0A),
+                                color = bgCol,
                                 shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                                border = androidx.compose.foundation.BorderStroke(1.dp, borderCol)
                             ) {
                                 Text(
-                                    text = "UNPAID",
+                                    text = "PAID $paid/$seated",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFFCA5A5),
+                                    color = textCol,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 10.sp,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)

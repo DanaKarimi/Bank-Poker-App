@@ -2,10 +2,21 @@ import React from 'react';
 import { Layers, Users, ChevronRight, Coins, DollarSign } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 
-const TableCard = ({ table, onClick }) => {
+const TableCard = ({ table, onClick, isAdmin = false }) => {
   const isClosed = table.status === 'CLOSED' || table.is_active === 0;
   const entryFeeAmount = Number(table.entry_fee || table.entryFee) || 0;
+  const isViewerSeated = table.myEntryFeePaid !== null && table.myEntryFeePaid !== undefined;
   const isEntryFeePaid = table.myEntryFeePaid === true || table.my_entry_fee_paid === 1;
+
+  const isHostOrAdmin = Boolean(
+    table.isHostOrAdmin ||
+    table.canManage ||
+    table.isAdmin ||
+    isAdmin
+  );
+
+  const paidCount = Number(table.paidCount ?? table.entryFeePaidCount ?? table.entry_fee_paid_count ?? 0);
+  const seatedCount = Number(table.seatedCount ?? table.entryFeeSeatedCount ?? table.entry_fee_seated_count ?? table.playerCount ?? 0);
 
   return (
     <div
@@ -34,7 +45,7 @@ const TableCard = ({ table, onClick }) => {
                 <h3 className="font-bold text-cream-text text-sm group-hover:text-gold-accent transition">
                   {table.name || `Table ${table.id}`}
                 </h3>
-                {entryFeeAmount > 0 && (
+                {entryFeeAmount > 0 && isViewerSeated && (
                   isEntryFeePaid ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-950 text-emerald-300 border border-emerald-500/60 shadow-sm">
                       Entry Fee Paid ✓
@@ -44,6 +55,17 @@ const TableCard = ({ table, onClick }) => {
                       UNPAID
                     </span>
                   )
+                )}
+                {entryFeeAmount > 0 && isHostOrAdmin && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border shadow-sm ${
+                      paidCount >= seatedCount && seatedCount > 0
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-500/60'
+                        : 'bg-amber-950 text-amber-300 border-amber-500/60'
+                    }`}
+                  >
+                    PAID {paidCount}/{seatedCount}
+                  </span>
                 )}
               </div>
               <div className="text-[10px] text-cream-text/50">

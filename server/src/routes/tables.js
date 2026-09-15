@@ -1202,6 +1202,16 @@ router.post('/:id/entry-fee-sync', authenticateToken, async (req, res) => {
                     );
                 }
 
+                let syncPaidCount = null;
+                let syncSeatedCount = null;
+                const tPlayers = await all('SELECT id, name, entry_fee_paid FROM players WHERE table_id = ? AND is_deleted = 0', [tableId]);
+                const tFees = await all('SELECT player_name, paid FROM entry_fee_records WHERE table_id = ? AND is_deleted = 0', [tableId]);
+                syncSeatedCount = tPlayers.length;
+                syncPaidCount = tPlayers.filter(p => {
+                    const f = tFees.find(x => (x.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                    return Boolean(p.entry_fee_paid || (f && f.paid));
+                }).length;
+
                 if (table.group_id) {
                     emitToGroup(table.group_id, 'entry_fee_updated', {
                         groupId: table.group_id,
@@ -1209,7 +1219,9 @@ router.post('/:id/entry-fee-sync', authenticateToken, async (req, res) => {
                         tableId,
                         playerId: matchedPlayer?.id || null,
                         playerName,
-                        paid: Boolean(isPaid)
+                        paid: Boolean(isPaid),
+                        paidCount: syncPaidCount,
+                        seatedCount: syncSeatedCount
                     });
                 }
                 emitToTable(tableId, 'entry_fee_updated', {
@@ -1218,7 +1230,9 @@ router.post('/:id/entry-fee-sync', authenticateToken, async (req, res) => {
                     tableId,
                     playerId: matchedPlayer?.id || null,
                     playerName,
-                    paid: Boolean(isPaid)
+                    paid: Boolean(isPaid),
+                    paidCount: syncPaidCount,
+                    seatedCount: syncSeatedCount
                 });
                 emitToTable(tableId, 'player_updated', {
                     tableId,

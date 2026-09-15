@@ -115,6 +115,10 @@ class GroupDetailViewModel(
         val tableId = payload.optString("tableId", "")
         val paid = payload.optBoolean("paid", false)
         val playerId = payload.optString("playerId", "")
+        val hasPaidCount = payload.has("paidCount") && !payload.isNull("paidCount")
+        val paidCount = if (hasPaidCount) payload.optInt("paidCount") else null
+        val hasSeatedCount = payload.has("seatedCount") && !payload.isNull("seatedCount")
+        val seatedCount = if (hasSeatedCount) payload.optInt("seatedCount") else null
 
         viewModelScope.launch {
             val matchedTableId = if (tableId.isNotEmpty()) {
@@ -128,7 +132,10 @@ class GroupDetailViewModel(
             if (!matchedTableId.isNullOrEmpty()) {
                 _serverTables.value = _serverTables.value.map { t ->
                     if (t.id == matchedTableId) {
-                        t.copy(myEntryFeePaid = paid)
+                        t.copy(
+                            paidCount = paidCount ?: t.paidCount,
+                            seatedCount = seatedCount ?: t.seatedCount
+                        )
                     } else {
                         t
                     }

@@ -1012,24 +1012,20 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             }
 
             let myEntryFeePaid = null;
-            if (hasFee) {
-                if (myPlayer) {
-                    const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (myPlayer.name || '').trim().toLowerCase());
-                    myEntryFeePaid = Boolean(myPlayer.entry_fee_paid || (matchedFee && matchedFee.paid));
-                } else if (isGroupAdmin || (t.creator_user_id && t.creator_user_id === userId)) {
-                    // Admin/creator table overview: true if all seated players paid, false if any unpaid
-                    if (tablePlayers.length > 0 || tableFees.length > 0) {
-                        const anyUnpaidPlayer = tablePlayers.some(p => {
-                            const feeRec = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
-                            return !p.entry_fee_paid && (!feeRec || !feeRec.paid);
-                        });
-                        const anyUnpaidFee = tableFees.some(f => !f.paid);
-                        myEntryFeePaid = !anyUnpaidPlayer && !anyUnpaidFee;
-                    } else {
-                        myEntryFeePaid = false;
-                    }
-                }
+            if (hasFee && myPlayer) {
+                const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (myPlayer.name || '').trim().toLowerCase());
+                myEntryFeePaid = Boolean(myPlayer.entry_fee_paid || (matchedFee && matchedFee.paid));
             }
+
+            const seatedCount = tablePlayers.length;
+            const paidCount = hasFee
+                ? tablePlayers.filter(p => {
+                    const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                    return Boolean(p.entry_fee_paid || (matchedFee && matchedFee.paid));
+                }).length
+                : 0;
+
+            const isHostOrAdmin = Boolean(isGroupAdmin || (t.creator_user_id && t.creator_user_id === userId));
 
             return {
                 id: t.id,
@@ -1047,7 +1043,15 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
                 entry_fee: t.entry_fee,
                 myEntryFeePaid: myEntryFeePaid != null ? Boolean(myEntryFeePaid) : null,
                 my_entry_fee_paid: myEntryFeePaid != null ? (myEntryFeePaid ? 1 : 0) : null,
+                paidCount,
+                seatedCount,
+                entryFeePaidCount: paidCount,
+                entryFeeSeatedCount: seatedCount,
+                entry_fee_paid_count: paidCount,
+                entry_fee_seated_count: seatedCount,
                 hasJoinedTable: Boolean(myPlayer),
+                isHostOrAdmin,
+                canManage: isHostOrAdmin,
                 createdAt: t.created_at,
                 created_at: t.created_at,
                 closedAt: t.closed_at,
@@ -1056,7 +1060,7 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             };
         });
 
-        return res.status(200).json({ tables });
+        return res.status(200).json({ tables, canManage: Boolean(isGroupAdmin), isAdmin: Boolean(isGroupAdmin) });
     } catch (error) {
         console.error('Error fetching group tables:', error);
         return res.status(500).json({ error: 'Internal server error while fetching group tables' });
@@ -2111,6 +2115,26 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             );
         }
 
+        let paidCount = null;
+        let seatedCount = null;
+        if (record.table_id) {
+            const tPlayers = await all(
+                `SELECT id, name, entry_fee_paid FROM players 
+                 WHERE (table_id = ? OR table_id IN (SELECT id FROM tables WHERE id = ? OR server_id = ?)) AND is_deleted = 0`,
+                [record.table_id, record.table_id, record.table_id]
+            );
+            const tFees = await all(
+                `SELECT player_name, paid FROM entry_fee_records 
+                 WHERE (table_id = ? OR table_id IN (SELECT id FROM tables WHERE id = ? OR server_id = ?)) AND is_deleted = 0`,
+                [record.table_id, record.table_id, record.table_id]
+            );
+            seatedCount = tPlayers.length;
+            paidCount = tPlayers.filter(p => {
+                const f = tFees.find(x => (x.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                return Boolean(p.entry_fee_paid || (f && f.paid));
+            }).length;
+        }
+
         const eventPayload = {
             groupId: actualGroupId,
             feeId: record.id,
@@ -2118,7 +2142,9 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             amount: newAmount,
             playerName: record.player_name,
             tableId: record.table_id,
-            playerId: matchedPlayerId
+            playerId: matchedPlayerId,
+            paidCount,
+            seatedCount
         };
 
         // Emit entry_fee_updated to group room

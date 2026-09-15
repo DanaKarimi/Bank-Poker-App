@@ -215,16 +215,21 @@ const GroupStats = () => {
 
     const handleEntryFeeUpdated = async (payload) => {
       if (payload) {
-        const { tableId, paid } = payload;
+        const { tableId, paidCount, seatedCount } = payload;
         if (tableId) {
           setTables((prev) =>
             prev.map((t) => {
               if (t.id === tableId || t.serverId === tableId) {
-                return {
-                  ...t,
-                  myEntryFeePaid: Boolean(paid),
-                  my_entry_fee_paid: paid ? 1 : 0
-                };
+                const next = { ...t };
+                if (paidCount !== undefined && paidCount !== null) {
+                  next.paidCount = paidCount;
+                  next.entryFeePaidCount = paidCount;
+                }
+                if (seatedCount !== undefined && seatedCount !== null) {
+                  next.seatedCount = seatedCount;
+                  next.entryFeeSeatedCount = seatedCount;
+                }
+                return next;
               }
               return t;
             })
@@ -576,6 +581,7 @@ const GroupStats = () => {
                     <TableCard
                       key={table.id}
                       table={table}
+                      isAdmin={Boolean(group?.role === 'ADMIN' || group?.role === 'SUPERADMIN' || group?.owner_user_id === user?.id)}
                       onClick={() => handleTableClick(table)}
                     />
                   ))}
