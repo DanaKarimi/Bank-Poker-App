@@ -16,11 +16,13 @@ import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
 import BalancesTab from '../components/BalancesTab';
 import StatsTab from '../components/StatsTab';
+import HistoryTab from '../components/HistoryTab';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 import { getSocket, joinGroup, leaveGroup } from '../socket';
 import {
   ArrowLeft,
   RefreshCw,
+  History,
   Trophy,
   TrendingUp,
   TrendingDown,
@@ -535,6 +537,18 @@ const GroupStats = () => {
             <BarChart3 className="w-4 h-4" />
             <span>Stats & Settlement</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-gold-accent text-black shadow-md'
+                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>History</span>
+          </button>
         </div>
 
         {/* TAB 1: TABLES */}
@@ -621,6 +635,15 @@ const GroupStats = () => {
             balances={balances}
             loading={loading}
             onRefresh={() => fetchData(true)}
+          />
+        )}
+
+        {/* TAB 4: HISTORY (PAYMENTS & ENTRY FEES) */}
+        {activeTab === 'history' && (
+          <HistoryTab
+            groupId={groupId}
+            isAdmin={Boolean(group?.role === 'ADMIN' || group?.role === 'SUPERADMIN' || group?.owner_user_id === user?.id)}
+            onRefreshBalances={() => fetchData(true)}
           />
         )}
       </div>

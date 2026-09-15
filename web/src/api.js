@@ -138,6 +138,7 @@ export const getAdminTablePlayers = (tableId) => api.get(`/api/admin/tables/${ta
 export const updateAdminTablePlayer = (tableId, playerId, data) => api.put(`/api/admin/tables/${tableId}/players/${playerId}`, data);
 export const getGroupEntryFees = (groupId) => api.get(`/api/groups/${groupId}/entry-fees`);
 export const updateGroupEntryFee = (groupId, feeId, data) => api.put(`/api/groups/${groupId}/entry-fees/${feeId}`, data);
+export const deleteGroupEntryFee = (groupId, feeId) => api.delete(`/api/groups/${groupId}/entry-fees/${feeId}`);
 export const getServerHealth = () => api.get('/api/health');
 
 export default api;
