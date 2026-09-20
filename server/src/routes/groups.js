@@ -940,7 +940,7 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
 
         const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
         const isOwner = group.owner_user_id === userId || group.created_by === userId;
-        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND (group_id = ? OR group_id = ?)', [userId, group.id, groupId]);
+        const membership = await get('SELECT * FROM group_members WHERE user_id = ? AND (group_id = ? OR group_id = ?)', [userId, group.id, groupId]);
         const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
         // Current user identity names for matching seated player
@@ -1918,16 +1918,16 @@ router.put('/:id/payments/:paymentId', authenticateToken, async (req, res) => {
 router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
-        const group = await get('SELECT id, owner_user_id, created_by FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const actualGroupId = group.id;
 
         // Auto-seed and synchronize any missing or out-of-sync entry fee records from active players
         const seatedPlayers = await all(
-            `SELECT p.id, p.table_id, p.name, p.entry_fee_paid, p.created_at, t.name as table_name, t.entry_fee
+            `SELECT p.id, p.table_id, p.name, p.entry_fee_paid, p.created_at, t.name as table_name, t.entry_fee, t.server_id as table_server_id
              FROM players p
-             JOIN tables t ON p.table_id = t.id
+             JOIN tables t ON (p.table_id = t.id OR p.table_id = t.server_id)
              WHERE (t.group_id = ? OR t.group_id = ?) 
                AND (t.has_entry_fee = 1 OR (t.entry_fee IS NOT NULL AND t.entry_fee > 0)) 
                AND p.is_deleted = 0 AND t.is_deleted = 0`,
@@ -1944,7 +1944,7 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
         const now = Date.now();
         for (const p of seatedPlayers) {
             const matched = existingFeeRecords.find(f => 
-                (f.table_id === p.table_id) && 
+                (f.table_id === p.table_id || (p.table_server_id && f.table_id === p.table_server_id)) && 
                 ((f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase())
             );
 
@@ -1983,15 +1983,42 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
             [actualGroupId, groupId]
         );
 
+        // Deduplicate records by (player_name, table)
+        const dedupedRecords = [];
+        for (const r of records) {
+            const normPlayer = (r.player_name || '').trim().toLowerCase();
+            const normTableId = (r.table_id || '').trim();
+            const normTableName = (r.table_name || '').trim().toLowerCase();
+
+            const existing = dedupedRecords.find(e => {
+                const samePlayer = (e.player_name || '').trim().toLowerCase() === normPlayer;
+                if (!samePlayer) return false;
+                const sameTableId = normTableId && (e.table_id || '').trim() === normTableId;
+                const sameTableName = normTableName && (e.table_name || '').trim().toLowerCase() === normTableName;
+                return sameTableId || sameTableName;
+            });
+
+            if (!existing) {
+                dedupedRecords.push({ ...r });
+            } else {
+                if (r.paid) existing.paid = 1;
+                if ((!existing.amount || existing.amount <= 0) && r.amount > 0) {
+                    existing.amount = r.amount;
+                }
+                if (!existing.table_name && r.table_name) existing.table_name = r.table_name;
+                if (!existing.table_id && r.table_id) existing.table_id = r.table_id;
+            }
+        }
+
         const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
         const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
-        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
+        const membership = await get('SELECT * FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
         const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
         return res.json({
             canManage: Boolean(isGroupAdmin),
             isAdmin: Boolean(isGroupAdmin),
-            entryFees: records.map(r => ({
+            entryFees: dedupedRecords.map(r => ({
                 id: r.id,
                 groupId: r.group_id,
                 tableId: r.table_id,
@@ -2026,7 +2053,7 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
         // Authorization check: super admin / group creator/owner / group admin
         const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
         const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
-        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
+        const membership = await get('SELECT * FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
         const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
         if (!isGroupAdmin) {
@@ -2199,7 +2226,7 @@ router.delete('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
 
         const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
         const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
-        const membership = await get('SELECT role FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
+        const membership = await get('SELECT * FROM group_members WHERE user_id = ? AND group_id = ?', [req.user.id, actualGroupId]);
         const isGroupAdmin = isSuperAdmin || isOwner || (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
 
         if (!isGroupAdmin) {

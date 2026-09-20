@@ -555,7 +555,7 @@ private fun EntryFeesHistoryTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(entryFeeRecords, key = { it.id }) { record ->
+            items(entryFeeRecords, key = { "${it.id}_${it.tableId}_${it.playerName}" }) { record ->
                 EntryFeeHistoryCard(
                     record = record,
                     canManage = canManage,

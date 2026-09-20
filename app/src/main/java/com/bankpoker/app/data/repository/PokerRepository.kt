@@ -332,6 +332,7 @@ class PokerRepository(
 
         // Insert Entry Fee records if table has entry fee
         if (table.hasEntryFee && table.entryFee != null && table.entryFee > 0) {
+            entryFeeRecordDao.deleteEntryFeeRecordsByTableId(table.id)
             val feeRecords = players.map { p ->
                 EntryFeeRecord(
                     id = UUID.randomUUID().toString(),
@@ -448,6 +449,11 @@ class PokerRepository(
     }
 
     suspend fun insertOrUpdateEntryFeeRecords(records: List<EntryFeeRecord>) {
+        entryFeeRecordDao.insertEntryFeeRecords(records)
+    }
+
+    suspend fun replaceGroupEntryFeeRecords(groupId: String, records: List<EntryFeeRecord>) {
+        entryFeeRecordDao.deleteEntryFeeRecordsByGroupId(groupId)
         entryFeeRecordDao.insertEntryFeeRecords(records)
     }
 

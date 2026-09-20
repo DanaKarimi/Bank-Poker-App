@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class GroupHistoryViewModel(
@@ -25,6 +26,7 @@ class GroupHistoryViewModel(
 
     val payments: Flow<List<Payment>> = repository.getPaymentsByGroupId(groupId)
     val entryFeeRecords: Flow<List<EntryFeeRecord>> = repository.getEntryFeeRecordsByGroupId(groupId)
+        .map { records -> deduplicateRecords(records) }
 
     private val _canManageEntryFees = MutableStateFlow(false)
     val canManageEntryFees: StateFlow<Boolean> = _canManageEntryFees.asStateFlow()
@@ -93,14 +95,44 @@ class GroupHistoryViewModel(
                             timestamp = if (dto.timestamp > 0) dto.timestamp else System.currentTimeMillis()
                         )
                     }
-                    if (roomRecords.isNotEmpty()) {
-                        repository.insertOrUpdateEntryFeeRecords(roomRecords)
-                    }
+                    val deduplicated = deduplicateRecords(roomRecords)
+                    repository.replaceGroupEntryFeeRecords(groupId, deduplicated)
                 }
             } catch (e: Exception) {
                 android.util.Log.w("GroupHistoryVM", "Error fetching entry fees from server", e)
             }
         }
+    }
+
+    private fun deduplicateRecords(records: List<EntryFeeRecord>): List<EntryFeeRecord> {
+        val result = mutableListOf<EntryFeeRecord>()
+        for (record in records) {
+            val normPlayer = record.playerName.trim().lowercase()
+            val normTableId = record.tableId.trim()
+            val normTableName = record.tableName.trim().lowercase()
+
+            val existingIndex = result.indexOfFirst { existing ->
+                val samePlayer = existing.playerName.trim().lowercase() == normPlayer
+                if (!samePlayer) return@indexOfFirst false
+                val sameTableId = normTableId.isNotBlank() && existing.tableId.trim() == normTableId
+                val sameTableName = normTableName.isNotBlank() && existing.tableName.trim().lowercase() == normTableName
+                sameTableId || sameTableName
+            }
+
+            if (existingIndex >= 0) {
+                val existing = result[existingIndex]
+                result[existingIndex] = existing.copy(
+                    paid = existing.paid || record.paid,
+                    amount = if (record.amount > 0) record.amount else existing.amount,
+                    timestamp = maxOf(existing.timestamp, record.timestamp),
+                    tableId = if (existing.tableId.isBlank()) record.tableId else existing.tableId,
+                    tableName = if (existing.tableName.isBlank()) record.tableName else existing.tableName
+                )
+            } else {
+                result.add(record)
+            }
+        }
+        return result
     }
 
     fun updatePayment(paymentId: String, newAmount: Long) {
