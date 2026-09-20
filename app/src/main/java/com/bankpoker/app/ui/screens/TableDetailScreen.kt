@@ -14,11 +14,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
@@ -131,17 +134,74 @@ fun TableDetailScreen(
     
     val coroutineScope = rememberCoroutineScope()
     var isHeaderCollapsed by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val playersListState = rememberLazyListState()
+    val historyListState = rememberLazyListState()
+    val resultsListState = rememberLazyListState()
+
+    fun isListAtTop(): Boolean {
+        val state = when (selectedTab) {
+            0 -> playersListState
+            1 -> historyListState
+            else -> resultsListState
+        }
+        return state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0
+    }
+
+    var pullDownAccumulator by remember { mutableFloatStateOf(0f) }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
-                if (delta < -12f && !isHeaderCollapsed) {
+                val atTop = isListAtTop()
+
+                if (delta < -6f && !isHeaderCollapsed) {
+                    // Downward scroll: collapse header quickly
                     isHeaderCollapsed = true
-                } else if (delta > 20f && isHeaderCollapsed) {
-                    isHeaderCollapsed = false
+                    pullDownAccumulator = 0f
+                } else if (delta > 0f) {
+                    if (atTop && isHeaderCollapsed) {
+                        pullDownAccumulator += delta
+                        if (pullDownAccumulator > 35f) {
+                            isHeaderCollapsed = false
+                            pullDownAccumulator = 0f
+                        }
+                    } else {
+                        // Scrolling up while inside list: stay collapsed
+                        pullDownAccumulator = 0f
+                    }
                 }
                 return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                val atTop = isListAtTop()
+                if (available.y > 0f && atTop && isHeaderCollapsed) {
+                    pullDownAccumulator += available.y
+                    if (pullDownAccumulator > 35f) {
+                        isHeaderCollapsed = false
+                        pullDownAccumulator = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                val atTop = isListAtTop()
+                if (available.y > 80f && atTop && isHeaderCollapsed) {
+                    isHeaderCollapsed = false
+                    pullDownAccumulator = 0f
+                }
+                if (!atTop && !isHeaderCollapsed) {
+                    isHeaderCollapsed = true
+                }
+                pullDownAccumulator = 0f
+                return Velocity.Zero
             }
         }
     }
@@ -251,122 +311,132 @@ fun TableDetailScreen(
                     .fillMaxSize()
                     .nestedScroll(nestedScrollConnection)
             ) {
-                // Expanded Table Summary Header (collapses on scroll down, expands on scroll to top)
-                AnimatedVisibility(
-                    visible = !isHeaderCollapsed,
-                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(250)),
-                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Summary bar (Admin) or My Table Stats (Non-Admin)
-                        if (uiState.isHostOrAdmin) {
-                            TableSummaryBar(
-                                totalBuyIns = uiState.totalBuyIns,
-                                totalExits = uiState.totalExits,
-                                remainingBalance = uiState.remainingBalance,
-                                chipValue = uiState.table?.chipValue
-                            )
-                        } else {
-                            MyTableStatsCard(
-                                avatarId = uiState.currentUserAvatarId ?: "avatar_1",
-                                name = uiState.currentUsername ?: "Player",
-                                totalBuyIns = uiState.myTotalBuyIns,
-                                totalExits = uiState.myTotalExits,
-                                netBalance = uiState.myNetBalance,
-                                chipValue = uiState.table?.chipValue
-                            )
-                        }
-
-                        if (uiState.table?.status == "CLOSED") {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                color = LoseRed.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, LoseRed.copy(alpha = 0.6f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = null,
-                                        tint = LoseRed,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "TABLE CLOSED • HISTORY LOCKED",
-                                        color = LoseRed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    )
+                // Collapsible Header: smoothly morphs between Expanded Header and Compact Bar
+                AnimatedContent(
+                    targetState = isHeaderCollapsed,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(200)))
+                            .togetherWith(fadeOut(animationSpec = tween(140)) + shrinkVertically(animationSpec = tween(200)))
+                    },
+                    label = "HeaderCollapseAnimation"
+                ) { collapsed ->
+                    if (collapsed) {
+                        CompactTableBar(
+                            tableName = uiState.table?.name ?: "Table",
+                            status = uiState.table?.status ?: "ACTIVE",
+                            chipValue = uiState.table?.chipValue,
+                            hasEntryFee = uiState.table?.hasEntryFee == true,
+                            entryFee = uiState.table?.entryFee,
+                            onClick = {
+                                coroutineScope.launch {
+                                    val state = when (selectedTab) {
+                                        0 -> playersListState
+                                        1 -> historyListState
+                                        else -> resultsListState
+                                    }
+                                    state.animateScrollToItem(0)
                                 }
+                                isHeaderCollapsed = false
                             }
-                        }
-
-                        if (!uiState.table?.code.isNullOrBlank()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                GroupCodeChip(
-                                    code = uiState.table!!.code!!,
-                                    groupName = uiState.table?.name ?: "Table"
+                        )
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Summary bar (Admin) or My Table Stats (Non-Admin)
+                            if (uiState.isHostOrAdmin) {
+                                TableSummaryBar(
+                                    totalBuyIns = uiState.totalBuyIns,
+                                    totalExits = uiState.totalExits,
+                                    remainingBalance = uiState.remainingBalance,
+                                    chipValue = uiState.table?.chipValue
+                                )
+                            } else {
+                                MyTableStatsCard(
+                                    avatarId = uiState.currentUserAvatarId ?: "avatar_1",
+                                    name = uiState.currentUsername ?: "Player",
+                                    totalBuyIns = uiState.myTotalBuyIns,
+                                    totalExits = uiState.myTotalExits,
+                                    netBalance = uiState.myNetBalance,
+                                    chipValue = uiState.table?.chipValue
                                 )
                             }
-                        } else if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Button(
-                                    onClick = {
-                                        viewModel.publishTable { success, code, errorMsg ->
-                                            if (success) {
-                                                Toast.makeText(context, "Table published! Code: $code", Toast.LENGTH_SHORT).show()
-                                            } else if (errorMsg != null) {
-                                                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = FeltCard,
-                                        contentColor = Gold
-                                    ),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
-                                    shape = RoundedCornerShape(12.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+
+                            if (uiState.table?.status == "CLOSED") {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    color = LoseRed.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, LoseRed.copy(alpha = 0.6f))
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Publish / Share Table", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = null,
+                                            tint = LoseRed,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "TABLE CLOSED • HISTORY LOCKED",
+                                            color = LoseRed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!uiState.table?.code.isNullOrBlank()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    GroupCodeChip(
+                                        code = uiState.table!!.code!!,
+                                        groupName = uiState.table?.name ?: "Table"
+                                    )
+                                }
+                            } else if (uiState.table?.status == "ACTIVE" && uiState.isHostOrAdmin) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.publishTable { success, code, errorMsg ->
+                                                if (success) {
+                                                    Toast.makeText(context, "Table published! Code: $code", Toast.LENGTH_SHORT).show()
+                                                } else if (errorMsg != null) {
+                                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = FeltCard,
+                                            contentColor = Gold
+                                        ),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Publish / Share Table", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-
-                // Collapsed Compact Header (Table name + Status badge)
-                AnimatedVisibility(
-                    visible = isHeaderCollapsed,
-                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
-                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200))
-                ) {
-                    CompactTableBar(
-                        tableName = uiState.table?.name ?: "Table",
-                        status = uiState.table?.status ?: "ACTIVE",
-                        chipValue = uiState.table?.chipValue,
-                        onClick = { isHeaderCollapsed = false }
-                    )
                 }
 
                 HorizontalPagerTabs(
@@ -403,7 +473,12 @@ fun TableDetailScreen(
                     isTableActive = uiState.table?.status != "CLOSED",
                     tableHasEntryFee = uiState.table?.hasEntryFee == true,
                     onPlayerClick = onPlayerClick,
-                    isHostOrAdmin = uiState.isHostOrAdmin
+                    isHostOrAdmin = uiState.isHostOrAdmin,
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    playersListState = playersListState,
+                    historyListState = historyListState,
+                    resultsListState = resultsListState
                 )
             }
         }
@@ -561,22 +636,24 @@ fun CompactTableBar(
     tableName: String,
     status: String,
     chipValue: Long? = null,
+    hasEntryFee: Boolean = false,
+    entryFee: Long? = null,
     onClick: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 2.dp)
             .clickable { onClick() },
         color = FeltCard,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f)),
-        shadowElevation = 4.dp
+        shadowElevation = 3.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -587,14 +664,14 @@ fun CompactTableBar(
                 Text(
                     text = "♠",
                     color = Gold,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = tableName,
                     color = Cream,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -603,9 +680,23 @@ fun CompactTableBar(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (chipValue != null && chipValue > 0) {
+                if (hasEntryFee && entryFee != null && entryFee > 0) {
+                    Surface(
+                        color = Gold.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(6.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "Fee: $$entryFee",
+                            color = Gold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                } else if (chipValue != null && chipValue > 0) {
                     Text(
                         text = "Chip: $$chipValue",
                         color = Gold,
@@ -840,10 +931,13 @@ fun HorizontalPagerTabs(
     tableHasEntryFee: Boolean = false,
     onPlayerClick: ((String) -> Unit)? = null,
     onDeletePlayer: ((Player) -> Unit)? = null,
-    isHostOrAdmin: Boolean = true
+    isHostOrAdmin: Boolean = true,
+    selectedTab: Int = 0,
+    onTabSelected: (Int) -> Unit = {},
+    playersListState: LazyListState = rememberLazyListState(),
+    historyListState: LazyListState = rememberLazyListState(),
+    resultsListState: LazyListState = rememberLazyListState()
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-
     Column {
         Row(
             modifier = Modifier
@@ -854,19 +948,19 @@ fun HorizontalPagerTabs(
             TabButton(
                 text = "PLAYERS",
                 selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
+                onClick = { onTabSelected(0) },
                 modifier = Modifier.weight(1f)
             )
             TabButton(
                 text = "HISTORY",
                 selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
+                onClick = { onTabSelected(1) },
                 modifier = Modifier.weight(1f)
             )
             TabButton(
                 text = "RESULTS",
                 selected = selectedTab == 2,
-                onClick = { selectedTab = 2 },
+                onClick = { onTabSelected(2) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -893,20 +987,23 @@ fun HorizontalPagerTabs(
                     tableHasEntryFee = tableHasEntryFee,
                     viewModel = viewModel,
                     onPlayerClick = onPlayerClick,
-                    isHostOrAdmin = isHostOrAdmin
+                    isHostOrAdmin = isHostOrAdmin,
+                    listState = playersListState
                 )
                 1 -> HistoryTab(
                     buyIns = buyIns,
                     exitRecords = exitRecords,
                     players = players,
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    listState = historyListState
                 )
                 2 -> ResultsTab(
                     players = players,
                     buyIns = buyIns,
                     exitRecords = exitRecords,
                     viewModel = viewModel,
-                    tableHasEntryFee = tableHasEntryFee
+                    tableHasEntryFee = tableHasEntryFee,
+                    listState = resultsListState
                 )
             }
         }
@@ -929,7 +1026,8 @@ fun PlayersTab(
     viewModel: com.bankpoker.app.viewmodel.TableDetailViewModel? = null,
     onPlayerClick: ((String) -> Unit)? = null,
     onDeletePlayer: ((Player) -> Unit)? = null,
-    isHostOrAdmin: Boolean = true
+    isHostOrAdmin: Boolean = true,
+    listState: LazyListState = rememberLazyListState()
 ) {
     fun balanceOf(playerId: String): Long {
         val buy = buyIns.filter { it.playerId == playerId }.sumOf { it.amount }
@@ -1079,6 +1177,7 @@ fun PlayersTab(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1529,7 +1628,8 @@ fun HistoryTab(
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
     players: List<Player>,
-    viewModel: TableDetailViewModel
+    viewModel: TableDetailViewModel,
+    listState: LazyListState = rememberLazyListState()
 ) {
     var selectedTransactionForEdit by remember { mutableStateOf<TransactionItem?>(null) }
     var selectedTransactionForDelete by remember { mutableStateOf<TransactionItem?>(null) }
@@ -1584,6 +1684,7 @@ fun HistoryTab(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1725,7 +1826,8 @@ fun ResultsTab(
     buyIns: List<BuyIn>,
     exitRecords: List<ExitRecord>,
     viewModel: TableDetailViewModel,
-    tableHasEntryFee: Boolean = false
+    tableHasEntryFee: Boolean = false,
+    listState: LazyListState = rememberLazyListState()
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1751,6 +1853,7 @@ fun ResultsTab(
     val allExited = deduplicatedPlayers.all { it.status == "EXITED" } && deduplicatedPlayers.isNotEmpty()
     
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
