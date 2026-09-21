@@ -105,6 +105,22 @@ class SyncOutboxManager(
                 val result = remoteRepository.deleteTablePlayer(op.targetId, playerId)
                 result.isSuccess
             }
+            "EDIT_EXIT" -> {
+                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
+                val tableId = if (payload.has("tableId") && !payload.get("tableId").isJsonNull) payload.get("tableId").asString else ""
+                val amount = payload.get("amount")?.asLong ?: 0L
+                val note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
+                val result = remoteRepository.updateExit(tableId, op.targetId, amount, note)
+                result.isSuccess
+            }
+            "EDIT_BUY_IN" -> {
+                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
+                val tableId = if (payload.has("tableId") && !payload.get("tableId").isJsonNull) payload.get("tableId").asString else ""
+                val amount = payload.get("amount")?.asLong ?: 0L
+                val note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
+                val result = remoteRepository.updateBuyIn(tableId, op.targetId, amount, note)
+                result.isSuccess
+            }
             "CLOSE_TABLE" -> {
                 val result = remoteRepository.closeTable(op.targetId)
                 result.isSuccess
