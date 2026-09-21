@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { run, get, all } = require('../database/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { generateInviteCode } = require('../utils/helpers');
+const { generateInviteCode, normalizeName } = require('../utils/helpers');
 const { emitToGroup, emitToTable } = require('../socket');
 const { sendNotification } = require('../services/notifications');
 
@@ -945,8 +945,8 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
 
         // Current user identity names for matching seated player
         const myNames = new Set();
-        if (req.user?.username) myNames.add(req.user.username.trim().toLowerCase());
-        if (req.user?.display_name) myNames.add(req.user.display_name.trim().toLowerCase());
+        if (req.user?.username) myNames.add(normalizeName(req.user.username));
+        if (req.user?.display_name) myNames.add(normalizeName(req.user.display_name));
 
         if (userId) {
             const userClaimedPlayers = await all(
@@ -956,7 +956,7 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
                 [userId, group.id, groupId]
             );
             for (const row of userClaimedPlayers) {
-                if (row.name) myNames.add(row.name.trim().toLowerCase());
+                if (row.name) myNames.add(normalizeName(row.name));
             }
         }
 
@@ -1008,19 +1008,19 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             let myPlayer = null;
             if (userId) {
                 myPlayer = tablePlayers.find(p => p.user_id === userId) ||
-                           tablePlayers.find(p => myNames.has((p.name || '').trim().toLowerCase()));
+                           tablePlayers.find(p => myNames.has(normalizeName(p.name)));
             }
 
             let myEntryFeePaid = null;
             if (hasFee && myPlayer) {
-                const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (myPlayer.name || '').trim().toLowerCase());
+                const matchedFee = tableFees.find(f => normalizeName(f.player_name) === normalizeName(myPlayer.name));
                 myEntryFeePaid = Boolean(myPlayer.entry_fee_paid || (matchedFee && matchedFee.paid));
             }
 
             const seatedCount = tablePlayers.length;
             const paidCount = hasFee
                 ? tablePlayers.filter(p => {
-                    const matchedFee = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                    const matchedFee = tableFees.find(f => normalizeName(f.player_name) === normalizeName(p.name));
                     return Boolean(p.entry_fee_paid || (matchedFee && matchedFee.paid));
                 }).length
                 : 0;
@@ -1945,7 +1945,7 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
         for (const p of seatedPlayers) {
             const matched = existingFeeRecords.find(f => 
                 (f.table_id === p.table_id || (p.table_server_id && f.table_id === p.table_server_id)) && 
-                ((f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase())
+                (normalizeName(f.player_name) === normalizeName(p.name))
             );
 
             if (!matched) {
@@ -1986,15 +1986,15 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
         // Deduplicate records by (player_name, table)
         const dedupedRecords = [];
         for (const r of records) {
-            const normPlayer = (r.player_name || '').trim().toLowerCase();
+            const normPlayer = normalizeName(r.player_name);
             const normTableId = (r.table_id || '').trim();
-            const normTableName = (r.table_name || '').trim().toLowerCase();
+            const normTableName = normalizeName(r.table_name);
 
             const existing = dedupedRecords.find(e => {
-                const samePlayer = (e.player_name || '').trim().toLowerCase() === normPlayer;
+                const samePlayer = normalizeName(e.player_name) === normPlayer;
                 if (!samePlayer) return false;
                 const sameTableId = normTableId && (e.table_id || '').trim() === normTableId;
-                const sameTableName = normTableName && (e.table_name || '').trim().toLowerCase() === normTableName;
+                const sameTableName = normTableName && normalizeName(e.table_name) === normTableName;
                 return sameTableId || sameTableName;
             });
 
@@ -2157,7 +2157,7 @@ router.put('/:id/entry-fees/:feeId', authenticateToken, async (req, res) => {
             );
             seatedCount = tPlayers.length;
             paidCount = tPlayers.filter(p => {
-                const f = tFees.find(x => (x.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                const f = tFees.find(x => normalizeName(x.player_name) === normalizeName(p.name));
                 return Boolean(p.entry_fee_paid || (f && f.paid));
             }).length;
         }

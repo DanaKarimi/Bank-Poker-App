@@ -845,14 +845,7 @@ fun TableCardSimple(
     }
 }
 
-fun formatGroupBalance(balance: Long): String {
-    val absFormatted = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(kotlin.math.abs(balance))
-    return when {
-        balance > 0 -> "+$$absFormatted"
-        balance < 0 -> "-$$absFormatted"
-        else -> "$0"
-    }
-}
+fun formatGroupBalance(balance: Long): String = com.bankpoker.app.ui.util.Formatters.formatGroupBalance(balance)
 
 @Composable
 fun BalancesTab(

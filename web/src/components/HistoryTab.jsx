@@ -19,22 +19,7 @@ import {
   AlertCircle,
   ShieldAlert
 } from 'lucide-react';
-
-const formatTimestamp = (ts) => {
-  if (!ts) return '';
-  try {
-    const d = new Date(Number(ts));
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch (e) {
-    return '';
-  }
-};
+import { formatTimestamp } from '../utils/formatters';
 
 const HistoryTab = ({ groupId, isAdmin = false, onRefreshBalances }) => {
   const [subTab, setSubTab] = useState('payments'); // 'payments' | 'entry_fees'

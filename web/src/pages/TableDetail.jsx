@@ -21,6 +21,7 @@ import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
 import { PokerAvatar } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
+import { formatBalance } from '../utils/formatters';
 import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../socket';
 import {
   ArrowLeft,
@@ -813,11 +814,7 @@ const TableDetail = () => {
                       : 'text-cream-text'
                   }`}
                 >
-                  {myNetBalance > 0
-                    ? `+$${myNetBalance.toLocaleString()}`
-                    : myNetBalance < 0
-                    ? `-$${Math.abs(myNetBalance).toLocaleString()}`
-                    : '$0'}
+                  {formatBalance(myNetBalance)}
                 </div>
               </div>
             </div>

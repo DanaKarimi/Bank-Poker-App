@@ -11,6 +11,16 @@ function generateInviteCode() {
   return code;
 }
 
+/**
+ * Normalize a player or user name for case-insensitive matching
+ * @param {string} name
+ * @returns {string} trimmed lowercase string
+ */
+function normalizeName(name) {
+  return (name || '').trim().toLowerCase();
+}
+
 module.exports = {
-  generateInviteCode
+  generateInviteCode,
+  normalizeName
 };

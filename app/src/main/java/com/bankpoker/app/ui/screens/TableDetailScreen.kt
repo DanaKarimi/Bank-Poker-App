@@ -2811,18 +2811,9 @@ fun ExitBottomSheet(
     }
 }
 
-fun formatAmount(chips: Long, chipValue: Long?): String {
-    return if (chipValue != null) {
-        "$chips ($${chips * chipValue})"
-    } else {
-        "$chips"
-    }
-}
+fun formatAmount(chips: Long, chipValue: Long?): String = com.bankpoker.app.ui.util.Formatters.formatAmount(chips, chipValue)
 
-fun formatTimestamp(timestamp: Long): String {
-    val sdf = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault())
-    return sdf.format(java.util.Date(timestamp))
-}
+fun formatTimestamp(timestamp: Long): String = com.bankpoker.app.ui.util.Formatters.formatTimestamp(timestamp)
 
 data class Settlement(
     val fromPlayer: String,

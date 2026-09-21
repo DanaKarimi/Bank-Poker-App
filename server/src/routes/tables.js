@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { run, get, all } = require('../database/db');
 const { authenticateToken } = require('../middleware/auth');
-const { generateInviteCode } = require('../utils/helpers');
+const { generateInviteCode, normalizeName } = require('../utils/helpers');
 const { emitToTable, emitToGroup } = require('../socket');
 const { sendNotification } = require('../services/notifications');
 
@@ -963,7 +963,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
                 const tableFees = await all('SELECT paid, player_name FROM entry_fee_records WHERE (table_id = ? OR table_id = ?) AND is_deleted = 0', [table.id, table.id]);
                 if (tablePlayers.length > 0 || tableFees.length > 0) {
                     const anyUnpaid = tablePlayers.some(p => {
-                        const rec = tableFees.find(f => (f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                        const rec = tableFees.find(f => normalizeName(f.player_name) === normalizeName(p.name));
                         return !p.entry_fee_paid && (!rec || !rec.paid);
                     }) || tableFees.some(f => !f.paid);
                     myEntryFeePaid = !anyUnpaid;
@@ -1208,7 +1208,7 @@ router.post('/:id/entry-fee-sync', authenticateToken, async (req, res) => {
                 const tFees = await all('SELECT player_name, paid FROM entry_fee_records WHERE table_id = ? AND is_deleted = 0', [tableId]);
                 syncSeatedCount = tPlayers.length;
                 syncPaidCount = tPlayers.filter(p => {
-                    const f = tFees.find(x => (x.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase());
+                    const f = tFees.find(x => normalizeName(x.player_name) === normalizeName(p.name));
                     return Boolean(p.entry_fee_paid || (f && f.paid));
                 }).length;
 

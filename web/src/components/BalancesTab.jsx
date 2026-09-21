@@ -2,6 +2,7 @@ import React from 'react';
 import { Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserBadge } from './AvatarSystem';
+import { formatBalance } from '../utils/formatters';
 
 const BalancesTab = ({ balances = [], groupBalances = null, loading = false }) => {
   const { user } = useAuth();
@@ -87,11 +88,7 @@ const BalancesTab = ({ balances = [], groupBalances = null, loading = false }) =
             ? 'text-[#ef4444]'
             : 'text-[#d4af37]';
 
-          const formattedBalance = isPositive
-            ? `+$${balance.toLocaleString()}`
-            : isNegative
-            ? `-$${Math.abs(balance).toLocaleString()}`
-            : `$0`;
+          const formattedBalance = formatBalance(balance);
 
           return (
             <div
