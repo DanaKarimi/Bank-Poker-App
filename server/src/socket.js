@@ -14,30 +14,36 @@ function initSocket(httpServer) {
         transports: ['polling', 'websocket'] // automatic polling fallback
     });
 
-    // JWT authentication middleware
+    // JWT authentication middleware (soft rollout mode: allow connection even if unauthenticated)
     io.use((socket, next) => {
-        const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-        if (!token) {
-            // Allow guest connection with anonymous socket if no token, but tag it
-            socket.user = null;
-            return next();
-        }
-
-        jwt.verify(token, JWT_SECRET, (err, decoded) => {
-            if (err) {
-                // If token invalid, reject or mark null
-                socket.user = null;
-                return next();
-            }
-            socket.user = decoded;
-            next();
-        });
+        next();
     });
 
     io.on('connection', (socket) => {
-        if (socket.user && socket.user.id) {
-            socket.join(`user:${socket.user.id}`);
-            // console.log(`[Socket] User ${socket.user.username} (${socket.user.id}) connected`);
+        // Extract token from handshake auth or query
+        const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+        if (token) {
+            try {
+                const decoded = jwt.verify(token, JWT_SECRET);
+                socket.data = socket.data || {};
+                socket.data.user = decoded;
+                socket.user = decoded; // backward compatibility
+            } catch (err) {
+                console.warn('WARNING: Socket connected without valid auth token');
+                socket.data = socket.data || {};
+                socket.data.user = null;
+                socket.user = null;
+            }
+        } else {
+            console.warn('WARNING: Socket connected without valid auth token');
+            socket.data = socket.data || {};
+            socket.data.user = null;
+            socket.user = null;
+        }
+
+        const currentUser = socket.data?.user || socket.user;
+        if (currentUser && currentUser.id) {
+            socket.join(`user:${currentUser.id}`);
         }
 
         socket.on('join_group', (groupId) => {
