@@ -44,6 +44,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
+class RateLimitedException(
+    val retryAfterSeconds: Int,
+    override val message: String = "Too many attempts. Please wait a moment and try again."
+) : Exception(message)
+
 /**
  * Repository responsible for all network operations against the Node.js backend server.
  */
@@ -101,9 +106,14 @@ class RemoteRepository(
                 }
                 Result.success(body)
             } else {
-                val errorMsg = parseErrorMessage(response.errorBody()?.string())
-                    ?: "Login failed (HTTP ${response.code()})"
-                Result.failure(Exception(errorMsg))
+                val rawError = response.errorBody()?.string()
+                if (response.code() == 429) {
+                    Result.failure(parseRateLimitException(response, rawError))
+                } else {
+                    val errorMsg = parseErrorMessage(rawError)
+                        ?: "Login failed (HTTP ${response.code()})"
+                    Result.failure(Exception(errorMsg))
+                }
             }
         } catch (e: IOException) {
             Result.failure(Exception("Network error: Cannot connect to server."))
@@ -129,9 +139,14 @@ class RemoteRepository(
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                val errorMsg = parseErrorMessage(response.errorBody()?.string())
-                    ?: "Registration failed (HTTP ${response.code()})"
-                Result.failure(Exception(errorMsg))
+                val rawError = response.errorBody()?.string()
+                if (response.code() == 429) {
+                    Result.failure(parseRateLimitException(response, rawError))
+                } else {
+                    val errorMsg = parseErrorMessage(rawError)
+                        ?: "Registration failed (HTTP ${response.code()})"
+                    Result.failure(Exception(errorMsg))
+                }
             }
         } catch (e: IOException) {
             Result.failure(Exception("Network error: Cannot connect to server."))
@@ -162,9 +177,14 @@ class RemoteRepository(
                 }
                 Result.success(body)
             } else {
-                val errorMsg = parseErrorMessage(response.errorBody()?.string())
-                    ?: "Guest join failed (HTTP ${response.code()})"
-                Result.failure(Exception(errorMsg))
+                val rawError = response.errorBody()?.string()
+                if (response.code() == 429) {
+                    Result.failure(parseRateLimitException(response, rawError))
+                } else {
+                    val errorMsg = parseErrorMessage(rawError)
+                        ?: "Guest join failed (HTTP ${response.code()})"
+                    Result.failure(Exception(errorMsg))
+                }
             }
         } catch (e: IOException) {
             Result.failure(Exception("Network error: Cannot connect to server."))
@@ -195,9 +215,14 @@ class RemoteRepository(
                 }
                 Result.success(body)
             } else {
-                val errorMsg = parseErrorMessage(response.errorBody()?.string())
-                    ?: "Account activation failed (HTTP ${response.code()})"
-                Result.failure(Exception(errorMsg))
+                val rawError = response.errorBody()?.string()
+                if (response.code() == 429) {
+                    Result.failure(parseRateLimitException(response, rawError))
+                } else {
+                    val errorMsg = parseErrorMessage(rawError)
+                        ?: "Account activation failed (HTTP ${response.code()})"
+                    Result.failure(Exception(errorMsg))
+                }
             }
         } catch (e: IOException) {
             Result.failure(Exception("Network error: Cannot connect to server."))
@@ -1584,13 +1609,47 @@ class RemoteRepository(
         }
     }
 
+    private fun parseRateLimitException(response: retrofit2.Response<*>, rawError: String?): RateLimitedException {
+        var retryAfter = response.headers()["Retry-After"]?.toIntOrNull()
+        var message = "Too many attempts. Please wait a moment and try again."
+
+        if (!rawError.isNullOrBlank()) {
+            try {
+                val json = gson.fromJson(rawError, JsonObject::class.java)
+                if (json != null) {
+                    if (json.has("retryAfterSeconds") && !json.get("retryAfterSeconds").isJsonNull) {
+                        val sec = json.get("retryAfterSeconds").asInt
+                        if (sec > 0) retryAfter = sec
+                    }
+                    if (json.has("message") && !json.get("message").isJsonNull) {
+                        val msg = json.get("message").asString
+                        if (!msg.isNullOrBlank()) message = msg
+                    }
+                }
+            } catch (_: Exception) {
+                // Ignore parse errors
+            }
+        }
+        val finalSeconds = (retryAfter ?: 60).coerceAtLeast(1)
+        return RateLimitedException(finalSeconds, message)
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {
             val json = gson.fromJson(errorBody, JsonObject::class.java)
-            if (json.has("error")) json.get("error").asString
-            else if (json.has("message")) json.get("message").asString
-            else errorBody
+            if (json.has("error")) {
+                val err = json.get("error").asString
+                if (err == "rate_limited" && json.has("message") && !json.get("message").isJsonNull) {
+                    json.get("message").asString
+                } else {
+                    err
+                }
+            } else if (json.has("message") && !json.get("message").isJsonNull) {
+                json.get("message").asString
+            } else {
+                errorBody
+            }
         } catch (e: Exception) {
             errorBody
         }

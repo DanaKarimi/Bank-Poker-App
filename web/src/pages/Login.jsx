@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Lock, User, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
@@ -15,9 +15,25 @@ const Login = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
 
   const { user, login, register, guestJoin } = useAuth();
   const navigate = useNavigate();
+
+  // Countdown timer for 429 rate limit lockout
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setLockoutSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutSeconds]);
 
   // If already logged in, redirect to dashboard
   if (user) {
@@ -26,6 +42,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockoutSeconds > 0) return;
     setError('');
     setSuccessMsg('');
     setIsSubmitting(true);
@@ -65,14 +82,27 @@ const Login = () => {
       }
     } catch (err) {
       console.error('Auth error:', err);
-      const serverMsg =
-        err.response?.data?.error ||
-        (activeTab === 'guest'
-          ? 'Guest join failed.'
-          : activeTab === 'register'
-          ? 'Registration failed.'
-          : 'Invalid credentials.');
-      setError(serverMsg);
+      if (err.response?.status === 429 || err.response?.data?.error === 'rate_limited') {
+        const retryAfter =
+          err.response?.data?.retryAfterSeconds ||
+          Number(err.response?.headers?.['retry-after']) ||
+          60;
+        const msg =
+          err.response?.data?.message ||
+          'Too many attempts. Please wait a moment and try again.';
+        setLockoutSeconds(Math.max(1, retryAfter));
+        setError(msg);
+      } else {
+        const serverMsg =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          (activeTab === 'guest'
+            ? 'Guest join failed.'
+            : activeTab === 'register'
+            ? 'Registration failed.'
+            : 'Invalid credentials.');
+        setError(serverMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -107,7 +137,7 @@ const Login = () => {
             type="button"
             onClick={() => {
               setActiveTab('guest');
-              setError('');
+              if (lockoutSeconds === 0) setError('');
             }}
             className={`py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition cursor-pointer ${
               activeTab === 'guest'
@@ -121,7 +151,7 @@ const Login = () => {
             type="button"
             onClick={() => {
               setActiveTab('login');
-              setError('');
+              if (lockoutSeconds === 0) setError('');
             }}
             className={`py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition cursor-pointer ${
               activeTab === 'login'
@@ -135,7 +165,7 @@ const Login = () => {
             type="button"
             onClick={() => {
               setActiveTab('register');
-              setError('');
+              if (lockoutSeconds === 0) setError('');
             }}
             className={`py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition cursor-pointer ${
               activeTab === 'register'
@@ -151,7 +181,10 @@ const Login = () => {
         {error && (
           <div className="mb-4 p-3 bg-red-950/80 border border-red-500 rounded-lg flex items-center gap-2 text-red-200 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-            <span>{error}</span>
+            <span>
+              {error}
+              {lockoutSeconds > 0 && ` (${lockoutSeconds}s)`}
+            </span>
           </div>
         )}
         {successMsg && (
@@ -331,11 +364,13 @@ const Login = () => {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || lockoutSeconds > 0}
             className="w-full py-3 bg-gradient-to-r from-gold-accent via-yellow-500 to-gold-accent text-black font-bold uppercase tracking-wider rounded-xl shadow-lg hover:opacity-95 active:scale-[0.98] transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer text-sm mt-2"
           >
             {isSubmitting ? (
               <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            ) : lockoutSeconds > 0 ? (
+              <span>Try again in {lockoutSeconds}s</span>
             ) : activeTab === 'guest' ? (
               <>
                 <Sparkles className="w-4 h-4" />

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.RemoteRepository
+import com.bankpoker.app.repository.RateLimitedException
 import com.bankpoker.app.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -44,6 +45,14 @@ fun AuthDialog(
     var showAvatarPicker by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var lockoutSeconds by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(lockoutSeconds) {
+        if (lockoutSeconds > 0) {
+            kotlinx.coroutines.delay(1000L)
+            lockoutSeconds -= 1
+        }
+    }
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -71,7 +80,7 @@ fun AuthDialog(
                 ) {
                     FilterChip(
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0; errorMessage = null },
+                        onClick = { selectedTab = 0; if (lockoutSeconds == 0) errorMessage = null },
                         label = { Text("Guest", fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = FilterChipDefaults.filterChipColors(
@@ -81,7 +90,7 @@ fun AuthDialog(
                     )
                     FilterChip(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1; errorMessage = null },
+                        onClick = { selectedTab = 1; if (lockoutSeconds == 0) errorMessage = null },
                         label = { Text("Sign In", fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = FilterChipDefaults.filterChipColors(
@@ -91,7 +100,7 @@ fun AuthDialog(
                     )
                     FilterChip(
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2; errorMessage = null },
+                        onClick = { selectedTab = 2; if (lockoutSeconds == 0) errorMessage = null },
                         label = { Text("Register", fontSize = 12.sp) },
                         modifier = Modifier.weight(1f),
                         colors = FilterChipDefaults.filterChipColors(
@@ -101,9 +110,14 @@ fun AuthDialog(
                     )
                 }
 
-                if (errorMessage != null) {
+                if (errorMessage != null || lockoutSeconds > 0) {
+                    val displayMsg = if (lockoutSeconds > 0) {
+                        "${errorMessage ?: "Too many attempts. Please wait a moment and try again."} (${lockoutSeconds}s)"
+                    } else {
+                        errorMessage ?: ""
+                    }
                     Text(
-                        text = errorMessage!!,
+                        text = displayMsg,
                         color = LoseRed,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
@@ -157,6 +171,7 @@ fun AuthDialog(
 
                         Button(
                             onClick = {
+                                if (lockoutSeconds > 0) return@Button
                                 if (displayName.isBlank()) {
                                     errorMessage = "Please enter your display name"
                                     return@Button
@@ -170,16 +185,24 @@ fun AuthDialog(
                                         Toast.makeText(context, "Welcome, $displayName!", Toast.LENGTH_SHORT).show()
                                         onAuthSuccess()
                                     } else {
-                                        errorMessage = result.exceptionOrNull()?.message ?: "Guest join failed"
+                                        val ex = result.exceptionOrNull()
+                                        if (ex is RateLimitedException) {
+                                            lockoutSeconds = ex.retryAfterSeconds
+                                            errorMessage = ex.message
+                                        } else {
+                                            errorMessage = ex?.message ?: "Guest join failed"
+                                        }
                                     }
                                 }
                             },
-                            enabled = !isLoading,
+                            enabled = !isLoading && lockoutSeconds == 0,
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (isLoading) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                            } else if (lockoutSeconds > 0) {
+                                Text("Try again in ${lockoutSeconds}s", fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Join as Guest", fontWeight = FontWeight.Bold)
                             }
@@ -218,6 +241,7 @@ fun AuthDialog(
 
                         Button(
                             onClick = {
+                                if (lockoutSeconds > 0) return@Button
                                 if (username.isBlank() || password.isBlank()) {
                                     errorMessage = "Username and password required"
                                     return@Button
@@ -231,16 +255,24 @@ fun AuthDialog(
                                         Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
                                         onAuthSuccess()
                                     } else {
-                                        errorMessage = result.exceptionOrNull()?.message ?: "Sign in failed"
+                                        val ex = result.exceptionOrNull()
+                                        if (ex is RateLimitedException) {
+                                            lockoutSeconds = ex.retryAfterSeconds
+                                            errorMessage = ex.message
+                                        } else {
+                                            errorMessage = ex?.message ?: "Sign in failed"
+                                        }
                                     }
                                 }
                             },
-                            enabled = !isLoading,
+                            enabled = !isLoading && lockoutSeconds == 0,
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (isLoading) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                            } else if (lockoutSeconds > 0) {
+                                Text("Try again in ${lockoutSeconds}s", fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Sign In", fontWeight = FontWeight.Bold)
                             }
@@ -313,6 +345,7 @@ fun AuthDialog(
 
                         Button(
                             onClick = {
+                                if (lockoutSeconds > 0) return@Button
                                 if (username.isBlank() || password.isBlank()) {
                                     errorMessage = "Username and password required"
                                     return@Button
@@ -333,21 +366,35 @@ fun AuthDialog(
                                             Toast.makeText(context, "Account created!", Toast.LENGTH_SHORT).show()
                                             onAuthSuccess()
                                         } else {
-                                            errorMessage = "Registered! Please sign in."
+                                            val loginEx = loginResult.exceptionOrNull()
+                                            if (loginEx is RateLimitedException) {
+                                                lockoutSeconds = loginEx.retryAfterSeconds
+                                                errorMessage = loginEx.message
+                                            } else {
+                                                errorMessage = "Registered! Please sign in."
+                                            }
                                             selectedTab = 1
                                         }
                                     } else {
                                         isLoading = false
-                                        errorMessage = regResult.exceptionOrNull()?.message ?: "Registration failed"
+                                        val regEx = regResult.exceptionOrNull()
+                                        if (regEx is RateLimitedException) {
+                                            lockoutSeconds = regEx.retryAfterSeconds
+                                            errorMessage = regEx.message
+                                        } else {
+                                            errorMessage = regEx?.message ?: "Registration failed"
+                                        }
                                     }
                                 }
                             },
-                            enabled = !isLoading,
+                            enabled = !isLoading && lockoutSeconds == 0,
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (isLoading) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                            } else if (lockoutSeconds > 0) {
+                                Text("Try again in ${lockoutSeconds}s", fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Create Account", fontWeight = FontWeight.Bold)
                             }
@@ -399,6 +446,14 @@ fun ProfileDialog(
     var showActivateSection by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var lockoutSeconds by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(lockoutSeconds) {
+        if (lockoutSeconds > 0) {
+            kotlinx.coroutines.delay(1000L)
+            lockoutSeconds -= 1
+        }
+    }
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -432,9 +487,14 @@ fun ProfileDialog(
                     Text("Change Avatar", color = Gold, fontSize = 13.sp)
                 }
 
-                if (errorMessage != null) {
+                if (errorMessage != null || lockoutSeconds > 0) {
+                    val displayMsg = if (lockoutSeconds > 0) {
+                        "${errorMessage ?: "Too many attempts. Please wait a moment and try again."} (${lockoutSeconds}s)"
+                    } else {
+                        errorMessage ?: ""
+                    }
                     Text(
-                        text = errorMessage!!,
+                        text = displayMsg,
                         color = LoseRed,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
@@ -552,6 +612,7 @@ fun ProfileDialog(
 
                                 Button(
                                     onClick = {
+                                        if (lockoutSeconds > 0) return@Button
                                         if (activateUsername.isBlank() || activatePassword.isBlank()) {
                                             errorMessage = "Username and password required to activate"
                                             return@Button
@@ -566,15 +627,27 @@ fun ProfileDialog(
                                                 showActivateSection = false
                                                 onProfileUpdated()
                                             } else {
-                                                errorMessage = result.exceptionOrNull()?.message ?: "Activation failed"
+                                                val ex = result.exceptionOrNull()
+                                                if (ex is RateLimitedException) {
+                                                    lockoutSeconds = ex.retryAfterSeconds
+                                                    errorMessage = ex.message
+                                                } else {
+                                                    errorMessage = ex?.message ?: "Activation failed"
+                                                }
                                             }
                                         }
                                     },
-                                    enabled = !isLoading,
+                                    enabled = !isLoading && lockoutSeconds == 0,
                                     colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("Confirm Activation", fontWeight = FontWeight.Bold)
+                                    if (isLoading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                                    } else if (lockoutSeconds > 0) {
+                                        Text("Try again in ${lockoutSeconds}s", fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Text("Confirm Activation", fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
