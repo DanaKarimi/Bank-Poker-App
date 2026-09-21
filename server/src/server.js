@@ -27,6 +27,11 @@ const adminRoutes = require('./routes/admin');
 const { rateLimit } = require('express-rate-limit');
 
 const app = express();
+
+// Trust reverse proxy (e.g. Nginx) so req.ip reflects real client IP from X-Forwarded-For
+const trustProxyHops = process.env.TRUST_PROXY_HOPS !== undefined ? Number(process.env.TRUST_PROXY_HOPS) : 1;
+app.set('trust proxy', isNaN(trustProxyHops) ? 1 : trustProxyHops);
+
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 

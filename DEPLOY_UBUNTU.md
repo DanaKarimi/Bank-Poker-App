@@ -42,6 +42,14 @@ Internet (Future: Cloudflare Tunnel -> bankjoker.ir)
 - **Nginx** is the only service that publishes a port to the host (`80:80`).
 - **Node.js Express server** runs internally on port 3000 inside the Docker network (unexposed directly to the public network).
 - **SQLite Database** resides in the host directory `./data/bankpoker.db`, surviving container restarts, rebuilds, and `docker compose down`.
+- **Reverse Proxy Headers & Trust Proxy**:
+  Nginx must forward the real client IP using:
+  ```nginx
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  ```
+  Express is configured with `trust proxy` enabled (default: `TRUST_PROXY_HOPS=1`), ensuring rate limit buckets count each real client IP separately instead of collapsing all traffic under the proxy IP.
 
 ---
 
