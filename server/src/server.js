@@ -36,36 +36,56 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 // Rate limiting configurations
+function maskIp(ip) {
+    if (!ip || typeof ip !== 'string') return 'unknown';
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    if (cleanIp.includes('.')) {
+        const parts = cleanIp.split('.');
+        if (parts.length === 4) {
+            return `${parts[0]}.${parts[1]}.*.*`;
+        }
+    }
+    if (cleanIp.includes(':')) {
+        const parts = cleanIp.split(':');
+        return `${parts.slice(0, 2).join(':')}:*:*`;
+    }
+    return '***';
+}
+
 const globalApiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    limit: 500, // 500 requests per 15 minutes per IP
+    limit: 1000, // 1000 requests per 15 minutes per real IP
     standardHeaders: true, // draft-6 / draft-7 RateLimit-* headers
     legacyHeaders: false,
     handler: (req, res, next, options) => {
-        console.warn(`WARNING: Global API rate limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
-        if (!res.getHeader('Retry-After')) {
-            const retryAfterSec = Math.ceil(options.windowMs / 1000);
-            res.setHeader('Retry-After', String(retryAfterSec));
-        }
+        const retryAfterSeconds = req.rateLimit?.resetTime
+            ? Math.max(1, Math.ceil((req.rateLimit.resetTime.getTime() - Date.now()) / 1000))
+            : Math.ceil(options.windowMs / 1000);
+        console.warn(`WARNING: Rate limit exceeded (global) for IP: ${maskIp(req.ip)} on ${req.originalUrl}. Retry after: ${retryAfterSeconds}s`);
+        res.setHeader('Retry-After', String(retryAfterSeconds));
         res.status(options.statusCode).json({
-            error: 'Too many requests, please try again later.'
+            error: 'rate_limited',
+            message: 'Too many requests. Please wait a moment and try again.',
+            retryAfterSeconds
         });
     }
 });
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    limit: 20, // 20 attempts per 15 minutes
+    limit: 30, // 30 attempts per 15 minutes per real IP
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req, res, next, options) => {
-        console.warn(`WARNING: Auth rate limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
-        if (!res.getHeader('Retry-After')) {
-            const retryAfterSec = Math.ceil(options.windowMs / 1000);
-            res.setHeader('Retry-After', String(retryAfterSec));
-        }
+        const retryAfterSeconds = req.rateLimit?.resetTime
+            ? Math.max(1, Math.ceil((req.rateLimit.resetTime.getTime() - Date.now()) / 1000))
+            : Math.ceil(options.windowMs / 1000);
+        console.warn(`WARNING: Rate limit exceeded (auth) for IP: ${maskIp(req.ip)} on ${req.originalUrl}. Retry after: ${retryAfterSeconds}s`);
+        res.setHeader('Retry-After', String(retryAfterSeconds));
         res.status(options.statusCode).json({
-            error: 'Too many authentication attempts, please try again later.'
+            error: 'rate_limited',
+            message: 'Too many attempts. Please wait a moment and try again.',
+            retryAfterSeconds
         });
     }
 });
@@ -88,6 +108,7 @@ app.get('/api/health', (req, res) => {
 // Rate Limiters (applied to API HTTP endpoints only; socket.io transport and health check excluded)
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/guest', authLimiter);
 app.use('/api', globalApiLimiter);
 
 // API Routes
