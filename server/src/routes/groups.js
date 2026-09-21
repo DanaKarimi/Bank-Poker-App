@@ -1004,7 +1004,10 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
             const tablePlayers = playersByTable.get(t.id) || [];
             const tableFees = feesByTable.get(t.id) || [];
 
-            // Find current user's player row if any
+            // ARCHITECTURE: Viewer Identity & Entry Fee Badge Resolution
+            // - If viewer is seated at this table: myEntryFeePaid reflects viewer's own status (true: paid, false: unpaid).
+            // - If viewer is NOT seated: myEntryFeePaid is null (UI displays only the fee chip without personal paid status).
+            // - For hosts and group admins: paidCount and seatedCount provide aggregate summary (e.g., "Paid: 2/4").
             let myPlayer = null;
             if (userId) {
                 myPlayer = tablePlayers.find(p => p.user_id === userId) ||
@@ -1213,12 +1216,16 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
             totalExits += (exitMap.get(pid) || 0);
         }
 
-        const nameList = Array.from(names).map(n => n.toLowerCase());
+        // ARCHITECTURE: Payment Convention & Balance Formula
+        // - from_player is the debtor who paid cash out-of-pocket: increases balance (+amount).
+        // - to_player is the creditor who received cash: decreases balance (-amount).
+        // - balance = (totalExits - totalBuyIns) + (paymentsSent - paymentsReceived)
+        const nameList = Array.from(names).map(n => normalizeName(n));
         let paymentsSent = 0;
         let paymentsReceived = 0;
         for (const pm of groupPayments) {
-            const fromLower = (pm.from_player || '').trim().toLowerCase();
-            const toLower = (pm.to_player || '').trim().toLowerCase();
+            const fromLower = normalizeName(pm.from_player);
+            const toLower = normalizeName(pm.to_player);
             if (nameList.includes(fromLower)) {
                 paymentsSent += Number(pm.amount) || 0;
             }
@@ -1941,6 +1948,9 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
             [actualGroupId, groupId]
         );
 
+        // ARCHITECTURE: Entry Fee Single Source of Truth
+        // Entry fee records in entry_fee_records and flags in players.entry_fee_paid are kept in
+        // strict bidirectional sync. If either source records a payment as paid, both are reconciled to paid.
         const now = Date.now();
         for (const p of seatedPlayers) {
             const matched = existingFeeRecords.find(f => 
