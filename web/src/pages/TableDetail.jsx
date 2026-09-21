@@ -58,6 +58,7 @@ const TableDetail = () => {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorTitle, setErrorTitle] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [activeTab, setActiveTab] = useState('players'); // 'players' | 'history' | 'stats'
@@ -101,6 +102,30 @@ const TableDetail = () => {
       let currentTableObj = null;
       if (tableRes.status === 'fulfilled') {
         currentTableObj = tableRes.value.data?.table || (tableRes.value.data && !tableRes.value.data.error ? tableRes.value.data : null);
+      } else {
+        const reason = tableRes.reason;
+        const status = reason?.response?.status;
+        const msg = reason?.response?.data?.error || reason?.response?.data?.message || reason?.message;
+        console.error('Failed to get table detail from server:', { status, message: msg, error: reason });
+        if (status === 404) {
+          setErrorTitle('Table Not Found');
+          setError('This table does not exist or has been deleted.');
+        } else if (status === 401 || status === 403) {
+          setErrorTitle('Access Denied');
+          setError(msg || 'You do not have permission to view this table.');
+        } else if (status === 429) {
+          setErrorTitle('Rate Limit Exceeded');
+          setError(msg || 'Too many requests. Please wait a moment before trying again.');
+        } else if (status >= 500) {
+          setErrorTitle('Server Error');
+          setError(`Server encountered an error (${status}): ${msg || 'Internal server error'}`);
+        } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setErrorTitle('Network Offline');
+          setError('You appear to be offline. Please check your internet connection.');
+        } else {
+          setErrorTitle('Failed to Load Table');
+          setError(msg || 'Table could not be loaded. Please verify connection to the server.');
+        }
       }
 
       // Sync status override if available
@@ -128,7 +153,9 @@ const TableDetail = () => {
 
       if (currentTableObj) {
         setTable(currentTableObj);
-      } else if (!table) {
+        setErrorTitle('');
+      } else if (!table && tableRes.status === 'fulfilled') {
+        setErrorTitle('Table Not Found');
         setError('Table could not be loaded. Please verify the table code or ID.');
       }
 
@@ -665,14 +692,22 @@ const TableDetail = () => {
       <div className="min-h-screen bg-felt-dark flex items-center justify-center p-4">
         <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-6 max-w-md w-full text-center space-y-4 shadow-xl">
           <AlertCircle className="w-12 h-12 text-lose-red mx-auto" />
-          <h2 className="text-lg font-bold text-cream-text">Table Not Found</h2>
+          <h2 className="text-lg font-bold text-cream-text">{errorTitle || 'Table Not Found'}</h2>
           <p className="text-xs text-cream-text/70">{error || 'This table does not exist or could not be loaded.'}</p>
-          <button
-            onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
-            className="px-5 py-2.5 bg-gold-accent text-black font-extrabold rounded-xl text-xs uppercase tracking-wider hover:brightness-105 cursor-pointer shadow"
-          >
-            Return to {groupId ? 'Group' : 'Dashboard'}
-          </button>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => fetchTableData()}
+              className="px-4 py-2.5 bg-felt-dark hover:bg-felt-card border border-gold-accent/40 rounded-xl text-gold-accent text-xs font-bold transition cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => navigate(groupId ? `/group/${groupId}` : '/')}
+              className="px-5 py-2.5 bg-gold-accent text-black font-extrabold rounded-xl text-xs uppercase tracking-wider hover:brightness-105 cursor-pointer shadow"
+            >
+              Return to {groupId ? 'Group' : 'Dashboard'}
+            </button>
+          </div>
         </div>
       </div>
     );

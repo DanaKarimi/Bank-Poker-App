@@ -124,6 +124,13 @@ const GroupStats = () => {
         if (statsRes.value.data?.group) {
           setGroup(statsRes.value.data.group);
         }
+      } else {
+        console.error('Failed to load group stats from server:', statsRes.reason);
+        const errResp = statsRes.reason?.response;
+        const errMsg = errResp?.data?.error || errResp?.data?.message || statsRes.reason?.message;
+        if (!isBackground) {
+          setError(errMsg ? `Server error: ${errMsg}` : 'Failed to load group statistics from server.');
+        }
       }
 
       if (tablesData.status === 'fulfilled') {
@@ -399,6 +406,17 @@ const GroupStats = () => {
   const isPositive = myBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
 
+  if (loading && !group && !stats) {
+    return (
+      <div className="min-h-screen bg-felt-dark flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3 text-cream-text/70">
+          <RefreshCw className="w-8 h-8 animate-spin text-gold-accent" />
+          <p className="text-xs uppercase tracking-wider font-semibold">Loading group data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
       <div className="w-full max-w-4xl space-y-6">
@@ -423,6 +441,22 @@ const GroupStats = () => {
             </button>
           </div>
         </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-950/40 border border-red-500/50 rounded-2xl p-4 flex items-center justify-between gap-3 text-red-200">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+              <div className="text-xs font-medium">{error}</div>
+            </div>
+            <button
+              onClick={() => fetchData()}
+              className="px-3 py-1.5 bg-red-900/60 hover:bg-red-800 border border-red-400/40 rounded-xl text-white text-xs font-bold transition shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Group Hero Card */}
         <div className="bg-felt-card border-2 border-gold-accent rounded-2xl p-6 shadow-2xl relative overflow-hidden">
