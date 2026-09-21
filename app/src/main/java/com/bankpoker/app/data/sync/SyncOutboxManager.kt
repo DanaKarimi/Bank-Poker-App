@@ -27,6 +27,12 @@ data class DeletePlayerPayload(
     val playerId: String? = null
 )
 
+data class EditTransactionPayload(
+    val tableId: String? = null,
+    val amount: Long? = null,
+    val note: String? = null
+)
+
 class SyncOutboxManager(
     private val context: Context,
     private val repository: PokerRepository,
@@ -217,6 +223,46 @@ class SyncOutboxManager(
                     raw?.get("playerId")?.asString ?: ""
                 }
                 val result = remoteRepository.deleteTablePlayer(op.targetId, playerId)
+                result.isSuccess
+            }
+            "EDIT_EXIT" -> {
+                val (typed, raw) = safeParsePayload<EditTransactionPayload>(op)
+                val tableId = if (typed != null && !typed.tableId.isNullOrBlank()) {
+                    typed.tableId
+                } else {
+                    raw?.get("tableId")?.asString ?: ""
+                }
+                val amount = if (typed != null && typed.amount != null) {
+                    typed.amount
+                } else {
+                    raw?.get("amount")?.asLong ?: 0L
+                }
+                val note = if (typed != null) {
+                    typed.note
+                } else {
+                    if (raw?.has("note") == true && !raw.get("note").isJsonNull) raw.get("note").asString else null
+                }
+                val result = remoteRepository.updateExit(tableId, op.targetId, amount, note)
+                result.isSuccess
+            }
+            "EDIT_BUY_IN" -> {
+                val (typed, raw) = safeParsePayload<EditTransactionPayload>(op)
+                val tableId = if (typed != null && !typed.tableId.isNullOrBlank()) {
+                    typed.tableId
+                } else {
+                    raw?.get("tableId")?.asString ?: ""
+                }
+                val amount = if (typed != null && typed.amount != null) {
+                    typed.amount
+                } else {
+                    raw?.get("amount")?.asLong ?: 0L
+                }
+                val note = if (typed != null) {
+                    typed.note
+                } else {
+                    if (raw?.has("note") == true && !raw.get("note").isJsonNull) raw.get("note").asString else null
+                }
+                val result = remoteRepository.updateBuyIn(tableId, op.targetId, amount, note)
                 result.isSuccess
             }
             "CLOSE_TABLE" -> {

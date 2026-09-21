@@ -678,6 +678,64 @@ class RemoteRepository(
     }
 
     /**
+     * Update an exit record amount and note on server
+     */
+    suspend fun updateExit(
+        tableId: String,
+        exitId: String,
+        amount: Long,
+        note: String? = null
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.bankpoker.app.data.remote.dto.UpdateTransactionRequest(
+                amount = amount,
+                note = note
+            )
+            val response = apiService.updateExit(tableId, exitId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to update exit (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update a buy-in record amount and note on server
+     */
+    suspend fun updateBuyIn(
+        tableId: String,
+        buyInId: String,
+        amount: Long,
+        note: String? = null
+    ): Result<MessageResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.bankpoker.app.data.remote.dto.UpdateTransactionRequest(
+                amount = amount,
+                note = note
+            )
+            val response = apiService.updateBuyIn(tableId, buyInId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to update buy-in (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error, try again"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Close an online table on server
      */
     suspend fun closeTable(tableId: String): Result<MessageResponse> = withContext(Dispatchers.IO) {

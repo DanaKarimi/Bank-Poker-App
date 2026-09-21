@@ -172,6 +172,22 @@ interface ApiService {
         @Header("Authorization") token: String = ""
     ): Response<com.bankpoker.app.data.remote.dto.DirectExitResponse>
 
+    @PUT("api/tables/{tableId}/exits/{exitId}")
+    suspend fun updateExit(
+        @Path("tableId") tableId: String,
+        @Path("exitId") exitId: String,
+        @Body request: com.bankpoker.app.data.remote.dto.UpdateTransactionRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
+    @PUT("api/tables/{tableId}/buy-ins/{buyInId}")
+    suspend fun updateBuyIn(
+        @Path("tableId") tableId: String,
+        @Path("buyInId") buyInId: String,
+        @Body request: com.bankpoker.app.data.remote.dto.UpdateTransactionRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<com.bankpoker.app.data.remote.dto.MessageResponse>
+
     @POST("api/tables/{tableId}/close")
     suspend fun closeTable(
         @Path("tableId") tableId: String,

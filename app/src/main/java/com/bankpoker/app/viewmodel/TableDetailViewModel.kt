@@ -624,6 +624,28 @@ class TableDetailViewModel(
         viewModelScope.launch {
             repository.updateBuyIn(buyIn)
             loadTableData()
+
+            val payload = org.json.JSONObject().apply {
+                put("tableId", buyIn.tableId)
+                put("buyInId", buyIn.id)
+                put("amount", buyIn.amount)
+                put("note", buyIn.note ?: "")
+            }
+
+            if (isTableOnline() && remoteRepository != null) {
+                val result = remoteRepository.updateBuyIn(
+                    tableId = buyIn.tableId,
+                    buyInId = buyIn.id,
+                    amount = buyIn.amount,
+                    note = buyIn.note
+                )
+                if (!result.isSuccess) {
+                    Log.w("TableDetail", "Direct remote buy-in update failed, queuing in outbox: ${result.exceptionOrNull()?.message}")
+                    repository.enqueueOutbox("EDIT_BUY_IN", buyIn.id, payload.toString())
+                }
+            } else {
+                repository.enqueueOutbox("EDIT_BUY_IN", buyIn.id, payload.toString())
+            }
         }
     }
 
@@ -638,6 +660,28 @@ class TableDetailViewModel(
         viewModelScope.launch {
             repository.updateExitRecord(exitRecord)
             loadTableData()
+
+            val payload = org.json.JSONObject().apply {
+                put("tableId", exitRecord.tableId)
+                put("exitId", exitRecord.id)
+                put("amount", exitRecord.amount)
+                put("note", exitRecord.note ?: "")
+            }
+
+            if (isTableOnline() && remoteRepository != null) {
+                val result = remoteRepository.updateExit(
+                    tableId = exitRecord.tableId,
+                    exitId = exitRecord.id,
+                    amount = exitRecord.amount,
+                    note = exitRecord.note
+                )
+                if (!result.isSuccess) {
+                    Log.w("TableDetail", "Direct remote exit update failed, queuing in outbox: ${result.exceptionOrNull()?.message}")
+                    repository.enqueueOutbox("EDIT_EXIT", exitRecord.id, payload.toString())
+                }
+            } else {
+                repository.enqueueOutbox("EDIT_EXIT", exitRecord.id, payload.toString())
+            }
         }
     }
 

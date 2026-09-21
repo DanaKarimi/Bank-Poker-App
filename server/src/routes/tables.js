@@ -663,9 +663,95 @@ const handleRecordBuyIn = async (req, res) => {
     }
 };
 
+/**
+ * PUT /api/tables/:id/buy-ins/:buyInId
+ * Update an existing buy-in record (amount, note)
+ */
+const handleUpdateBuyIn = async (req, res) => {
+    try {
+        const tableId = req.params.id;
+        const buyInId = req.params.buyInId;
+        const { amount, note } = req.body;
+
+        const numAmount = Number(amount);
+        if (isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'amount must be zero or a positive number' });
+        }
+
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+        const resolvedTableId = table.id;
+
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Editing transactions is forbidden.' });
+        }
+
+        const isAllowed = await canManageTable(req.user.id, req.user.role, table);
+        if (!isAllowed) {
+            return res.status(403).json({ error: 'Permission denied to edit buy-in' });
+        }
+
+        const buyInRecord = await get(
+            'SELECT * FROM buy_ins WHERE (id = ? OR server_id = ?) AND (table_id = ? OR table_id = ?) AND is_deleted = 0',
+            [buyInId, buyInId, resolvedTableId, tableId]
+        );
+        if (!buyInRecord) {
+            return res.status(404).json({ error: 'Buy-in record not found' });
+        }
+
+        const now = Date.now();
+        const updatedNote = note !== undefined ? (note ? String(note).trim() : null) : buyInRecord.note;
+
+        await run(
+            `UPDATE buy_ins 
+             SET amount = ?, note = ?, updated_at = ? 
+             WHERE id = ?`,
+            [numAmount, updatedNote, now, buyInRecord.id]
+        );
+
+        const player = await get('SELECT * FROM players WHERE id = ?', [buyInRecord.player_id]);
+
+        const eventData = {
+            buyInId: buyInRecord.id,
+            tableId: resolvedTableId,
+            playerId: buyInRecord.player_id,
+            playerName: player ? player.name : null,
+            amount: numAmount,
+            note: updatedNote,
+            timestamp: buyInRecord.created_at,
+            updatedAt: now
+        };
+
+        emitToTable(resolvedTableId, 'buyin_updated', eventData);
+        emitToTable(resolvedTableId, 'table_updated', { tableId: resolvedTableId });
+        if (table.group_id) {
+            emitToGroup(table.group_id, 'buyin_updated', eventData);
+            emitToGroup(table.group_id, 'table_updated', { tableId: resolvedTableId });
+            emitToGroup(table.group_id, 'settlement_done', { groupId: table.group_id });
+        }
+
+        return res.status(200).json({
+            message: 'Buy-in updated',
+            buyInId: buyInRecord.id,
+            tableId: resolvedTableId,
+            playerId: buyInRecord.player_id,
+            amount: numAmount,
+            note: updatedNote,
+            updatedAt: now
+        });
+    } catch (err) {
+        console.error('Error updating buy-in:', err);
+        return res.status(500).json({ error: 'Failed to update buy-in' });
+    }
+};
+
 router.post('/:id/buy-ins', authenticateToken, handleRecordBuyIn);
 router.post('/:id/buyins', authenticateToken, handleRecordBuyIn);
 router.post('/:id/buy-in-direct', authenticateToken, handleRecordBuyIn);
+router.put('/:id/buy-ins/:buyInId', authenticateToken, handleUpdateBuyIn);
+router.put('/:id/buyins/:buyInId', authenticateToken, handleUpdateBuyIn);
 
 /**
  * POST /api/tables/:id/exits
@@ -790,8 +876,93 @@ const handleRecordExit = async (req, res) => {
     }
 };
 
+/**
+ * PUT /api/tables/:id/exits/:exitId
+ * Update an existing exit record (amount, note)
+ */
+const handleUpdateExit = async (req, res) => {
+    try {
+        const tableId = req.params.id;
+        const exitId = req.params.exitId;
+        const { amount, note } = req.body;
+
+        const numAmount = Number(amount);
+        if (isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'amount must be zero or a positive number' });
+        }
+
+        const table = await get('SELECT * FROM tables WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [tableId, tableId]);
+        if (!table) {
+            return res.status(404).json({ error: 'Table not found' });
+        }
+        const resolvedTableId = table.id;
+
+        if (table.status === 'CLOSED' || table.is_active === 0) {
+            return res.status(400).json({ error: 'Table is closed. Editing transactions is forbidden.' });
+        }
+
+        const isAllowed = await canManageTable(req.user.id, req.user.role, table);
+        if (!isAllowed) {
+            return res.status(403).json({ error: 'Permission denied to edit exit' });
+        }
+
+        const exitRecord = await get(
+            'SELECT * FROM exit_records WHERE (id = ? OR server_id = ?) AND (table_id = ? OR table_id = ?) AND is_deleted = 0',
+            [exitId, exitId, resolvedTableId, tableId]
+        );
+        if (!exitRecord) {
+            return res.status(404).json({ error: 'Exit record not found' });
+        }
+
+        const now = Date.now();
+        const updatedNote = note !== undefined ? (note ? String(note).trim() : null) : exitRecord.note;
+
+        await run(
+            `UPDATE exit_records 
+             SET amount = ?, note = ?, updated_at = ? 
+             WHERE id = ?`,
+            [numAmount, updatedNote, now, exitRecord.id]
+        );
+
+        const player = await get('SELECT * FROM players WHERE id = ?', [exitRecord.player_id]);
+
+        const eventData = {
+            exitId: exitRecord.id,
+            tableId: resolvedTableId,
+            playerId: exitRecord.player_id,
+            playerName: player ? player.name : null,
+            amount: numAmount,
+            note: updatedNote,
+            timestamp: exitRecord.created_at,
+            updatedAt: now
+        };
+
+        emitToTable(resolvedTableId, 'exit_updated', eventData);
+        emitToTable(resolvedTableId, 'table_updated', { tableId: resolvedTableId });
+        if (table.group_id) {
+            emitToGroup(table.group_id, 'exit_updated', eventData);
+            emitToGroup(table.group_id, 'table_updated', { tableId: resolvedTableId });
+            emitToGroup(table.group_id, 'settlement_done', { groupId: table.group_id });
+        }
+
+        return res.status(200).json({
+            message: 'Exit updated',
+            exitId: exitRecord.id,
+            tableId: resolvedTableId,
+            playerId: exitRecord.player_id,
+            amount: numAmount,
+            note: updatedNote,
+            updatedAt: now
+        });
+    } catch (err) {
+        console.error('Error updating exit:', err);
+        return res.status(500).json({ error: 'Failed to update exit' });
+    }
+};
+
 router.post('/:id/exits', authenticateToken, handleRecordExit);
 router.post('/:id/exit-direct', authenticateToken, handleRecordExit);
+router.put('/:id/exits/:exitId', authenticateToken, handleUpdateExit);
 
 /**
  * POST /api/tables/:id/close

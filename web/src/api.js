@@ -99,6 +99,8 @@ export const getTableActivity = async (tableId) => {
 export const getPlayers = (tableId) => api.get(`/api/tables/${tableId}/players`);
 export const directBuyIn = (tableId, data) => api.post(`/api/tables/${tableId}/buy-in-direct`, data);
 export const directExit = (tableId, data) => api.post(`/api/tables/${tableId}/exit-direct`, data);
+export const updateTableExit = (tableId, exitId, data) => api.put(`/api/tables/${tableId}/exits/${exitId}`, data);
+export const updateTableBuyIn = (tableId, buyInId, data) => api.put(`/api/tables/${tableId}/buy-ins/${buyInId}`, data);
 export const createQuickTable = (data) => api.post('/api/tables/quick', data);
 export const publishTable = (tableId) => api.post(`/api/tables/${tableId}/publish`);
 export const deleteTablePlayer = (tableId, playerId) => api.delete(`/api/tables/${tableId}/players/${playerId}`);

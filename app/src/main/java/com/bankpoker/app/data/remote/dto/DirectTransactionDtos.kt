@@ -86,3 +86,11 @@ data class TableActivityResponse(
     @SerializedName("exits")
     val exits: List<TableExitDto> = emptyList()
 )
+
+data class UpdateTransactionRequest(
+    @SerializedName("amount")
+    val amount: Long,
+
+    @SerializedName("note")
+    val note: String? = null
+)
