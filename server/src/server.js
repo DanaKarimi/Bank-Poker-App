@@ -8,6 +8,11 @@ const dotenv = require('dotenv');
 // Load environment variables from server/.env
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_bankpoker_key_change_in_production';
+if (!process.env.JWT_SECRET) {
+    console.warn('WARNING: JWT_SECRET not set, using insecure default. Set it in production.');
+}
+
 const { initDb } = require('./database/db');
 const { initSocket } = require('./socket');
 const authRoutes = require('./routes/auth');
