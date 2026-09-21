@@ -582,9 +582,18 @@ router.get('/pending', authenticateToken, requireAdmin, async (req, res) => {
         exitQuery += ' ORDER BY er.created_at DESC';
 
         const [joinRequests, buyInRequests, exitRequests] = await Promise.all([
-            all(joinQuery, params),
-            all(buyInQuery, params),
-            all(exitQuery, params)
+            all(joinQuery, params).catch(err => {
+                console.warn('Failed to query join_requests in /pending, returning []:', err.message);
+                return [];
+            }),
+            all(buyInQuery, params).catch(err => {
+                console.warn('Failed to query buy_in_requests in /pending, returning []:', err.message);
+                return [];
+            }),
+            all(exitQuery, params).catch(err => {
+                console.warn('Failed to query exit_requests in /pending, returning []:', err.message);
+                return [];
+            })
         ]);
 
         return res.status(200).json({
@@ -649,9 +658,18 @@ router.get('/my', authenticateToken, async (req, res) => {
         exitQuery += ' ORDER BY er.created_at DESC';
 
         const [joinRequests, buyInRequests, exitRequests] = await Promise.all([
-            all(joinQuery, params),
-            all(buyInQuery, params),
-            all(exitQuery, params)
+            all(joinQuery, params).catch(err => {
+                console.warn('Failed to query join_requests in /my, returning []:', err.message);
+                return [];
+            }),
+            all(buyInQuery, params).catch(err => {
+                console.warn('Failed to query buy_in_requests in /my, returning []:', err.message);
+                return [];
+            }),
+            all(exitQuery, params).catch(err => {
+                console.warn('Failed to query exit_requests in /my, returning []:', err.message);
+                return [];
+            })
         ]);
 
         return res.status(200).json({

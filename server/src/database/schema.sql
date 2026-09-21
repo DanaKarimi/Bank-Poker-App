@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS tables (
     updated_at INTEGER NOT NULL,
     is_synced INTEGER DEFAULT 1,
     is_deleted INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
     FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY(creator_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -267,3 +268,55 @@ CREATE TABLE IF NOT EXISTS synced_balances (
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_synced_balances_group ON synced_balances(group_id);
+
+-- 18. Join Requests Table
+CREATE TABLE IF NOT EXISTS join_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    table_id TEXT,
+    user_id TEXT NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_join_requests_group ON join_requests(group_id);
+CREATE INDEX IF NOT EXISTS idx_join_requests_user ON join_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_join_requests_status ON join_requests(status);
+
+-- 19. Buy-In Requests Table
+CREATE TABLE IF NOT EXISTS buy_in_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    table_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_table ON buy_in_requests(table_id);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_user ON buy_in_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_buy_in_requests_status ON buy_in_requests(status);
+
+-- 20. Exit Requests Table
+CREATE TABLE IF NOT EXISTS exit_requests (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    table_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT DEFAULT 'PENDING',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_table ON exit_requests(table_id);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_user ON exit_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_exit_requests_status ON exit_requests(status);

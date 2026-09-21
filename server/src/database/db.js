@@ -102,12 +102,62 @@ const initDb = async () => {
         if (!tableColNames.includes('published_at')) {
             await run("ALTER TABLE tables ADD COLUMN published_at INTEGER");
         }
+        if (!tableColNames.includes('is_active')) {
+            await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
+        }
 
         const playersColumns = await all("PRAGMA table_info(players)");
         const playerColNames = playersColumns.map(c => c.name);
         if (!playerColNames.includes('user_linked_at')) {
             await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
         }
+
+        // Additive migrations for request tables
+        await run(`CREATE TABLE IF NOT EXISTS join_requests (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            table_id TEXT,
+            user_id TEXT NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`);
+
+        const joinReqColumns = await all("PRAGMA table_info(join_requests)");
+        const joinReqColNames = joinReqColumns.map(c => c.name);
+        if (!joinReqColNames.includes('table_id')) {
+            await run("ALTER TABLE join_requests ADD COLUMN table_id TEXT");
+        }
+
+        await run(`CREATE TABLE IF NOT EXISTS buy_in_requests (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            table_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`);
+
+        await run(`CREATE TABLE IF NOT EXISTS exit_requests (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            table_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`);
 
         // Auto-generate VAPID keys into system_settings if not already present
         const existingPubKey = await get("SELECT value FROM system_settings WHERE key = 'vapid_public_key'");

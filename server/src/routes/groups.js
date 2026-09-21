@@ -2308,7 +2308,7 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
         const closedTablesCountRow = await get(
             `SELECT COUNT(*) as closed_total 
              FROM tables 
-             WHERE group_id = ? AND is_deleted = 0 AND (status = 'CLOSED' OR is_active = 0)`,
+             WHERE group_id = ? AND is_deleted = 0 AND status = 'CLOSED'`,
             [groupId]
         );
         const closedTables = closedTablesCountRow ? Number(closedTablesCountRow.closed_total) : 0;
@@ -2578,7 +2578,7 @@ router.post('/:id/join-new-player', authenticateToken, async (req, res) => {
         );
 
         const activeTables = await all(
-            `SELECT id FROM tables WHERE group_id = ? AND is_deleted = 0 AND (status = 'ACTIVE' OR is_active = 1)`,
+            `SELECT id FROM tables WHERE group_id = ? AND is_deleted = 0 AND status = 'ACTIVE'`,
             [groupId]
         );
 
