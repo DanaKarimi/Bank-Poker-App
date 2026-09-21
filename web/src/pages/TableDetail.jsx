@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getTableDetail,
+  getTableStatus,
+  getTableBuyIns,
+  getTableExits,
   getTableActivity,
   getPlayers,
   getMyRequests,
@@ -82,31 +85,36 @@ const TableDetail = () => {
 
   // Fetch all table data
   const fetchTableData = async (isBackground = false) => {
-    if (!tableId) return;
+    if (!tableId) {
+      setErrorTitle('Table Not Found');
+      setError('No table ID specified.');
+      setLoading(false);
+      return;
+    }
     if (!isBackground) setLoading(true);
 
     try {
-      const effectiveGroupId = groupId || table?.groupId;
+      const effectiveGroupId = groupId || table?.groupId || table?.group_id;
       const requestsPromise = effectiveGroupId
         ? getMyRequests(effectiveGroupId, tableId)
         : Promise.resolve({ data: { joinRequests: [], buyInRequests: [], exitRequests: [] } });
 
-      const [tableRes, statusRes, playersRes, activityRes, requestsRes] = await Promise.allSettled([
+      // Run main table fetch and all auxiliary fetches in parallel
+      const [tableRes, statusRes, playersRes, buyInsRes, exitsRes, requestsRes] = await Promise.allSettled([
         getTableDetail(tableId),
         getTableStatus(tableId),
         getPlayers(tableId),
-        getTableActivity(tableId),
+        getTableBuyIns(tableId),
+        getTableExits(tableId),
         requestsPromise,
       ]);
 
-      let currentTableObj = null;
-      if (tableRes.status === 'fulfilled') {
-        currentTableObj = tableRes.value.data?.table || (tableRes.value.data && !tableRes.value.data.error ? tableRes.value.data : null);
-      } else {
-        const reason = tableRes.reason;
-        const status = reason?.response?.status;
-        const msg = reason?.response?.data?.error || reason?.response?.data?.message || reason?.message;
-        console.error('Failed to get table detail from server:', { status, message: msg, error: reason });
+      // 1. Process tableRes
+      if (tableRes.status === 'rejected') {
+        const err = tableRes.reason;
+        const status = err?.response?.status;
+        const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message;
+        console.error('Failed to get table detail from server:', { status, message: msg, error: err });
         if (status === 404) {
           setErrorTitle('Table Not Found');
           setError('This table does not exist or has been deleted.');
@@ -126,76 +134,127 @@ const TableDetail = () => {
           setErrorTitle('Failed to Load Table');
           setError(msg || 'Table could not be loaded. Please verify connection to the server.');
         }
+        if (!isBackground) setLoading(false);
+        return;
       }
 
-      // Sync status override if available
-      if (statusRes.status === 'fulfilled' && statusRes.value.data) {
-        const sData = statusRes.value.data;
-        if (currentTableObj) {
-          currentTableObj.status = sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED');
-          currentTableObj.isActive = sData.isActive !== false;
-        } else {
-          currentTableObj = {
-            id: tableId,
-            name: sData.name || `Table ${tableId}`,
-            status: sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED'),
-            isActive: sData.isActive !== false,
-            groupId: sData.groupId || groupId || null,
-          };
-        }
+      // Robust response parsing:
+      // Accepts: { table: {...}, myStats: ... }, { data: {...} }, or direct { id, name, ... }
+      const rawRes = tableRes.value?.data;
+      const resData = rawRes?.data && typeof rawRes.data === 'object' && !Array.isArray(rawRes.data)
+        ? rawRes.data
+        : rawRes;
+      const t = resData?.table || resData?.data || (resData?.id ? resData : null);
 
-        // Check if table just transitioned to CLOSED
-        if (previousStatusRef.current === 'ACTIVE' && sData.status === 'CLOSED') {
-          setError('Notice: This table was just closed by the host. New transactions are disabled.');
-        }
-        previousStatusRef.current = sData.status;
-      }
-
-      if (currentTableObj) {
-        setTable(currentTableObj);
-        setErrorTitle('');
-      } else if (!table && tableRes.status === 'fulfilled') {
+      if (!t || !t.id) {
         setErrorTitle('Table Not Found');
         setError('Table could not be loaded. Please verify the table code or ID.');
+        if (!isBackground) setLoading(false);
+        return;
       }
 
+      // Valid table found: immediately set table so header & details ALWAYS render!
+      const currentTableObj = { ...t };
+      setTable(currentTableObj);
+      setErrorTitle('');
+      setError('');
+
+      // 2. Sync status override if available
+      if (statusRes.status === 'fulfilled' && statusRes.value?.data) {
+        const sData = statusRes.value.data;
+        const newStatus = sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED');
+        const newIsActive = sData.isActive !== false && newStatus !== 'CLOSED';
+
+        if (previousStatusRef.current === 'ACTIVE' && newStatus === 'CLOSED') {
+          setError('Notice: This table was just closed by the host. New transactions are disabled.');
+        }
+        previousStatusRef.current = newStatus;
+
+        currentTableObj.status = newStatus;
+        currentTableObj.isActive = newIsActive;
+        setTable({ ...currentTableObj });
+      }
+
+      // 3. Process Players (embedded in res, or from GET /api/tables/:id/players)
+      const embeddedPlayers = Array.isArray(rawRes?.players)
+        ? rawRes.players
+        : (Array.isArray(resData?.players) ? resData.players : (Array.isArray(t?.players) ? t.players : []));
+
+      let playerList = [];
       if (playersRes.status === 'fulfilled') {
-        const rawPlayers = playersRes.value.data?.players || (Array.isArray(playersRes.value.data) ? playersRes.value.data : []);
-        const playerMap = new Map();
-        rawPlayers.forEach((p) => {
-          if (p && p.id) playerMap.set(p.id, p);
-        });
-        setPlayers(Array.from(playerMap.values()));
+        const pData = playersRes.value?.data;
+        playerList = Array.isArray(pData) ? pData : (Array.isArray(pData?.players) ? pData.players : []);
+      }
+      if (playerList.length === 0 && embeddedPlayers.length > 0) {
+        playerList = embeddedPlayers;
       }
 
-      if (activityRes.status === 'fulfilled') {
-        const rawBuyIns = activityRes.value.data?.buyIns || [];
-        const rawExits = activityRes.value.data?.exits || [];
-        
-        const buyInMap = new Map();
-        rawBuyIns.forEach((b) => {
-          const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
-          buyInMap.set(key, b);
-        });
+      const playerMap = new Map();
+      playerList.forEach((p) => {
+        if (p && p.id) playerMap.set(p.id, p);
+      });
+      setPlayers(Array.from(playerMap.values()));
 
-        const exitMap = new Map();
-        rawExits.forEach((e) => {
-          const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
-          exitMap.set(key, e);
-        });
+      // 4. Process Activity: Buy-Ins and Exits (embedded in res, or from GET /buy-ins and /exits)
+      const embeddedBuyIns = Array.isArray(rawRes?.buyIns)
+        ? rawRes.buyIns
+        : (Array.isArray(resData?.buyIns) ? resData.buyIns : (Array.isArray(t?.buyIns) ? t.buyIns : []));
+      const embeddedExits = Array.isArray(rawRes?.exits)
+        ? rawRes.exits
+        : (Array.isArray(resData?.exits) ? resData.exits : (Array.isArray(t?.exits) ? t.exits : []));
 
-        setActivity({
-          buyIns: Array.from(buyInMap.values()),
-          exits: Array.from(exitMap.values()),
-        });
+      let rawBuyIns = [];
+      if (buyInsRes.status === 'fulfilled') {
+        const bData = buyInsRes.value?.data;
+        rawBuyIns = Array.isArray(bData) ? bData : (Array.isArray(bData?.buyIns) ? bData.buyIns : []);
+      }
+      if (rawBuyIns.length === 0 && embeddedBuyIns.length > 0) {
+        rawBuyIns = embeddedBuyIns;
       }
 
+      let rawExits = [];
+      if (exitsRes.status === 'fulfilled') {
+        const eData = exitsRes.value?.data;
+        rawExits = Array.isArray(eData) ? eData : (Array.isArray(eData?.exits) ? eData.exits : []);
+      }
+      if (rawExits.length === 0 && embeddedExits.length > 0) {
+        rawExits = embeddedExits;
+      }
+
+      const buyInMap = new Map();
+      rawBuyIns.forEach((b) => {
+        if (!b) return;
+        const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+        buyInMap.set(key, b);
+      });
+
+      const exitMap = new Map();
+      rawExits.forEach((e) => {
+        if (!e) return;
+        const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+        exitMap.set(key, e);
+      });
+
+      setActivity({
+        buyIns: Array.from(buyInMap.values()),
+        exits: Array.from(exitMap.values()),
+      });
+
+      // 5. Process Requests
       if (requestsRes.status === 'fulfilled') {
-        setMyRequests(requestsRes.value.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
+        const rData = requestsRes.value?.data || {};
+        setMyRequests({
+          joinRequests: Array.isArray(rData.joinRequests) ? rData.joinRequests : [],
+          buyInRequests: Array.isArray(rData.buyInRequests) ? rData.buyInRequests : [],
+          exitRequests: Array.isArray(rData.exitRequests) ? rData.exitRequests : []
+        });
       }
     } catch (err) {
       console.error('Failed to fetch table details:', err);
-      if (!isBackground) setError('Failed to load table details.');
+      if (!isBackground && !table) {
+        setErrorTitle('Failed to Load Table');
+        setError('Failed to load table details: ' + (err.message || 'Unknown error'));
+      }
     } finally {
       if (!isBackground) setLoading(false);
     }
@@ -692,7 +751,7 @@ const TableDetail = () => {
       <div className="min-h-screen bg-felt-dark flex items-center justify-center p-4">
         <div className="bg-felt-card border border-gold-accent/40 rounded-2xl p-6 max-w-md w-full text-center space-y-4 shadow-xl">
           <AlertCircle className="w-12 h-12 text-lose-red mx-auto" />
-          <h2 className="text-lg font-bold text-cream-text">{errorTitle || 'Table Not Found'}</h2>
+          <h2 className="text-lg font-bold text-cream-text">{errorTitle || 'Failed to Load Table'}</h2>
           <p className="text-xs text-cream-text/70">{error || 'This table does not exist or could not be loaded.'}</p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <button
