@@ -192,9 +192,75 @@ const initDb = async () => {
         } catch (diagErr) {
             console.warn('Database safety net diagnostic check warning:', diagErr.message);
         }
+
+        // Read-only schema dependency self-check
+        await verifySchemaDependencies();
     } catch (error) {
         console.error('Error initializing database schema:', error);
         throw error;
+    }
+};
+
+// Read-only schema dependency self-check at startup
+const verifySchemaDependencies = async () => {
+    try {
+        const tableRows = await all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+        const existingTables = new Set(tableRows.map(r => r.name));
+
+        const requiredTables = [
+            'users',
+            'groups',
+            'group_members',
+            'tables',
+            'players',
+            'buy_ins',
+            'exit_records',
+            'payments',
+            'settlement_records',
+            'entry_fee_records',
+            'join_requests',
+            'buy_in_requests',
+            'exit_requests',
+            'synced_balances'
+        ];
+
+        const missingTables = requiredTables.filter(t => !existingTables.has(t));
+        if (missingTables.length > 0) {
+            console.warn(`[SCHEMA-GUARD] WARNING: Missing tables in database: ${missingTables.join(', ')}`);
+        } else {
+            console.log(`[SCHEMA-GUARD] All ${requiredTables.length} core tables verified present.`);
+        }
+
+        // Check required column dependencies
+        const requiredColumns = {
+            tables: ['id', 'group_id', 'status', 'is_deleted'],
+            players: ['id', 'table_id', 'status', 'entry_fee_paid'],
+            join_requests: ['id', 'group_id', 'table_id', 'user_id', 'status'],
+            buy_in_requests: ['id', 'group_id', 'table_id', 'user_id', 'amount', 'status'],
+            exit_requests: ['id', 'group_id', 'table_id', 'user_id', 'amount', 'status']
+        };
+
+        let missingColsCount = 0;
+        for (const [table, cols] of Object.entries(requiredColumns)) {
+            if (existingTables.has(table)) {
+                const colRows = await all(`PRAGMA table_info(${table})`);
+                const existingCols = new Set(colRows.map(c => c.name));
+                for (const col of cols) {
+                    if (!existingCols.has(col)) {
+                        console.warn(`[SCHEMA-GUARD] WARNING: Table '${table}' is missing required column '${col}'`);
+                        missingColsCount++;
+                    }
+                }
+            }
+        }
+
+        if (missingTables.length === 0 && missingColsCount === 0) {
+            console.log('[SCHEMA-GUARD] Schema dependency self-check PASSED: 0 missing tables, 0 missing columns.');
+        } else {
+            console.warn(`[SCHEMA-GUARD] Schema dependency self-check completed with warnings: ${missingTables.length} missing tables, ${missingColsCount} missing columns.`);
+        }
+    } catch (err) {
+        console.warn('[SCHEMA-GUARD] Schema dependency self-check encountered an error (non-fatal):', err.message);
     }
 };
 
@@ -204,5 +270,6 @@ module.exports = {
     get,
     all,
     exec,
-    initDb
+    initDb,
+    verifySchemaDependencies
 };
