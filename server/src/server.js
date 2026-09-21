@@ -71,11 +71,51 @@ const globalApiLimiter = rateLimit({
     }
 });
 
+function isLanOrLoopbackIp(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+    const cleanIp = ip.replace(/^::ffff:/, '').trim().toLowerCase();
+
+    // Loopback IPv6 / name
+    if (cleanIp === '::1' || cleanIp === 'localhost') return true;
+
+    // Check IPv4
+    if (cleanIp.includes('.')) {
+        const parts = cleanIp.split('.').map(Number);
+        if (parts.length === 4 && parts.every(p => !isNaN(p) && p >= 0 && p <= 255)) {
+            // 127.0.0.0/8 (Loopback)
+            if (parts[0] === 127) return true;
+            // 10.0.0.0/8 (RFC1918)
+            if (parts[0] === 10) return true;
+            // 172.16.0.0/12 (RFC1918: 172.16.0.0 - 172.31.255.255)
+            if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+            // 192.168.0.0/16 (RFC1918)
+            if (parts[0] === 192 && parts[1] === 168) return true;
+            // 169.254.0.0/16 (Link-local)
+            if (parts[0] === 169 && parts[1] === 254) return true;
+        }
+        return false;
+    }
+
+    // Check IPv6
+    if (cleanIp.includes(':')) {
+        // Link-local: fe80::/10 (fe80 - febf)
+        if (/^fe[89ab]/i.test(cleanIp)) return true;
+        // Unique Local Address (ULA): fc00::/7 (fc00 - fdff)
+        if (/^f[cd]/i.test(cleanIp)) return true;
+    }
+
+    return false;
+}
+
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     limit: 30, // 30 attempts per 15 minutes per real IP
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+        const allowLan = process.env.RATE_LIMIT_ALLOW_LAN !== 'false';
+        return allowLan && isLanOrLoopbackIp(req.ip);
+    },
     handler: (req, res, next, options) => {
         const retryAfterSeconds = req.rateLimit?.resetTime
             ? Math.max(1, Math.ceil((req.rateLimit.resetTime.getTime() - Date.now()) / 1000))
