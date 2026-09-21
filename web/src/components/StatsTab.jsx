@@ -4,7 +4,9 @@ import {
   getGroupSettlementPlan,
   recordGroupPayment,
   toggleSettlementPaid,
-  regenerateSettlementPlan
+  regenerateSettlementPlan,
+  getGroupStats,
+  getGroupStatsDetails
 } from '../api';
 import { getSocket } from '../socket';
 
@@ -29,6 +31,7 @@ const StatsTab = ({
   };
 
   const [rows, setRows] = useState(() => deduplicateSettlement(settlement || []));
+  const [localStats, setLocalStats] = useState(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [submittingKeys, setSubmittingKeys] = useState(new Set());
@@ -108,11 +111,14 @@ const StatsTab = ({
       setFetchLoading(true);
       Promise.allSettled([
         getGroupSettlementPlan(groupId),
-        getGroupStats(groupId),
-      ]).then(([settleRes]) => {
-        if (settleRes.status === 'fulfilled') {
+        getGroupStatsDetails ? getGroupStatsDetails(groupId) : getGroupStats(groupId),
+      ]).then(([settleRes, statsRes]) => {
+        if (settleRes?.status === 'fulfilled') {
           const list = settleRes.value.data?.settlement || [];
           setRows(deduplicateSettlement(list));
+        }
+        if (statsRes?.status === 'fulfilled') {
+          setLocalStats(statsRes.value.data?.stats || statsRes.value.data || null);
         }
       }).catch((err) => {
         console.error("Failed to fetch settlement in StatsTab:", err);
@@ -145,7 +151,9 @@ const StatsTab = ({
     return deduplicateSettlement(source);
   }, [rows, settlement]);
 
-  if ((loading || fetchLoading) && !stats && activeSettlement.length === 0) {
+  const activeStats = stats || localStats;
+
+  if ((loading || fetchLoading) && !activeStats && activeSettlement.length === 0) {
     return (
       <div className="p-8 bg-felt-card rounded-2xl text-center text-xs text-cream-text/50 border border-gold-accent/20">
         Loading group statistics...
@@ -153,11 +161,11 @@ const StatsTab = ({
     );
   }
 
-  const totalTables = stats?.totalTables ?? 0;
-  const closedTables = stats?.closedTables ?? 0;
-  const totalPlayers = stats?.totalPlayers ?? balances.length;
-  const biggestWinner = stats?.biggestWinner;
-  const biggestDebtor = stats?.biggestDebtor;
+  const totalTables = activeStats?.totalTables ?? 0;
+  const closedTables = activeStats?.closedTables ?? 0;
+  const totalPlayers = activeStats?.totalPlayers ?? balances.length;
+  const biggestWinner = activeStats?.biggestWinner;
+  const biggestDebtor = activeStats?.biggestDebtor;
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">

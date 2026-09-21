@@ -353,7 +353,11 @@ fun GroupDetailScreen(
                     TabButton(
                         text = "STATS",
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        onClick = {
+                            selectedTab = 2
+                            viewModel.fetchServerSettlement()
+                            viewModel.fetchServerBalances()
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -381,7 +385,7 @@ fun GroupDetailScreen(
                             tables = if (groupTables.isNotEmpty()) groupTables.map { it.toPokerTable() } else tables,
                             balances = balances,
                             serverSettlement = serverSettlement,
-                            isOnline = true,
+                            isOnline = !isOffline,
                             onRecordManualPayment = { payer, receiver, amount ->
                                 viewModel.recordManualPayment(payer, receiver, amount)
                             },
@@ -1024,9 +1028,7 @@ fun GroupStatsTab(
     val closedCount = tables.count { it.status == "CLOSED" }
     val biggestWinner = balances.maxByOrNull { it.balance }
     val biggestDebtor = balances.minByOrNull { it.balance }
-    val settlements = if (isOnline && serverSettlement.isNotEmpty()) {
-        serverSettlement
-    } else if (isOnline) {
+    val settlements = if (serverSettlement.isNotEmpty()) {
         serverSettlement
     } else {
         calculateGroupSettlement(balances)
