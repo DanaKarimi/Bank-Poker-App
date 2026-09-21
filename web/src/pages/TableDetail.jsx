@@ -11,6 +11,9 @@ import {
   getMyRequests,
   sendBuyInRequest,
   sendExitRequest,
+  sendJoinRequest,
+  confirmBuyInReceipt,
+  confirmExitReceipt,
   publishTable,
   deleteTablePlayer,
   addTablePlayer,
@@ -24,6 +27,7 @@ import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
 import { PokerAvatar } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { formatBalance } from '../utils/formatters';
 import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../socket';
 import {
@@ -43,6 +47,7 @@ import {
   X,
   Search,
   BarChart3,
+  Share2,
 } from 'lucide-react';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 
@@ -366,11 +371,20 @@ const TableDetail = () => {
     };
   }, [groupId, tableId]);
 
+  // Safe array normalization
+  const safePlayers = Array.isArray(players) ? players : [];
+  const safeBuyIns = Array.isArray(activity?.buyIns) ? activity.buyIns : [];
+  const safeExits = Array.isArray(activity?.exits) ? activity.exits : [];
+  const safeJoinRequests = Array.isArray(myRequests?.joinRequests) ? myRequests.joinRequests : [];
+  const safeBuyInRequests = Array.isArray(myRequests?.buyInRequests) ? myRequests.buyInRequests : [];
+  const safeExitRequests = Array.isArray(myRequests?.exitRequests) ? myRequests.exitRequests : [];
+
   // Derived user status at this table
   const isClosed = table?.status === 'CLOSED' || table?.isActive === false;
 
-  const myPlayer = players.find(
+  const myPlayer = safePlayers.find(
     (p) =>
+      p &&
       (p.user_id === user?.id ||
         p.userId === user?.id ||
         p.name?.toLowerCase() === user?.username?.toLowerCase() ||
@@ -389,16 +403,16 @@ const TableDetail = () => {
           (user?.id && (table?.creator_user_id === user.id || table?.creatorUserId === user.id || table?.host_id === user.id || table?.hostId === user.id || table?.isHost))
         ));
 
-  const pendingJoinReq = (myRequests.joinRequests || []).find(
-    (jr) => (jr.table_id === tableId || jr.tableId === tableId) && jr.status === 'PENDING'
+  const pendingJoinReq = safeJoinRequests.find(
+    (jr) => jr && (jr.table_id === tableId || jr.tableId === tableId) && jr.status === 'PENDING'
   );
 
   // Table specific requests
-  const tableBuyInRequests = (myRequests.buyInRequests || []).filter(
-    (r) => r.table_id === tableId || r.tableId === tableId
+  const tableBuyInRequests = safeBuyInRequests.filter(
+    (r) => r && (r.table_id === tableId || r.tableId === tableId)
   );
-  const tableExitRequests = (myRequests.exitRequests || []).filter(
-    (r) => r.table_id === tableId || r.tableId === tableId
+  const tableExitRequests = safeExitRequests.filter(
+    (r) => r && (r.table_id === tableId || r.tableId === tableId)
   );
   const totalTablePendingRequests =
     tableBuyInRequests.filter((r) => r.status === 'PENDING' || r.status === 'APPROVED').length +
@@ -406,11 +420,13 @@ const TableDetail = () => {
 
   // Combine, strictly deduplicate by ID, and sort all activity transactions
   const txMap = new Map();
-  (activity.buyIns || []).forEach((b) => {
+  safeBuyIns.forEach((b) => {
+    if (!b) return;
     const key = b.id ? `buyin-${b.id}` : `buyin-${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
     txMap.set(key, { ...b, txType: 'buy-in' });
   });
-  (activity.exits || []).forEach((e) => {
+  safeExits.forEach((e) => {
+    if (!e) return;
     const key = e.id ? `exit-${e.id}` : `exit-${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
     txMap.set(key, { ...e, txType: 'exit' });
   });
@@ -423,29 +439,32 @@ const TableDetail = () => {
 
   // Table totals (matches Android TableSummaryBar calculation)
   const totalBuyIns = useMemo(() => {
-    return (activity.buyIns || []).reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
-  }, [activity.buyIns]);
+    return safeBuyIns.reduce((sum, b) => sum + (Number(b?.amount) || 0), 0);
+  }, [safeBuyIns]);
 
   const totalExits = useMemo(() => {
-    return (activity.exits || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [activity.exits]);
+    return safeExits.reduce((sum, e) => sum + (Number(e?.amount) || 0), 0);
+  }, [safeExits]);
 
   const remainingBalance = totalBuyIns - totalExits;
 
   // Helper player balance & profit/loss functions
   const getPlayerBuyIns = (pId) => {
-    return (activity.buyIns || [])
-      .filter((b) => b.player_id === pId || b.playerId === pId)
+    if (!pId) return 0;
+    return safeBuyIns
+      .filter((b) => b && (b.player_id === pId || b.playerId === pId))
       .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
   };
 
   const getPlayerExits = (pId) => {
-    return (activity.exits || [])
-      .filter((e) => e.player_id === pId || e.playerId === pId)
+    if (!pId) return 0;
+    return safeExits
+      .filter((e) => e && (e.player_id === pId || e.playerId === pId))
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   };
 
   const getPlayerBalance = (p) => {
+    if (!p) return 0;
     const buy = getPlayerBuyIns(p.id);
     const exit = getPlayerExits(p.id);
     if (buy > 0 || exit > 0) {
@@ -455,6 +474,7 @@ const TableDetail = () => {
   };
 
   const getPlayerNetResult = (p) => {
+    if (!p) return 0;
     const buy = getPlayerBuyIns(p.id);
     const exit = getPlayerExits(p.id);
     return exit - buy;
@@ -462,44 +482,45 @@ const TableDetail = () => {
 
   const myTableNetBalance = myPlayer ? getPlayerBalance(myPlayer) : 0;
 
-  const myTotalBuyIns = table?.myStats?.totalBuyIns != null
+  const myTotalBuyIns = table?.myStats && table.myStats.totalBuyIns != null
     ? Number(table.myStats.totalBuyIns)
     : myPlayer
     ? getPlayerBuyIns(myPlayer.id)
     : 0;
 
-  const myTotalExits = table?.myStats?.totalExits != null
+  const myTotalExits = table?.myStats && table.myStats.totalExits != null
     ? Number(table.myStats.totalExits)
     : myPlayer
     ? getPlayerExits(myPlayer.id)
     : 0;
 
-  const myNetBalance = table?.myStats?.netBalance != null
+  const myNetBalance = table?.myStats && table.myStats.netBalance != null
     ? Number(table.myStats.netBalance)
     : (myTotalExits - myTotalBuyIns);
 
   // Deduplicated & ranked players
   const sortedPlayersWithRank = useMemo(() => {
     const playerMap = new Map();
-    players.forEach((p) => {
-      if (p.id) playerMap.set(p.id, p);
+    safePlayers.forEach((p) => {
+      if (p && p.id) playerMap.set(p.id, p);
     });
     const unique = Array.from(playerMap.values());
     unique.sort((a, b) => getPlayerBalance(b) - getPlayerBalance(a));
     return unique.map((p, idx) => ({ player: p, rank: idx + 1 }));
-  }, [players, activity.buyIns, activity.exits]);
+  }, [safePlayers, safeBuyIns, safeExits]);
 
   const filteredPlayers = useMemo(() => {
     if (!searchQuery.trim()) return sortedPlayersWithRank;
     const q = searchQuery.toLowerCase().trim();
     return sortedPlayersWithRank.filter(({ player }) =>
-      (player.name || player.username || '').toLowerCase().includes(q)
+      player && (player.name || player.username || '').toLowerCase().includes(q)
     );
   }, [sortedPlayersWithRank, searchQuery]);
 
   // Player results for Stats tab
   const playerResults = useMemo(() => {
     return sortedPlayersWithRank.map(({ player }) => {
+      if (!player) return null;
       const b = getPlayerBuyIns(player.id);
       const e = getPlayerExits(player.id);
       return {
@@ -510,8 +531,8 @@ const TableDetail = () => {
         exits: e,
         netResult: e - b,
       };
-    });
-  }, [sortedPlayersWithRank, activity.buyIns, activity.exits]);
+    }).filter(Boolean);
+  }, [sortedPlayersWithRank, safeBuyIns, safeExits]);
 
   // Settlements calculation (Creditors & Debtors)
   const settlements = useMemo(() => {
@@ -1065,7 +1086,7 @@ const TableDetail = () => {
                 : 'text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            PLAYERS ({players.length})
+            PLAYERS ({safePlayers.length})
           </button>
           <button
             type="button"
@@ -1147,7 +1168,7 @@ const TableDetail = () => {
             )}
 
             {/* Player Search Bar (Matches Android OutlinedTextField) */}
-            {players.length > 0 && (
+            {safePlayers.length > 0 && (
               <div className="relative">
                 <Search className="w-4 h-4 text-gold-accent absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
@@ -1170,12 +1191,14 @@ const TableDetail = () => {
             )}
 
             {/* Empty State */}
-            {players.length === 0 ? (
+            {safePlayers.length === 0 ? (
               <div className="p-12 bg-felt-card/60 rounded-2xl text-center space-y-3 border border-gold-accent/20">
                 <div className="text-4xl text-gold-accent/40">♠</div>
-                <div className="font-bold text-cream-text text-sm">No players yet</div>
-                <div className="text-xs text-cream-text/50">Tap + to add players</div>
-                {!isClosed && (
+                <div className="font-bold text-cream-text text-sm">No players seated yet</div>
+                <div className="text-xs text-cream-text/50">
+                  {isClosed ? 'This table is closed with no seated players.' : 'Tap + to add players or record a buy-in.'}
+                </div>
+                {!isClosed && isHostOrAdmin && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1733,4 +1756,10 @@ const TableDetail = () => {
   );
 };
 
-export default TableDetail;
+const TableDetailWithErrorBoundary = (props) => (
+  <ErrorBoundary fallbackTitle="Table Display Error">
+    <TableDetail {...props} />
+  </ErrorBoundary>
+);
+
+export default TableDetailWithErrorBoundary;
