@@ -12,14 +12,9 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
-  Clock,
   Key,
   ShieldCheck,
-  Zap,
-  Sliders,
-  X,
-  Plus,
-  Minus
+  X
 } from 'lucide-react';
 import { UserBadge, PokerAvatar } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';

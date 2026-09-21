@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -26,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -42,14 +40,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
-import com.bankpoker.app.ui.theme.Amber80
-import com.bankpoker.app.ui.theme.AvatarColors
 import com.bankpoker.app.ui.theme.Cream
 import com.bankpoker.app.ui.theme.FeltBackground
 import com.bankpoker.app.ui.theme.FeltCard
 import com.bankpoker.app.ui.theme.Gold
-import com.bankpoker.app.ui.theme.Green80
-import com.bankpoker.app.ui.theme.Red80
 import com.bankpoker.app.ui.theme.WinGreen
 import com.bankpoker.app.ui.theme.LoseRed
 import com.bankpoker.app.viewmodel.PlayerStats

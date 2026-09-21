@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, UserPlus, LogOut } from 'lucide-react';
+import { X, AlertCircle, UserPlus } from 'lucide-react';
 
 const ExitModal = ({
   isOpen,

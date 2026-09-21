@@ -37,7 +37,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -66,7 +65,6 @@ import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupDetailViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.ExperimentalFoundationApi
-import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable

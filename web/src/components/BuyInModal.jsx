@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, UserPlus, Coins } from 'lucide-react';
+import { X, AlertCircle, UserPlus } from 'lucide-react';
 
 const BuyInModal = ({
   isOpen,

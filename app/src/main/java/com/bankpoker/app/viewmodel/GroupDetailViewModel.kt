@@ -10,7 +10,6 @@ import com.bankpoker.app.data.local.entity.PlayerGroup
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
-import com.bankpoker.app.data.remote.dto.CreateTableResponse
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.data.remote.dto.GroupTableItem

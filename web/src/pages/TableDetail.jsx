@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getTableDetail,
-  getTableStatus,
   getTableActivity,
   getPlayers,
   getMyRequests,
-  sendJoinRequest,
   sendBuyInRequest,
   sendExitRequest,
-  confirmBuyInReceipt,
-  confirmExitReceipt,
   publishTable,
   deleteTablePlayer,
   addTablePlayer,
@@ -23,29 +19,22 @@ import StatusBadge from '../components/StatusBadge';
 import RequestCard from '../components/RequestCard';
 import BuyInModal from '../components/BuyInModal';
 import ExitModal from '../components/ExitModal';
-import { PokerAvatar, UserBadge } from '../components/AvatarSystem';
+import { PokerAvatar } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
 import { getSocket, joinTable, leaveTable, joinGroup, leaveGroup } from '../socket';
 import {
   ArrowLeft,
   RefreshCw,
   Plus,
-  PlusCircle,
   MinusCircle,
-  UserPlus,
-  Users,
   Clock,
   CheckCircle,
   AlertCircle,
-  ShieldCheck,
   TrendingUp,
   TrendingDown,
-  Layers,
   Coins,
-  DollarSign,
   AlertTriangle,
   History,
-  Share2,
   Trash2,
   X,
   Search,

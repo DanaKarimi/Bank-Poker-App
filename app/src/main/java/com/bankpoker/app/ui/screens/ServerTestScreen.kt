@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bankpoker.app.data.remote.ApiClient
-import com.bankpoker.app.data.remote.ApiConfig
 import com.bankpoker.app.data.remote.ServerConfigManager
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.RemoteRepository

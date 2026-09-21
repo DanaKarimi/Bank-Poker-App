@@ -1,18 +1,14 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { UserBadge, AvatarPickerModal, PokerAvatar } from './AvatarSystem';
 import {
   X,
-  UserCheck,
-  Shield,
   KeyRound,
   AlertCircle,
   CheckCircle2,
   LogOut,
   Bell,
-  User,
-  Sliders,
-  Check
+  User
 } from 'lucide-react';
 import { getNotificationSettings, updateNotificationSettings } from '../api';
 

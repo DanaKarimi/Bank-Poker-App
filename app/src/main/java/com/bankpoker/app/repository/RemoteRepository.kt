@@ -1,6 +1,5 @@
 package com.bankpoker.app.repository
 
-import com.bankpoker.app.data.remote.ApiClient
 import com.bankpoker.app.data.remote.ApiService
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.data.remote.dto.CreateGroupRequest

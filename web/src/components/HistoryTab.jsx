@@ -16,7 +16,6 @@ import {
   Edit2,
   Trash2,
   Clock,
-  ArrowRight,
   AlertCircle,
   ShieldAlert
 } from 'lucide-react';

@@ -27,13 +27,9 @@ import com.bankpoker.app.data.remote.ServerConfigManager
 import com.bankpoker.app.data.remote.TokenManager
 import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.ui.components.AvatarPickerDialog
-import com.bankpoker.app.ui.components.GoldGradientButton
 import com.bankpoker.app.ui.components.PokerAvatar
-import com.bankpoker.app.ui.components.SectionHeader
 import com.bankpoker.app.ui.theme.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

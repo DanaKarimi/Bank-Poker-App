@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, DollarSign } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserBadge } from './AvatarSystem';
 

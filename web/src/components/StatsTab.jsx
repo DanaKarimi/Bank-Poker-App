@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Trophy, TrendingDown, Layers, Users, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Clock, RefreshCw } from 'lucide-react';
 import {
-  getGroupSettlement,
   getGroupSettlementPlan,
-  getGroupStats,
   recordGroupPayment,
   toggleSettlementPaid,
   regenerateSettlementPlan

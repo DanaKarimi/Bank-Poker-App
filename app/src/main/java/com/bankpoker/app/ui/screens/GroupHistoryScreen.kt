@@ -43,7 +43,6 @@ import com.bankpoker.app.data.local.entity.Payment
 import com.bankpoker.app.ui.components.*
 import com.bankpoker.app.ui.theme.*
 import com.bankpoker.app.viewmodel.GroupHistoryViewModel
-import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)

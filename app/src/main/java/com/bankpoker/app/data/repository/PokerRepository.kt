@@ -19,7 +19,6 @@ import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.data.local.entity.SettlementRecord
 import com.bankpoker.app.data.local.entity.UnpaidEntryFeeInfo
 import com.bankpoker.app.data.local.entity.EntryFeeHistoryInfo
-import com.bankpoker.app.data.local.entity.PlayerGameHistory
 import com.bankpoker.app.data.local.entity.PlayerProfileData
 import androidx.room.withTransaction
 import org.json.JSONObject
