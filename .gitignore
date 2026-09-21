@@ -53,5 +53,6 @@ server/*.sqlite
 web/node_modules/
 web/dist/
 
-# Firebase Service Account Key (Secret)
+# Sensitive Secrets
 server/fcm-service-account.json
+app/google-services.json

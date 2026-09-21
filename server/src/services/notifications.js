@@ -18,7 +18,9 @@ let firebaseAdmin = null;
 
 // Attempt optional Firebase Admin initialization for FCM
 try {
-    const serviceAccountPath = path.resolve(__dirname, '../../fcm-service-account.json');
+    const serviceAccountPath = process.env.FCM_SERVICE_ACCOUNT_PATH
+        ? path.resolve(process.env.FCM_SERVICE_ACCOUNT_PATH)
+        : path.resolve(__dirname, '../../fcm-service-account.json');
     if (fs.existsSync(serviceAccountPath)) {
         firebaseAdmin = require('firebase-admin');
         const serviceAccount = require(serviceAccountPath);
