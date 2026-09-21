@@ -24,9 +24,46 @@ const lookupRoutes = require('./routes/lookup');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 
+const { rateLimit } = require('express-rate-limit');
+
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
+
+// Rate limiting configurations
+const globalApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 500, // 500 requests per 15 minutes per IP
+    standardHeaders: true, // draft-6 / draft-7 RateLimit-* headers
+    legacyHeaders: false,
+    handler: (req, res, next, options) => {
+        console.warn(`WARNING: Global API rate limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
+        if (!res.getHeader('Retry-After')) {
+            const retryAfterSec = Math.ceil(options.windowMs / 1000);
+            res.setHeader('Retry-After', String(retryAfterSec));
+        }
+        res.status(options.statusCode).json({
+            error: 'Too many requests, please try again later.'
+        });
+    }
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 20, // 20 attempts per 15 minutes
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res, next, options) => {
+        console.warn(`WARNING: Auth rate limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
+        if (!res.getHeader('Retry-After')) {
+            const retryAfterSec = Math.ceil(options.windowMs / 1000);
+            res.setHeader('Retry-After', String(retryAfterSec));
+        }
+        res.status(options.statusCode).json({
+            error: 'Too many authentication attempts, please try again later.'
+        });
+    }
+});
 
 // Initialize Socket.IO with HTTP server
 initSocket(server);
@@ -42,6 +79,11 @@ app.get('/api/health', (req, res) => {
         timestamp: Date.now()
     });
 });
+
+// Rate Limiters (applied to API HTTP endpoints only; socket.io transport and health check excluded)
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api', globalApiLimiter);
 
 // API Routes
 app.use('/api/auth', authRoutes);
