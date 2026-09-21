@@ -124,6 +124,24 @@ const initDb = async () => {
         }
 
         console.log('Database schema initialized successfully');
+
+        // Read-only database safety net: schema version, table count, and integrity check
+        try {
+            const verRow = await get("PRAGMA user_version");
+            const version = verRow ? (verRow.user_version ?? 0) : 0;
+            const countRow = await get("SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+            const tableCount = countRow ? countRow.cnt : 0;
+            console.log(`Database opened at ${dbPath}. Schema version: ${version}. Tables: ${tableCount}.`);
+
+            const integrityRow = await get("PRAGMA integrity_check");
+            const integrityResult = integrityRow ? (integrityRow.integrity_check || Object.values(integrityRow)[0]) : 'unknown';
+            console.log(`Database integrity check: ${integrityResult}`);
+            if (integrityResult !== 'ok') {
+                console.error(`CRITICAL ERROR: Database integrity check failed: ${integrityResult}`);
+            }
+        } catch (diagErr) {
+            console.warn('Database safety net diagnostic check warning:', diagErr.message);
+        }
     } catch (error) {
         console.error('Error initializing database schema:', error);
         throw error;
