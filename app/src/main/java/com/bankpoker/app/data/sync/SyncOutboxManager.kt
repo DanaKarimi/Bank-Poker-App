@@ -10,6 +10,23 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class CreateQuickTablePayload(
+    val name: String? = null,
+    val chipValue: Long? = null,
+    val entryFee: Long? = null
+)
+
+data class BuyInExitPayload(
+    val playerId: String? = null,
+    val username: String? = null,
+    val amount: Long? = null,
+    val note: String? = null
+)
+
+data class DeletePlayerPayload(
+    val playerId: String? = null
+)
+
 class SyncOutboxManager(
     private val context: Context,
     private val repository: PokerRepository,
@@ -47,14 +64,50 @@ class SyncOutboxManager(
         return@withContext successCount
     }
 
+    private inline fun <reified T> safeParsePayload(op: OutboxRecord): Pair<T?, JsonObject?> {
+        var rawJson: JsonObject? = null
+        try {
+            rawJson = gson.fromJson(op.payloadJson, JsonObject::class.java)
+        } catch (e: Exception) {
+            Log.e("SyncOutbox", "ERROR: Outbox payload invalid for op ${op.id}, type ${op.operationType}. Processing anyway.")
+        }
+
+        var typed: T? = null
+        try {
+            typed = gson.fromJson(op.payloadJson, T::class.java)
+        } catch (e: Exception) {
+            Log.e("SyncOutbox", "ERROR: Outbox payload invalid for op ${op.id}, type ${op.operationType}. Processing anyway.")
+        }
+        return Pair(typed, rawJson)
+    }
+
     private suspend fun processOperation(op: OutboxRecord): Boolean {
         return when (op.operationType) {
             "CREATE_QUICK_TABLE" -> {
-                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
+                val (typed, raw) = safeParsePayload<CreateQuickTablePayload>(op)
+                val name = if (typed != null) {
+                    if (typed.name.isNullOrBlank()) {
+                        Log.w("SyncOutbox", "Warning: missing or empty 'name' for op ${op.id}, filling default")
+                    }
+                    typed.name ?: "Quick Table"
+                } else {
+                    raw?.get("name")?.asString ?: "Quick Table"
+                }
+                val chipValue = if (typed != null) {
+                    typed.chipValue
+                } else {
+                    if (raw?.has("chipValue") == true && !raw.get("chipValue").isJsonNull) raw.get("chipValue").asLong else null
+                }
+                val entryFee = if (typed != null) {
+                    typed.entryFee
+                } else {
+                    if (raw?.has("entryFee") == true && !raw.get("entryFee").isJsonNull) raw.get("entryFee").asLong else null
+                }
+
                 val result = remoteRepository.createQuickTable(
-                    name = payload.get("name")?.asString ?: "Quick Table",
-                    chipValue = if (payload.has("chipValue") && !payload.get("chipValue").isJsonNull) payload.get("chipValue").asLong else null,
-                    entryFee = if (payload.has("entryFee") && !payload.get("entryFee").isJsonNull) payload.get("entryFee").asLong else null,
+                    name = name,
+                    chipValue = chipValue,
+                    entryFee = entryFee,
                     playerNames = emptyList()
                 )
                 if (result.isSuccess) {
@@ -78,30 +131,91 @@ class SyncOutboxManager(
                 } else false
             }
             "BUY_IN" -> {
-                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
+                val (typed, raw) = safeParsePayload<BuyInExitPayload>(op)
+                val playerId = if (typed != null) {
+                    typed.playerId
+                } else {
+                    if (raw?.has("playerId") == true && !raw.get("playerId").isJsonNull) raw.get("playerId").asString else null
+                }
+                val username = if (typed != null) {
+                    typed.username
+                } else {
+                    if (raw?.has("username") == true && !raw.get("username").isJsonNull) raw.get("username").asString else null
+                }
+                val amount = if (typed != null) {
+                    if (typed.amount == null) {
+                        Log.w("SyncOutbox", "Warning: null 'amount' for BUY_IN op ${op.id}, filling default 0")
+                    }
+                    typed.amount ?: 0L
+                } else {
+                    raw?.get("amount")?.asLong ?: 0L
+                }
+                val note = if (typed != null) {
+                    typed.note
+                } else {
+                    if (raw?.has("note") == true && !raw.get("note").isJsonNull) raw.get("note").asString else null
+                }
+                if (playerId == null && username == null) {
+                    Log.w("SyncOutbox", "Warning: both playerId and username missing for BUY_IN op ${op.id}")
+                }
+
                 val result = remoteRepository.directBuyIn(
                     tableId = op.targetId,
-                    playerId = if (payload.has("playerId") && !payload.get("playerId").isJsonNull) payload.get("playerId").asString else null,
-                    username = if (payload.has("username") && !payload.get("username").isJsonNull) payload.get("username").asString else null,
-                    amount = payload.get("amount")?.asLong ?: 0L,
-                    note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
+                    playerId = playerId,
+                    username = username,
+                    amount = amount,
+                    note = note
                 )
                 result.isSuccess
             }
             "EXIT" -> {
-                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
+                val (typed, raw) = safeParsePayload<BuyInExitPayload>(op)
+                val playerId = if (typed != null) {
+                    typed.playerId
+                } else {
+                    if (raw?.has("playerId") == true && !raw.get("playerId").isJsonNull) raw.get("playerId").asString else null
+                }
+                val username = if (typed != null) {
+                    typed.username
+                } else {
+                    if (raw?.has("username") == true && !raw.get("username").isJsonNull) raw.get("username").asString else null
+                }
+                val amount = if (typed != null) {
+                    if (typed.amount == null) {
+                        Log.w("SyncOutbox", "Warning: null 'amount' for EXIT op ${op.id}, filling default 0")
+                    }
+                    typed.amount ?: 0L
+                } else {
+                    raw?.get("amount")?.asLong ?: 0L
+                }
+                val note = if (typed != null) {
+                    typed.note
+                } else {
+                    if (raw?.has("note") == true && !raw.get("note").isJsonNull) raw.get("note").asString else null
+                }
+                if (playerId == null && username == null) {
+                    Log.w("SyncOutbox", "Warning: both playerId and username missing for EXIT op ${op.id}")
+                }
+
                 val result = remoteRepository.directExit(
                     tableId = op.targetId,
-                    playerId = if (payload.has("playerId") && !payload.get("playerId").isJsonNull) payload.get("playerId").asString else null,
-                    username = if (payload.has("username") && !payload.get("username").isJsonNull) payload.get("username").asString else null,
-                    amount = payload.get("amount")?.asLong ?: 0L,
-                    note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
+                    playerId = playerId,
+                    username = username,
+                    amount = amount,
+                    note = note
                 )
                 result.isSuccess
             }
             "DELETE_PLAYER" -> {
-                val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
-                val playerId = payload.get("playerId")?.asString ?: ""
+                val (typed, raw) = safeParsePayload<DeletePlayerPayload>(op)
+                val playerId = if (typed != null) {
+                    if (typed.playerId.isNullOrBlank()) {
+                        Log.w("SyncOutbox", "Warning: missing playerId for DELETE_PLAYER op ${op.id}")
+                    }
+                    typed.playerId ?: ""
+                } else {
+                    raw?.get("playerId")?.asString ?: ""
+                }
                 val result = remoteRepository.deleteTablePlayer(op.targetId, playerId)
                 result.isSuccess
             }

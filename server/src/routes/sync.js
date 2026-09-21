@@ -18,6 +18,11 @@ const SYNC_TABLES = [
 
 // Helper to normalize client object (supports camelCase & snake_case)
 const normalizeRecord = (table, raw) => {
+    if (!raw || typeof raw !== 'object') {
+        console.warn(`[Sync Warning] Invalid record object for table '${table}', processing with defaults:`, raw);
+        raw = {};
+    }
+
     const now = Date.now();
     const id = raw.id || raw.server_id || raw.serverId || crypto.randomUUID();
     const server_id = raw.server_id || raw.serverId || id;
@@ -27,6 +32,9 @@ const normalizeRecord = (table, raw) => {
 
     switch (table) {
         case 'groups':
+            if (!raw.name) {
+                console.warn(`[Sync Warning] Group record ${id} is missing 'name', using fallback default`);
+            }
             return {
                 id,
                 name: raw.name || 'Unnamed Group',
@@ -42,6 +50,9 @@ const normalizeRecord = (table, raw) => {
 
         case 'tables':
         case 'poker_tables':
+            if (!raw.name) {
+                console.warn(`[Sync Warning] Table record ${id} is missing 'name', using fallback default`);
+            }
             return {
                 id,
                 group_id: raw.group_id || raw.groupId || null,
@@ -59,6 +70,9 @@ const normalizeRecord = (table, raw) => {
             };
 
         case 'players':
+            if (!raw.table_id && !raw.tableId) {
+                console.warn(`[Sync Warning] Player record ${id} is missing 'table_id'`);
+            }
             return {
                 id,
                 table_id: raw.table_id || raw.tableId || '',
@@ -74,6 +88,9 @@ const normalizeRecord = (table, raw) => {
 
         case 'buy_ins':
         case 'buyins':
+            if ((!raw.table_id && !raw.tableId) || (!raw.player_id && !raw.playerId)) {
+                console.warn(`[Sync Warning] BuyIn record ${id} is missing table_id or player_id`);
+            }
             return {
                 id,
                 table_id: raw.table_id || raw.tableId || '',
@@ -89,6 +106,9 @@ const normalizeRecord = (table, raw) => {
 
         case 'exit_records':
         case 'exits':
+            if ((!raw.table_id && !raw.tableId) || (!raw.player_id && !raw.playerId)) {
+                console.warn(`[Sync Warning] Exit record ${id} is missing table_id or player_id`);
+            }
             return {
                 id,
                 table_id: raw.table_id || raw.tableId || '',
@@ -103,6 +123,9 @@ const normalizeRecord = (table, raw) => {
             };
 
         case 'payments':
+            if ((!raw.from_player && !raw.fromPlayer) || (!raw.to_player && !raw.toPlayer)) {
+                console.warn(`[Sync Warning] Payment record ${id} is missing from_player or to_player`);
+            }
             return {
                 id,
                 group_id: raw.group_id || raw.groupId || '',
@@ -118,6 +141,9 @@ const normalizeRecord = (table, raw) => {
 
         case 'settlement_records':
         case 'settlements':
+            if ((!raw.payer_name && !raw.payerName) || (!raw.receiver_name && !raw.receiverName)) {
+                console.warn(`[Sync Warning] Settlement record ${id} is missing payer_name or receiver_name`);
+            }
             return {
                 id,
                 group_id: raw.group_id || raw.groupId || '',
@@ -137,6 +163,9 @@ const normalizeRecord = (table, raw) => {
 
         case 'entry_fee_records':
         case 'entry_fees':
+            if (!raw.player_name && !raw.playerName) {
+                console.warn(`[Sync Warning] Entry fee record ${id} is missing player_name`);
+            }
             return {
                 id,
                 group_id: raw.group_id || raw.groupId || '',
