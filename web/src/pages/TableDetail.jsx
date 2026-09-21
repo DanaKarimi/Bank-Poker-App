@@ -158,96 +158,127 @@ const TableDetail = () => {
       setTable(currentTableObj);
       setErrorTitle('');
       setError('');
+      // Guarantee loading is false immediately once table is known
+      setLoading(false);
 
-      // 2. Sync status override if available
-      if (statusRes.status === 'fulfilled' && statusRes.value?.data) {
-        const sData = statusRes.value.data;
-        const newStatus = sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED');
-        const newIsActive = sData.isActive !== false && newStatus !== 'CLOSED';
+      // 2. Sync status override if available (isolated)
+      try {
+        if (statusRes.status === 'fulfilled' && statusRes.value?.data) {
+          const sData = statusRes.value.data;
+          const newStatus = sData.status || (sData.isActive ? 'ACTIVE' : 'CLOSED');
+          const newIsActive = sData.isActive !== false && newStatus !== 'CLOSED';
 
-        if (previousStatusRef.current === 'ACTIVE' && newStatus === 'CLOSED') {
-          setError('Notice: This table was just closed by the host. New transactions are disabled.');
+          if (previousStatusRef.current === 'ACTIVE' && newStatus === 'CLOSED') {
+            setError('Notice: This table was just closed by the host. New transactions are disabled.');
+          }
+          previousStatusRef.current = newStatus;
+
+          currentTableObj.status = newStatus;
+          currentTableObj.isActive = newIsActive;
+          setTable({ ...currentTableObj });
+        } else if (statusRes.status === 'rejected') {
+          console.warn('[TableDetail] Status aux call failed:', statusRes.reason?.message);
         }
-        previousStatusRef.current = newStatus;
-
-        currentTableObj.status = newStatus;
-        currentTableObj.isActive = newIsActive;
-        setTable({ ...currentTableObj });
+      } catch (statusErr) {
+        console.warn('[TableDetail] Error processing status override:', statusErr);
       }
 
-      // 3. Process Players (embedded in res, or from GET /api/tables/:id/players)
-      const embeddedPlayers = Array.isArray(rawRes?.players)
-        ? rawRes.players
-        : (Array.isArray(resData?.players) ? resData.players : (Array.isArray(t?.players) ? t.players : []));
+      // 3. Process Players (isolated)
+      try {
+        const embeddedPlayers = Array.isArray(rawRes?.players)
+          ? rawRes.players
+          : (Array.isArray(resData?.players) ? resData.players : (Array.isArray(t?.players) ? t.players : []));
 
-      let playerList = [];
-      if (playersRes.status === 'fulfilled') {
-        const pData = playersRes.value?.data;
-        playerList = Array.isArray(pData) ? pData : (Array.isArray(pData?.players) ? pData.players : []);
-      }
-      if (playerList.length === 0 && embeddedPlayers.length > 0) {
-        playerList = embeddedPlayers;
-      }
+        let playerList = [];
+        if (playersRes.status === 'fulfilled') {
+          const pData = playersRes.value?.data;
+          playerList = Array.isArray(pData) ? pData : (Array.isArray(pData?.players) ? pData.players : []);
+        } else if (playersRes.status === 'rejected') {
+          console.warn('[TableDetail] Players aux call failed:', playersRes.reason?.message);
+        }
+        if (playerList.length === 0 && embeddedPlayers.length > 0) {
+          playerList = embeddedPlayers;
+        }
 
-      const playerMap = new Map();
-      playerList.forEach((p) => {
-        if (p && p.id) playerMap.set(p.id, p);
-      });
-      setPlayers(Array.from(playerMap.values()));
-
-      // 4. Process Activity: Buy-Ins and Exits (embedded in res, or from GET /buy-ins and /exits)
-      const embeddedBuyIns = Array.isArray(rawRes?.buyIns)
-        ? rawRes.buyIns
-        : (Array.isArray(resData?.buyIns) ? resData.buyIns : (Array.isArray(t?.buyIns) ? t.buyIns : []));
-      const embeddedExits = Array.isArray(rawRes?.exits)
-        ? rawRes.exits
-        : (Array.isArray(resData?.exits) ? resData.exits : (Array.isArray(t?.exits) ? t.exits : []));
-
-      let rawBuyIns = [];
-      if (buyInsRes.status === 'fulfilled') {
-        const bData = buyInsRes.value?.data;
-        rawBuyIns = Array.isArray(bData) ? bData : (Array.isArray(bData?.buyIns) ? bData.buyIns : []);
-      }
-      if (rawBuyIns.length === 0 && embeddedBuyIns.length > 0) {
-        rawBuyIns = embeddedBuyIns;
-      }
-
-      let rawExits = [];
-      if (exitsRes.status === 'fulfilled') {
-        const eData = exitsRes.value?.data;
-        rawExits = Array.isArray(eData) ? eData : (Array.isArray(eData?.exits) ? eData.exits : []);
-      }
-      if (rawExits.length === 0 && embeddedExits.length > 0) {
-        rawExits = embeddedExits;
-      }
-
-      const buyInMap = new Map();
-      rawBuyIns.forEach((b) => {
-        if (!b) return;
-        const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
-        buyInMap.set(key, b);
-      });
-
-      const exitMap = new Map();
-      rawExits.forEach((e) => {
-        if (!e) return;
-        const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
-        exitMap.set(key, e);
-      });
-
-      setActivity({
-        buyIns: Array.from(buyInMap.values()),
-        exits: Array.from(exitMap.values()),
-      });
-
-      // 5. Process Requests
-      if (requestsRes.status === 'fulfilled') {
-        const rData = requestsRes.value?.data || {};
-        setMyRequests({
-          joinRequests: Array.isArray(rData.joinRequests) ? rData.joinRequests : [],
-          buyInRequests: Array.isArray(rData.buyInRequests) ? rData.buyInRequests : [],
-          exitRequests: Array.isArray(rData.exitRequests) ? rData.exitRequests : []
+        const playerMap = new Map();
+        (Array.isArray(playerList) ? playerList : []).forEach((p) => {
+          if (p && p.id) playerMap.set(p.id, p);
         });
+        setPlayers(Array.from(playerMap.values()));
+      } catch (playerErr) {
+        console.warn('[TableDetail] Error processing players:', playerErr);
+        setPlayers([]);
+      }
+
+      // 4. Process Activity: Buy-Ins and Exits (isolated)
+      try {
+        const embeddedBuyIns = Array.isArray(rawRes?.buyIns)
+          ? rawRes.buyIns
+          : (Array.isArray(resData?.buyIns) ? resData.buyIns : (Array.isArray(t?.buyIns) ? t.buyIns : []));
+        const embeddedExits = Array.isArray(rawRes?.exits)
+          ? rawRes.exits
+          : (Array.isArray(resData?.exits) ? resData.exits : (Array.isArray(t?.exits) ? t.exits : []));
+
+        let rawBuyIns = [];
+        if (buyInsRes.status === 'fulfilled') {
+          const bData = buyInsRes.value?.data;
+          rawBuyIns = Array.isArray(bData) ? bData : (Array.isArray(bData?.buyIns) ? bData.buyIns : []);
+        } else if (buyInsRes.status === 'rejected') {
+          console.warn('[TableDetail] BuyIns aux call failed:', buyInsRes.reason?.message);
+        }
+        if (rawBuyIns.length === 0 && embeddedBuyIns.length > 0) {
+          rawBuyIns = embeddedBuyIns;
+        }
+
+        let rawExits = [];
+        if (exitsRes.status === 'fulfilled') {
+          const eData = exitsRes.value?.data;
+          rawExits = Array.isArray(eData) ? eData : (Array.isArray(eData?.exits) ? eData.exits : []);
+        } else if (exitsRes.status === 'rejected') {
+          console.warn('[TableDetail] Exits aux call failed:', exitsRes.reason?.message);
+        }
+        if (rawExits.length === 0 && embeddedExits.length > 0) {
+          rawExits = embeddedExits;
+        }
+
+        const buyInMap = new Map();
+        (Array.isArray(rawBuyIns) ? rawBuyIns : []).forEach((b) => {
+          if (!b) return;
+          const key = b.id || `${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+          buyInMap.set(key, b);
+        });
+
+        const exitMap = new Map();
+        (Array.isArray(rawExits) ? rawExits : []).forEach((e) => {
+          if (!e) return;
+          const key = e.id || `${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+          exitMap.set(key, e);
+        });
+
+        setActivity({
+          buyIns: Array.from(buyInMap.values()),
+          exits: Array.from(exitMap.values()),
+        });
+      } catch (actErr) {
+        console.warn('[TableDetail] Error processing activity:', actErr);
+        setActivity({ buyIns: [], exits: [] });
+      }
+
+      // 5. Process Requests (isolated)
+      try {
+        if (requestsRes.status === 'fulfilled') {
+          const rData = requestsRes.value?.data || {};
+          setMyRequests({
+            joinRequests: Array.isArray(rData.joinRequests) ? rData.joinRequests : [],
+            buyInRequests: Array.isArray(rData.buyInRequests) ? rData.buyInRequests : [],
+            exitRequests: Array.isArray(rData.exitRequests) ? rData.exitRequests : []
+          });
+        } else if (requestsRes.status === 'rejected') {
+          console.warn('[TableDetail] Requests aux call failed:', requestsRes.reason?.message);
+        }
+      } catch (reqErr) {
+        console.warn('[TableDetail] Error processing requests:', reqErr);
+        setMyRequests({ joinRequests: [], buyInRequests: [], exitRequests: [] });
       }
     } catch (err) {
       console.error('Failed to fetch table details:', err);
@@ -256,12 +287,30 @@ const TableDetail = () => {
         setError('Failed to load table details: ' + (err.message || 'Unknown error'));
       }
     } finally {
-      if (!isBackground) setLoading(false);
+      // Guarantee loading always terminates
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchTableData();
+
+    // Safety timeout: if loading has been true for > 8s with no table object, surface Retry error
+    const safetyTimer = setTimeout(() => {
+      setLoading((currLoading) => {
+        if (currLoading) {
+          setTable((currTable) => {
+            if (!currTable) {
+              setErrorTitle('Connection Timeout');
+              setError('Loading table details took longer than expected. Please check server connection and tap Retry.');
+            }
+            return currTable;
+          });
+          return false;
+        }
+        return currLoading;
+      });
+    }, 8000);
 
     // 1. Join Socket.IO rooms for table and group
     joinTable(tableId);
@@ -298,6 +347,7 @@ const TableDetail = () => {
     }, 3500);
 
     return () => {
+      clearTimeout(safetyTimer);
       clearInterval(interval);
       leaveTable(tableId);
       if (groupId) {
