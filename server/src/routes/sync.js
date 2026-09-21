@@ -202,6 +202,7 @@ const upsertRecord = async (targetTable, record) => {
         INSERT INTO ${targetTable} (${keys.join(', ')})
         VALUES (${placeholders})
         ON CONFLICT(id) DO UPDATE SET ${updateClause}
+        WHERE excluded.updated_at >= ${targetTable}.updated_at OR ${targetTable}.updated_at IS NULL
     `;
 
     await run(sql, values);

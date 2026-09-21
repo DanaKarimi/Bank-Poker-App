@@ -213,6 +213,32 @@ class TableDetailViewModel(
                     Log.w("TableDetail", "Failed to fetch players: ${playersResult.exceptionOrNull()?.message}")
                 }
 
+                // 1.5 Flush pending transaction edits before pulling, or preserve them
+                val pendingEdits = repository.getPendingOutbox().filter {
+                    it.operationType == "EDIT_EXIT" || it.operationType == "EDIT_BUY_IN"
+                }
+                for (op in pendingEdits) {
+                    try {
+                        val payload = org.json.JSONObject(op.payloadJson)
+                        val tId = payload.optString("tableId", tableId)
+                        val amt = payload.optLong("amount", 0L)
+                        val nt = if (payload.has("note") && !payload.isNull("note")) payload.optString("note") else null
+                        val res = if (op.operationType == "EDIT_EXIT") {
+                            remoteRepository.updateExit(tId, op.targetId, amt, nt)
+                        } else {
+                            remoteRepository.updateBuyIn(tId, op.targetId, amt, nt)
+                        }
+                        if (res.isSuccess) {
+                            repository.removeOutboxOperation(op.id)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("TableDetail", "Failed to flush pending edit op ${op.id} during refresh: ${e.message}")
+                    }
+                }
+
+                val stillPendingExitEdits = repository.getPendingOutbox().filter { it.operationType == "EDIT_EXIT" }.map { it.targetId }.toSet()
+                val stillPendingBuyInEdits = repository.getPendingOutbox().filter { it.operationType == "EDIT_BUY_IN" }.map { it.targetId }.toSet()
+
                 // 2. Fetch and sync Activity (all Buy-Ins & Exits)
                 val activityResult = remoteRepository.getTableActivity(tableId)
                 if (activityResult.isSuccess) {
@@ -222,39 +248,9 @@ class TableDetailViewModel(
 
                     Log.d("TableDetail", "Fetched ${remoteBuyIns.size} buy-ins and ${remoteExits.size} exits from server")
 
-                    val roomBuyIns = remoteBuyIns.map { dto ->
-                        BuyIn(
-                            id = dto.id,
-                            tableId = tableId,
-                            playerId = dto.resolvedPlayerId,
-                            amount = dto.amount,
-                            note = dto.note ?: "Online Buy-In",
-                            createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
-                        )
-                    }
-                    if (roomBuyIns.isNotEmpty()) {
-                        repository.insertOrUpdateBuyIns(roomBuyIns)
-                    }
-
-                    val roomExits = remoteExits.map { dto ->
-                        ExitRecord(
-                            id = dto.id,
-                            tableId = tableId,
-                            playerId = dto.resolvedPlayerId,
-                            amount = dto.amount,
-                            note = dto.note ?: "Online Exit",
-                            createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
-                        )
-                    }
-                    if (roomExits.isNotEmpty()) {
-                        repository.insertOrUpdateExitRecords(roomExits)
-                    }
-                } else {
-                    // Fallback to individual endpoints
-                    val buyInsResult = remoteRepository.getTableBuyIns(tableId)
-                    if (buyInsResult.isSuccess) {
-                        val remoteBuyIns = buyInsResult.getOrNull() ?: emptyList()
-                        val roomBuyIns = remoteBuyIns.map { dto ->
+                    val roomBuyIns = remoteBuyIns
+                        .filter { !stillPendingBuyInEdits.contains(it.id) }
+                        .map { dto ->
                             BuyIn(
                                 id = dto.id,
                                 tableId = tableId,
@@ -264,15 +260,13 @@ class TableDetailViewModel(
                                 createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
                             )
                         }
-                        if (roomBuyIns.isNotEmpty()) {
-                            repository.insertOrUpdateBuyIns(roomBuyIns)
-                        }
+                    if (roomBuyIns.isNotEmpty()) {
+                        repository.insertOrUpdateBuyIns(roomBuyIns)
                     }
 
-                    val exitsResult = remoteRepository.getTableExits(tableId)
-                    if (exitsResult.isSuccess) {
-                        val remoteExits = exitsResult.getOrNull() ?: emptyList()
-                        val roomExits = remoteExits.map { dto ->
+                    val roomExits = remoteExits
+                        .filter { !stillPendingExitEdits.contains(it.id) }
+                        .map { dto ->
                             ExitRecord(
                                 id = dto.id,
                                 tableId = tableId,
@@ -282,6 +276,46 @@ class TableDetailViewModel(
                                 createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
                             )
                         }
+                    if (roomExits.isNotEmpty()) {
+                        repository.insertOrUpdateExitRecords(roomExits)
+                    }
+                } else {
+                    // Fallback to individual endpoints
+                    val buyInsResult = remoteRepository.getTableBuyIns(tableId)
+                    if (buyInsResult.isSuccess) {
+                        val remoteBuyIns = buyInsResult.getOrNull() ?: emptyList()
+                        val roomBuyIns = remoteBuyIns
+                            .filter { !stillPendingBuyInEdits.contains(it.id) }
+                            .map { dto ->
+                                BuyIn(
+                                    id = dto.id,
+                                    tableId = tableId,
+                                    playerId = dto.resolvedPlayerId,
+                                    amount = dto.amount,
+                                    note = dto.note ?: "Online Buy-In",
+                                    createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
+                                )
+                            }
+                        if (roomBuyIns.isNotEmpty()) {
+                            repository.insertOrUpdateBuyIns(roomBuyIns)
+                        }
+                    }
+
+                    val exitsResult = remoteRepository.getTableExits(tableId)
+                    if (exitsResult.isSuccess) {
+                        val remoteExits = exitsResult.getOrNull() ?: emptyList()
+                        val roomExits = remoteExits
+                            .filter { !stillPendingExitEdits.contains(it.id) }
+                            .map { dto ->
+                                ExitRecord(
+                                    id = dto.id,
+                                    tableId = tableId,
+                                    playerId = dto.resolvedPlayerId,
+                                    amount = dto.amount,
+                                    note = dto.note ?: "Online Exit",
+                                    createdAt = if (dto.resolvedCreatedAt > 0) dto.resolvedCreatedAt else System.currentTimeMillis()
+                                )
+                            }
                         if (roomExits.isNotEmpty()) {
                             repository.insertOrUpdateExitRecords(roomExits)
                         }
