@@ -1,4 +1,5 @@
-const CACHE_NAME = 'bankpoker-v2';
+const CACHE_VERSION = 'v3';
+const CACHE_NAME = `bankpoker-${CACHE_VERSION}`;
 const APP_SHELL = [
   '/',
   '/favicon.svg',
@@ -19,6 +20,7 @@ self.addEventListener('install', (event) => {
       );
     })
   );
+  // Force new service worker to take over immediately
   self.skipWaiting();
 });
 
@@ -28,53 +30,75 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Purging obsolete cache:', key);
             return caches.delete(key);
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
+});
+
+// Allow client to command immediate skipWaiting
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Always bypass API calls and WebSocket connections
-  if (url.pathname.startsWith('/api') || event.request.method !== 'GET') {
+  // 1. Never intercept or cache API requests, Socket.IO, or non-GET requests
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname.includes('socket.io') ||
+    event.request.method !== 'GET'
+  ) {
     return;
   }
 
-  // Network-first for page navigations with cache fallback
+  // 2. Never cache service worker itself
+  if (url.pathname.endsWith('sw.js')) {
+    return;
+  }
+
+  // 3. Network-first with NO-CACHE for HTML page navigations (ensures deploys update immediately)
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match('/') || caches.match('/index.html');
-      })
+      fetch(event.request, { cache: 'no-cache' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match('/') || caches.match('/index.html');
+        })
     );
     return;
   }
 
-  // Cache-first for static assets
+  // 4. Stale-while-revalidate / cache-first for static versioned assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (
-          !networkResponse ||
-          networkResponse.status !== 200 ||
-          networkResponse.type !== 'basic'
-        ) {
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (
+            networkResponse &&
+            networkResponse.status === 200 &&
+            networkResponse.type === 'basic'
+          ) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
           return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        return networkResponse;
-      });
+        })
+        .catch(() => null);
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
