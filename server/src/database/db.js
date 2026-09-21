@@ -68,48 +68,64 @@ const exec = (sql) => {
 const initDb = async () => {
     try {
         await run('PRAGMA foreign_keys = ON;');
+        // 1. Safe column migrations for existing tables prior to schema/index execution
+        const tableRows = await all("SELECT name FROM sqlite_master WHERE type='table'");
+        const existingTableNames = new Set(tableRows.map(r => r.name));
+
+        if (existingTableNames.has('users')) {
+            const usersColumns = await all("PRAGMA table_info(users)");
+            const userColNames = usersColumns.map(c => c.name);
+            if (!userColNames.includes('display_name')) {
+                await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT ''");
+            }
+            if (!userColNames.includes('avatar_id')) {
+                await run("ALTER TABLE users ADD COLUMN avatar_id TEXT DEFAULT 'avatar_1'");
+            }
+            if (!userColNames.includes('updated_at')) {
+                await run("ALTER TABLE users ADD COLUMN updated_at INTEGER DEFAULT 0");
+            }
+        }
+
+        if (existingTableNames.has('groups')) {
+            const groupsColumns = await all("PRAGMA table_info(groups)");
+            const groupColNames = groupsColumns.map(c => c.name);
+            if (!groupColNames.includes('owner_user_id')) {
+                await run("ALTER TABLE groups ADD COLUMN owner_user_id TEXT");
+            }
+        }
+
+        if (existingTableNames.has('tables')) {
+            const tablesColumns = await all("PRAGMA table_info(tables)");
+            const tableColNames = tablesColumns.map(c => c.name);
+            if (!tableColNames.includes('creator_user_id')) {
+                await run("ALTER TABLE tables ADD COLUMN creator_user_id TEXT");
+            }
+            if (!tableColNames.includes('code')) {
+                await run("ALTER TABLE tables ADD COLUMN code TEXT");
+            }
+            if (!tableColNames.includes('published_at')) {
+                await run("ALTER TABLE tables ADD COLUMN published_at INTEGER");
+            }
+            if (!tableColNames.includes('is_active')) {
+                await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
+            }
+        }
+
+        if (existingTableNames.has('players')) {
+            const playersColumns = await all("PRAGMA table_info(players)");
+            const playerColNames = playersColumns.map(c => c.name);
+            if (!playerColNames.includes('user_linked_at')) {
+                await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
+            }
+        }
+
+        // 2. Execute declarative schema
         const schemaPath = path.join(__dirname, 'schema.sql');
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-        await exec(schemaSql);
-
-        // Safe column migrations for existing databases
-        const usersColumns = await all("PRAGMA table_info(users)");
-        const userColNames = usersColumns.map(c => c.name);
-        if (!userColNames.includes('display_name')) {
-            await run("ALTER TABLE users ADD COLUMN display_name TEXT DEFAULT ''");
-        }
-        if (!userColNames.includes('avatar_id')) {
-            await run("ALTER TABLE users ADD COLUMN avatar_id TEXT DEFAULT 'avatar_1'");
-        }
-        if (!userColNames.includes('updated_at')) {
-            await run("ALTER TABLE users ADD COLUMN updated_at INTEGER DEFAULT 0");
-        }
-
-        const groupsColumns = await all("PRAGMA table_info(groups)");
-        const groupColNames = groupsColumns.map(c => c.name);
-        if (!groupColNames.includes('owner_user_id')) {
-            await run("ALTER TABLE groups ADD COLUMN owner_user_id TEXT");
-        }
-
-        const tablesColumns = await all("PRAGMA table_info(tables)");
-        const tableColNames = tablesColumns.map(c => c.name);
-        if (!tableColNames.includes('creator_user_id')) {
-            await run("ALTER TABLE tables ADD COLUMN creator_user_id TEXT");
-        }
-        if (!tableColNames.includes('code')) {
-            await run("ALTER TABLE tables ADD COLUMN code TEXT");
-        }
-        if (!tableColNames.includes('published_at')) {
-            await run("ALTER TABLE tables ADD COLUMN published_at INTEGER");
-        }
-        if (!tableColNames.includes('is_active')) {
-            await run("ALTER TABLE tables ADD COLUMN is_active INTEGER DEFAULT 1");
-        }
-
-        const playersColumns = await all("PRAGMA table_info(players)");
-        const playerColNames = playersColumns.map(c => c.name);
-        if (!playerColNames.includes('user_linked_at')) {
-            await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
+        try {
+            await exec(schemaSql);
+        } catch (schemaErr) {
+            console.warn('Schema execution warning:', schemaErr.message);
         }
 
         // Additive migrations for request tables
