@@ -33,6 +33,7 @@ import { UserBadge } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
 import ProfileModal from '../components/ProfileModal';
 import NotificationsDropdown from '../components/NotificationsDropdown';
+import AndroidDownloadButton from '../components/AndroidDownloadButton';
 import { getSocket } from '../socket';
 
 const CHIP_PRESETS = [5, 10, 25, 50, 100];
@@ -402,7 +403,9 @@ const Dashboard = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            <AndroidDownloadButton compact />
+
             {user?.role === 'SUPER_ADMIN' && (
               <Link
                 to="/admin"

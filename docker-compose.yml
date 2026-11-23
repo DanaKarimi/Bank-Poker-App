@@ -43,6 +43,7 @@ services:
       - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./releases:/usr/share/nginx/html/releases:ro
     depends_on:
       bankpoker:
         condition: service_healthy

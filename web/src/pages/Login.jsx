@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { forgotPassword } from '../api';
 import { Lock, User, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle, KeyRound, ArrowLeft } from 'lucide-react';
 import { PokerAvatar, AvatarPickerModal } from '../components/AvatarSystem';
+import AndroidDownloadButton from '../components/AndroidDownloadButton';
 
 const Login = () => {
   const [activeTab, setActiveTab] = useState('guest'); // 'guest' | 'login' | 'register' | 'forgot'
@@ -105,7 +106,12 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-felt-green">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip flex flex-col items-center justify-center p-4 relative bg-felt-green">
+      {/* Top Bar: Direct Android APK Download */}
+      <div className="w-full max-w-md flex justify-end mb-3 z-10">
+        <AndroidDownloadButton />
+      </div>
+
       {/* Subtle Suit Background Accents */}
       <div className="absolute -top-10 -left-10 text-9xl text-black opacity-10 select-none pointer-events-none">♠</div>
       <div className="absolute -bottom-10 -right-10 text-9xl text-black opacity-10 select-none pointer-events-none">♣</div>
