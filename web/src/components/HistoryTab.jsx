@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   getGroupPayments,
   updateGroupPayment,
@@ -8,6 +8,7 @@ import {
   deleteGroupEntryFee
 } from '../api';
 import { getSocket } from '../socket';
+import { PokerAvatar } from './AvatarSystem';
 import {
   Receipt,
   DollarSign,
@@ -18,7 +19,8 @@ import {
   Clock,
   ArrowRight,
   AlertCircle,
-  ShieldAlert
+  ShieldAlert,
+  ChevronDown
 } from 'lucide-react';
 
 const formatTimestamp = (ts) => {
@@ -58,6 +60,104 @@ const HistoryTab = ({ groupId, isAdmin = false, onRefreshBalances }) => {
   const [deletingEntryFee, setDeletingEntryFee] = useState(null);
 
   const [actionLoading, setActionLoading] = useState(false);
+  const [expandedPlayers, setExpandedPlayers] = useState(() => new Set());
+
+  const togglePlayerExpanded = (playerKey) => {
+    setExpandedPlayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerKey)) {
+        next.delete(playerKey);
+      } else {
+        next.add(playerKey);
+      }
+      return next;
+    });
+  };
+
+  // Group entry fees by normalized player identity/name, deduplicate by table, and sort unpaid-first
+  const groupedEntryFees = useMemo(() => {
+    const playerMap = new Map();
+
+    for (const ef of entryFees) {
+      const rawName = (ef.playerName || ef.player_name || 'Unknown Player').trim();
+      const normKey = rawName.toLowerCase();
+      if (!playerMap.has(normKey)) {
+        playerMap.set(normKey, {
+          key: normKey,
+          playerName: rawName,
+          avatarId: ef.avatarId || ef.avatar_id || null,
+          records: []
+        });
+      }
+      const group = playerMap.get(normKey);
+      if (!group.avatarId && (ef.avatarId || ef.avatar_id)) {
+        group.avatarId = ef.avatarId || ef.avatar_id;
+      }
+
+      // Deduplicate by tableId or normalized tableName within the same player
+      const normTableId = String(ef.tableId || ef.table_id || '').trim();
+      const normTableName = String(ef.tableName || ef.table_name || '').trim().toLowerCase();
+      const existingIdx = group.records.findIndex((r) => {
+        const rTableId = String(r.tableId || r.table_id || '').trim();
+        const rTableName = String(r.tableName || r.table_name || '').trim().toLowerCase();
+        return (normTableId && rTableId === normTableId) || (normTableName && rTableName === normTableName);
+      });
+
+      const normalizedRecord = {
+        ...ef,
+        playerName: rawName,
+        tableName: ef.tableName || ef.table_name || 'Table',
+        amount: Number(ef.amount) || 0,
+        paid: Boolean(ef.paid),
+        timestamp: Number(ef.timestamp || ef.created_at || ef.createdAt || 0)
+      };
+
+      if (existingIdx >= 0) {
+        const prevRec = group.records[existingIdx];
+        group.records[existingIdx] = {
+          ...prevRec,
+          paid: prevRec.paid || normalizedRecord.paid,
+          amount: normalizedRecord.amount > 0 ? normalizedRecord.amount : prevRec.amount,
+          timestamp: Math.max(prevRec.timestamp, normalizedRecord.timestamp)
+        };
+      } else {
+        group.records.push(normalizedRecord);
+      }
+    }
+
+    const groups = Array.from(playerMap.values()).map((g) => {
+      // Unpaid tables first, then paid tables; newest first within each group
+      const sortedRecords = [...g.records].sort((a, b) => {
+        if (a.paid !== b.paid) return a.paid ? 1 : -1;
+        return b.timestamp - a.timestamp;
+      });
+      const paidRecords = sortedRecords.filter((r) => r.paid);
+      const unpaidRecords = sortedRecords.filter((r) => !r.paid);
+      const paidAmount = paidRecords.reduce((sum, r) => sum + r.amount, 0);
+      const unpaidAmount = unpaidRecords.reduce((sum, r) => sum + r.amount, 0);
+
+      return {
+        ...g,
+        records: sortedRecords,
+        paidCount: paidRecords.length,
+        unpaidCount: unpaidRecords.length,
+        paidAmount,
+        unpaidAmount,
+        totalAmount: paidAmount + unpaidAmount
+      };
+    });
+
+    // Sort players: unpaid players first (highest unpaid count, then highest unpaid amount), then fully paid players alphabetically
+    groups.sort((a, b) => {
+      if (a.unpaidCount > 0 && b.unpaidCount === 0) return -1;
+      if (a.unpaidCount === 0 && b.unpaidCount > 0) return 1;
+      if (b.unpaidCount !== a.unpaidCount) return b.unpaidCount - a.unpaidCount;
+      if (b.unpaidAmount !== a.unpaidAmount) return b.unpaidAmount - a.unpaidAmount;
+      return a.playerName.localeCompare(b.playerName);
+    });
+
+    return groups;
+  }, [entryFees]);
 
   // Fetch Payments
   const fetchPayments = async () => {
@@ -364,10 +464,10 @@ const HistoryTab = ({ groupId, isAdmin = false, onRefreshBalances }) => {
         </div>
       )}
 
-      {/* SUB-TAB 2: ENTRY FEES */}
+      {/* SUB-TAB 2: ENTRY FEES (Player-Grouped Accordion) */}
       {subTab === 'entry_fees' && (
         <div className="space-y-3">
-          {entryFees.length === 0 ? (
+          {groupedEntryFees.length === 0 ? (
             <div className="p-8 text-center bg-felt-card/50 rounded-2xl border border-gold-accent/20 text-cream-text/60">
               <DollarSign className="w-8 h-8 mx-auto mb-2 text-gold-accent/40" />
               <p className="font-semibold text-sm">No entry fee history yet</p>
@@ -376,91 +476,175 @@ const HistoryTab = ({ groupId, isAdmin = false, onRefreshBalances }) => {
               </p>
             </div>
           ) : (
-            entryFees.map((ef) => {
-              const ts = ef.timestamp || ef.created_at;
+            groupedEntryFees.map((playerGroup) => {
+              const isExpanded = expandedPlayers.has(playerGroup.key);
+              const hasUnpaid = playerGroup.unpaidCount > 0;
 
               return (
                 <div
-                  key={ef.id}
-                  className="p-4 bg-felt-card/90 rounded-2xl border border-gold-accent/40 hover:border-gold-accent transition shadow-md flex items-center justify-between gap-4"
+                  key={playerGroup.key}
+                  className={`bg-felt-card/90 rounded-2xl border transition shadow-md overflow-hidden ${
+                    hasUnpaid
+                      ? 'border-amber-500/50 hover:border-amber-400/80'
+                      : 'border-gold-accent/40 hover:border-gold-accent'
+                  }`}
                 >
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-cream-text text-sm">{ef.playerName}</h4>
-                    <div className="text-xs text-cream-text/70 mt-0.5">
-                      Table: <span className="text-gold-light font-medium">{ef.tableName || 'Table'}</span>
-                    </div>
-                    {ts && (
-                      <div className="text-[11px] text-cream-text/50 mt-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-gold-accent/60" />
-                        {formatTimestamp(ts)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-gold-accent font-black text-base">${ef.amount}</div>
-                    </div>
-
-                    {/* Paid/Unpaid Badge or Toggle */}
-                    <div>
-                      {canManageEntryFees ? (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleEntryFeePaid(ef)}
-                          title="Click to toggle paid status"
-                          className={`px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center gap-1 shadow-sm ${
-                            ef.paid
-                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900'
-                              : 'bg-red-950 text-red-300 border-red-500/60 hover:bg-red-900'
-                          }`}
-                        >
-                          {ef.paid ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Paid ✓</span>
-                            </>
+                  {/* Collapsed / Header Row */}
+                  <button
+                    type="button"
+                    onClick={() => togglePlayerExpanded(playerGroup.key)}
+                    className="w-full p-4 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-white/[0.03] transition"
+                    aria-expanded={isExpanded}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <PokerAvatar
+                        avatarId={playerGroup.avatarId}
+                        name={playerGroup.playerName}
+                        size={40}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-cream-text text-sm truncate">
+                          {playerGroup.playerName}
+                        </h4>
+                        <div className="text-xs text-cream-text/70 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span>
+                            {playerGroup.paidCount} Paid • {playerGroup.unpaidCount} Unpaid
+                          </span>
+                          <span className="text-cream-text/30">|</span>
+                          {hasUnpaid ? (
+                            <span className="text-amber-300 font-semibold font-mono">
+                              ${playerGroup.unpaidAmount.toLocaleString()} unpaid
+                            </span>
                           ) : (
-                            <>
-                              <X className="w-3.5 h-3.5" />
-                              <span>Unpaid ✗</span>
-                            </>
+                            <span className="text-emerald-300 font-semibold font-mono">
+                              ${playerGroup.paidAmount.toLocaleString()} paid
+                            </span>
                           )}
-                        </button>
-                      ) : (
-                        <span
-                          className={`px-3 py-1 rounded-lg text-xs font-bold border inline-flex items-center gap-1 shadow-sm ${
-                            ef.paid
-                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                              : 'bg-red-950/80 text-red-300 border-red-500/40'
-                          }`}
-                        >
-                          {ef.paid ? 'Paid ✓' : 'Unpaid ✗'}
-                        </span>
-                      )}
+                          {hasUnpaid && playerGroup.paidAmount > 0 && (
+                            <span className="text-cream-text/50 font-mono">
+                              (${playerGroup.paidAmount.toLocaleString()} paid)
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    {canManageEntryFees && (
-                      <div className="flex items-center gap-1 pl-2 border-l border-gold-accent/20">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditEntryFee(ef)}
-                          title="Edit Entry Fee"
-                          className="p-1.5 rounded-lg text-cream-text/70 hover:text-gold-accent hover:bg-zinc-800 transition cursor-pointer"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingEntryFee(ef)}
-                          title="Delete Entry Fee"
-                          className="p-1.5 rounded-lg text-cream-text/70 hover:text-red-400 hover:bg-zinc-800 transition cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap ${
+                          hasUnpaid
+                            ? 'bg-red-950/80 text-red-300 border-red-500/50'
+                            : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                        }`}
+                      >
+                        {hasUnpaid ? `${playerGroup.unpaidCount} Unpaid` : 'All Paid'}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-gold-accent transition-transform duration-200 ${
+                          isExpanded ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                  </button>
+
+                  {/* Expanded Table Breakdown */}
+                  {isExpanded && (
+                    <div className="border-t border-gold-accent/20 bg-black/20 divide-y divide-gold-accent/15">
+                      {playerGroup.records.map((ef) => {
+                        const ts = ef.timestamp || ef.created_at;
+
+                        return (
+                          <div
+                            key={ef.id}
+                            className="px-4 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-gold-light truncate">
+                                {ef.tableName || 'Table'}
+                              </div>
+                              {ts > 0 && (
+                                <div className="text-[11px] text-cream-text/50 mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-gold-accent/60 shrink-0" />
+                                  <span>{formatTimestamp(ts)}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <span className="text-gold-accent font-black text-sm font-mono">
+                                ${ef.amount.toLocaleString()}
+                              </span>
+
+                              {canManageEntryFees ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleEntryFeePaid(ef);
+                                  }}
+                                  title="Click to toggle paid status"
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center gap-1 shadow-sm ${
+                                    ef.paid
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900'
+                                      : 'bg-red-950 text-red-300 border-red-500/60 hover:bg-red-900'
+                                  }`}
+                                >
+                                  {ef.paid ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Paid</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <X className="w-3.5 h-3.5" />
+                                      <span>Unpaid</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <span
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border inline-flex items-center gap-1 ${
+                                    ef.paid
+                                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-red-950/80 text-red-300 border-red-500/40'
+                                  }`}
+                                >
+                                  {ef.paid ? 'Paid ✓' : 'Unpaid ✗'}
+                                </span>
+                              )}
+
+                              {canManageEntryFees && (
+                                <div className="flex items-center gap-0.5 pl-1.5 border-l border-gold-accent/20">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEditEntryFee(ef);
+                                    }}
+                                    title="Edit Entry Fee"
+                                    className="p-1.5 rounded-lg text-cream-text/70 hover:text-gold-accent hover:bg-zinc-800 transition cursor-pointer"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeletingEntryFee(ef);
+                                    }}
+                                    title="Delete Entry Fee"
+                                    className="p-1.5 rounded-lg text-cream-text/70 hover:text-red-400 hover:bg-zinc-800 transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })
