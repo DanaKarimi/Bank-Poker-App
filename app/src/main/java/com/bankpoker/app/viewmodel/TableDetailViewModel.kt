@@ -9,6 +9,8 @@ import com.bankpoker.app.data.local.entity.Player
 import com.bankpoker.app.data.local.entity.PokerTable
 import com.bankpoker.app.repository.PokerRepository
 import com.bankpoker.app.repository.RemoteRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +31,21 @@ class TableDetailViewModel(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private var debouncedRefreshJob: Job? = null
+    private var inFlightRefreshJob: Job? = null
+
+    /**
+     * Coalesce rapid Socket.IO / action refreshes into at most 1 network sync per 500ms.
+     */
+    fun scheduleRefreshFromServer(delayMs: Long = 500L) {
+        if (remoteRepository == null) return
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = viewModelScope.launch {
+            if (delayMs > 0L) delay(delayMs)
+            refreshTableFromServer()
+        }
+    }
 
     val players: Flow<List<Player>> = repository.getPlayersByTableId(tableId).map { list ->
         list.distinctBy { it.id }
@@ -168,7 +185,11 @@ class TableDetailViewModel(
             onComplete?.invoke(true, null)
             return
         }
-        viewModelScope.launch {
+        if (inFlightRefreshJob?.isActive == true) {
+            onComplete?.invoke(true, null)
+            return
+        }
+        inFlightRefreshJob = viewModelScope.launch {
             if (!isTableOnline()) {
                 Log.d("TableDetail", "Using local only for OFFLINE group: table $tableId is OFFLINE. Skipping server sync.")
                 onComplete?.invoke(true, null)
@@ -230,6 +251,23 @@ class TableDetailViewModel(
                         }
                         if (res.isSuccess) {
                             repository.removeOutboxOperation(op.id)
+                        } else {
+                            val errMsg = res.exceptionOrNull()?.message ?: ""
+                            val lower = errMsg.lowercase()
+                            val isPermanent = lower.contains("400") || lower.contains("403") || lower.contains("404") ||
+                                lower.contains("closed") || lower.contains("forbidden") ||
+                                lower.contains("not found") || lower.contains("permission denied")
+                            val nextAttempts = op.attempts + 1
+                            if (isPermanent || nextAttempts >= 5) {
+                                Log.w("TableDetail", "Marking outbox op ${op.id} FAILED (permanent=$isPermanent, attempts=$nextAttempts): $errMsg")
+                                repository.updateOutboxOperation(
+                                    op.copy(attempts = nextAttempts, status = "FAILED", lastError = errMsg.ifBlank { "Permanent rejection" })
+                                )
+                            } else {
+                                repository.updateOutboxOperation(
+                                    op.copy(attempts = nextAttempts, lastError = errMsg)
+                                )
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w("TableDetail", "Failed to flush pending edit op ${op.id} during refresh: ${e.message}")

@@ -16,6 +16,8 @@ import com.bankpoker.app.repository.RemoteRepository
 import com.bankpoker.app.data.remote.dto.GroupTableItem
 import com.bankpoker.app.data.remote.dto.toGroupTableItem
 import com.bankpoker.app.data.remote.dto.toPokerTable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +73,28 @@ class GroupDetailViewModel(
 
     private val _isLoadingAdmin = MutableStateFlow(false)
     val isLoadingAdmin: StateFlow<Boolean> = _isLoadingAdmin.asStateFlow()
+
+    private var debouncedRefreshJob: Job? = null
+    private var inFlightTablesJob: Job? = null
+    private var inFlightBalancesJob: Job? = null
+    private var inFlightSettlementJob: Job? = null
+
+    /**
+     * Coalesce rapid Socket.IO / UI refresh triggers into at most 1 network refresh per 500ms.
+     */
+    fun scheduleGroupRefresh(includeLeaderboard: Boolean = false, delayMs: Long = 500L) {
+        if (remoteRepository == null) return
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = viewModelScope.launch {
+            if (delayMs > 0L) delay(delayMs)
+            fetchServerBalances()
+            fetchServerSettlement()
+            fetchServerTables()
+            if (includeLeaderboard) {
+                fetchLeaderboard()
+            }
+        }
+    }
 
     fun fetchAdminOverview() {
         if (remoteRepository == null) return
@@ -271,12 +295,14 @@ class GroupDetailViewModel(
                                 handleEntryFeeUpdated(event.payload)
                             }
                         }
-                        "table_created", "table_closed", "table_updated", "table_published" -> {
+                        "table_created", "table_closed", "table_updated", "table_published",
+                        "buyin_recorded", "buyin_updated", "exit_recorded", "exit_updated",
+                        "settlement_done", "group_updated", "payment_created", "payment_updated", "payment_deleted" -> {
                             val eventGroupId = event.payload?.optString("groupId", "")
                             val currentGroup = _group.value ?: repository.getGroupById(groupId)
                             val sId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
                             if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == groupId) {
-                                fetchServerTables()
+                                scheduleGroupRefresh()
                             }
                         }
                     }
@@ -319,13 +345,14 @@ class GroupDetailViewModel(
                     }
                 }
             }
-            fetchServerTables()
+            scheduleGroupRefresh()
         }
     }
 
     fun fetchServerTables() {
         if (remoteRepository == null) return
-        viewModelScope.launch {
+        if (inFlightTablesJob?.isActive == true) return
+        inFlightTablesJob = viewModelScope.launch {
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
@@ -349,7 +376,8 @@ class GroupDetailViewModel(
 
     fun fetchServerBalances() {
         if (remoteRepository == null) return
-        viewModelScope.launch {
+        if (inFlightBalancesJob?.isActive == true) return
+        inFlightBalancesJob = viewModelScope.launch {
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
@@ -379,7 +407,8 @@ class GroupDetailViewModel(
 
     fun fetchServerSettlement() {
         if (remoteRepository == null) return
-        viewModelScope.launch {
+        if (inFlightSettlementJob?.isActive == true) return
+        inFlightSettlementJob = viewModelScope.launch {
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId

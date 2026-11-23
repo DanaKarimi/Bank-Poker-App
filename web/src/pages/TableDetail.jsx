@@ -207,14 +207,18 @@ const TableDetail = () => {
     }
     const socket = getSocket();
 
+    let debounceTimer = null;
     const handleRefresh = () => {
-      fetchTableData(true);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchTableData(true);
+      }, 450);
     };
 
     const handleTableClosed = (payload) => {
       if (!payload?.tableId || String(payload.tableId) === String(tableId)) {
         setTable((prev) => (prev ? { ...prev, status: 'CLOSED', isActive: false } : null));
-        fetchTableData(true);
+        handleRefresh();
       }
     };
 
@@ -258,6 +262,7 @@ const TableDetail = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (pollTimer) clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       socket.off('connect', handleSocketConnect);

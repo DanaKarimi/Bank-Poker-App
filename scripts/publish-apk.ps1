@@ -45,11 +45,9 @@ $versionObj = [ordered]@{
     apkUrl      = "/releases/$versionedFileName"
     forceUpdate = $ForceUpdate
     whatsNew    = @(
-        "Unified Poker-Felt & Gold theme matching the Web App",
-        "Added +50 quick chip button for Buy-In & Exit sheets",
-        "Group Admin Panel for members, closed-table edits & password resets",
-        "Historical Rank Progression Leaderboard & Member Picker",
-        "Built-in automatic in-app update downloader"
+        "Eliminated duplicate network request bursts for instant response",
+        "Fixed offline sync queue retry loop & improved tunnel stability",
+        "Added Nginx keepalive & SQLite busy-timeout hardening"
     )
     sizeBytes   = $sizeBytes
     sizeMB      = $sizeMB

@@ -69,6 +69,7 @@ const initDb = async () => {
     try {
         // SQLite performance & integrity PRAGMAs
         await run('PRAGMA journal_mode = WAL;');
+        await run('PRAGMA busy_timeout = 5000;');
         await run('PRAGMA synchronous = NORMAL;');
         await run('PRAGMA cache_size = -16000;');
         await run('PRAGMA temp_store = MEMORY;');

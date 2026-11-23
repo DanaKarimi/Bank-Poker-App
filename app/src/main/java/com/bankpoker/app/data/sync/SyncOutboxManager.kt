@@ -17,6 +17,23 @@ class SyncOutboxManager(
 ) {
     private val gson = Gson()
 
+    companion object {
+        private const val MAX_RETRY_ATTEMPTS = 5
+
+        fun isPermanentClientError(message: String?): Boolean {
+            if (message.isNullOrBlank()) return false
+            val m = message.lowercase()
+            return m.contains("400") ||
+                m.contains("403") ||
+                m.contains("404") ||
+                m.contains("bad request") ||
+                m.contains("forbidden") ||
+                m.contains("not found") ||
+                m.contains("permission denied") ||
+                m.contains("table is closed")
+        }
+    }
+
     suspend fun flush(): Int = withContext(Dispatchers.IO) {
         val pending = repository.getPendingOutbox()
         if (pending.isEmpty()) return@withContext 0
@@ -25,29 +42,52 @@ class SyncOutboxManager(
         var successCount = 0
 
         for (op in pending) {
+            if (op.attempts >= MAX_RETRY_ATTEMPTS) {
+                Log.w("SyncOutbox", "Retiring outbox op ${op.id} (${op.operationType}) after ${op.attempts} failed attempts")
+                repository.updateOutboxOperation(op.copy(status = "FAILED"))
+                continue
+            }
             try {
-                val success = processOperation(op)
-                if (success) {
+                val opResult = processOperation(op)
+                if (opResult.isSuccess) {
                     repository.removeOutboxOperation(op.id)
                     successCount++
                 } else {
-                    repository.updateOutboxOperation(
-                        op.copy(attempts = op.attempts + 1, lastError = "Server rejected operation")
-                    )
+                    val errMsg = opResult.exceptionOrNull()?.message ?: "Server rejected operation"
+                    val nextAttempts = op.attempts + 1
+                    val permanent = isPermanentClientError(errMsg)
+                    if (permanent || nextAttempts >= MAX_RETRY_ATTEMPTS) {
+                        Log.w("SyncOutbox", "Stopping retries for op ${op.id} (${op.operationType}): permanent=$permanent, attempts=$nextAttempts, err=$errMsg")
+                        repository.updateOutboxOperation(
+                            op.copy(attempts = nextAttempts, status = "FAILED", lastError = errMsg)
+                        )
+                    } else {
+                        repository.updateOutboxOperation(
+                            op.copy(attempts = nextAttempts, lastError = errMsg)
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("SyncOutbox", "Failed to process op: ${op.id} (${op.operationType})", e)
+                val nextAttempts = op.attempts + 1
+                val permanent = isPermanentClientError(e.message)
                 repository.updateOutboxOperation(
-                    op.copy(attempts = op.attempts + 1, lastError = e.message)
+                    op.copy(
+                        attempts = nextAttempts,
+                        status = if (permanent || nextAttempts >= MAX_RETRY_ATTEMPTS) "FAILED" else op.status,
+                        lastError = e.message
+                    )
                 )
-                // Stop processing on network failure so FIFO order is preserved
-                break
+                if (!permanent) {
+                    // Stop processing on transient network failure so FIFO order is preserved
+                    break
+                }
             }
         }
         return@withContext successCount
     }
 
-    private suspend fun processOperation(op: OutboxRecord): Boolean {
+    private suspend fun processOperation(op: OutboxRecord): Result<Unit> {
         return when (op.operationType) {
             "CREATE_QUICK_TABLE" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
@@ -63,8 +103,8 @@ class SyncOutboxManager(
                     if (!code.isNullOrBlank()) {
                         repository.updateTableCode(op.targetId, code, System.currentTimeMillis())
                     }
-                    true
-                } else false
+                    Result.success(Unit)
+                } else Result.failure(result.exceptionOrNull() ?: Exception("createQuickTable failed"))
             }
             "PUBLISH_TABLE" -> {
                 val result = remoteRepository.publishTable(op.targetId)
@@ -74,8 +114,8 @@ class SyncOutboxManager(
                     if (!code.isNullOrBlank()) {
                         repository.updateTableCode(op.targetId, code, pubAt)
                     }
-                    true
-                } else false
+                    Result.success(Unit)
+                } else Result.failure(result.exceptionOrNull() ?: Exception("publishTable failed"))
             }
             "BUY_IN" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
@@ -86,7 +126,7 @@ class SyncOutboxManager(
                     amount = payload.get("amount")?.asLong ?: 0L,
                     note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
                 )
-                result.isSuccess
+                result.map { Unit }
             }
             "EXIT" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
@@ -97,13 +137,13 @@ class SyncOutboxManager(
                     amount = payload.get("amount")?.asLong ?: 0L,
                     note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
                 )
-                result.isSuccess
+                result.map { Unit }
             }
             "DELETE_PLAYER" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
                 val playerId = payload.get("playerId")?.asString ?: ""
                 val result = remoteRepository.deleteTablePlayer(op.targetId, playerId)
-                result.isSuccess
+                result.map { Unit }
             }
             "EDIT_EXIT" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
@@ -111,7 +151,7 @@ class SyncOutboxManager(
                 val amount = payload.get("amount")?.asLong ?: 0L
                 val note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
                 val result = remoteRepository.updateExit(tableId, op.targetId, amount, note)
-                result.isSuccess
+                result.map { Unit }
             }
             "EDIT_BUY_IN" -> {
                 val payload = gson.fromJson(op.payloadJson, JsonObject::class.java)
@@ -119,15 +159,15 @@ class SyncOutboxManager(
                 val amount = payload.get("amount")?.asLong ?: 0L
                 val note = if (payload.has("note") && !payload.get("note").isJsonNull) payload.get("note").asString else null
                 val result = remoteRepository.updateBuyIn(tableId, op.targetId, amount, note)
-                result.isSuccess
+                result.map { Unit }
             }
             "CLOSE_TABLE" -> {
                 val result = remoteRepository.closeTable(op.targetId)
-                result.isSuccess
+                result.map { Unit }
             }
             else -> {
                 Log.w("SyncOutbox", "Unknown operation type: ${op.operationType}")
-                true
+                Result.success(Unit)
             }
         }
     }

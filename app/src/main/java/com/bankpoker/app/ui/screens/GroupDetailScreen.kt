@@ -124,9 +124,7 @@ fun GroupDetailScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.fetchServerTables()
-                viewModel.fetchServerBalances()
-                viewModel.fetchServerSettlement()
+                viewModel.scheduleGroupRefresh(includeLeaderboard = selectedTab == 3, delayMs = 200L)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -148,25 +146,20 @@ fun GroupDetailScreen(
                         viewModel.handleEntryFeeUpdated(event.payload)
                     }
                 }
-                "settlement_done", "payment_created", "payment_updated", "payment_deleted", "buyin_recorded", "exit_recorded", "group_updated", "table_closed", "table_created", "table_updated", "table_published" -> {
+                "settlement_done", "payment_created", "payment_updated", "payment_deleted",
+                "buyin_recorded", "buyin_updated", "exit_recorded", "exit_updated",
+                "group_updated", "table_closed", "table_created", "table_updated", "table_published" -> {
                     val eventGroupId = event.payload?.optString("groupId", "")
                     if (eventGroupId.isNullOrEmpty() || eventGroupId == sId || eventGroupId == group?.id) {
-                        viewModel.fetchServerBalances()
-                        viewModel.fetchServerSettlement()
-                        viewModel.fetchServerTables()
+                        viewModel.scheduleGroupRefresh(includeLeaderboard = selectedTab == 3)
                     }
                 }
             }
         }
     }
 
-    LaunchedEffect(selectedTab, balances, group?.id, group?.serverId) {
-        viewModel.fetchServerBalances()
-        viewModel.fetchServerSettlement()
-        viewModel.fetchServerTables()
-        if (selectedTab == 3) {
-            viewModel.fetchLeaderboard()
-        }
+    LaunchedEffect(selectedTab, group?.id, group?.serverId) {
+        viewModel.scheduleGroupRefresh(includeLeaderboard = selectedTab == 3, delayMs = 150L)
     }
 
     Scaffold(

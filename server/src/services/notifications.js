@@ -202,7 +202,7 @@ async function dispatchWebPush(userId, notificationItem) {
                     endpoint: sub.endpoint,
                     keys: JSON.parse(sub.keys)
                 };
-                await webpush.sendNotification(subObj, payloadString);
+                await webpush.sendNotification(subObj, payloadString, { timeout: 5000 });
             } catch (sendErr) {
                 // If 404 or 410 (Gone), delete stale subscription
                 if (sendErr.statusCode === 404 || sendErr.statusCode === 410) {

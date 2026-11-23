@@ -233,8 +233,12 @@ const GroupStats = () => {
 
     const socket = getSocket();
 
+    let debounceTimer = null;
     const handleRefresh = () => {
-      fetchData(true);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchData(true);
+      }, 450);
     };
 
     const handleTableClosed = (payload) => {
@@ -243,7 +247,7 @@ const GroupStats = () => {
           prev.map((t) => (t.id === payload.tableId ? { ...t, status: 'CLOSED', isActive: false } : t))
         );
       }
-      fetchData(true);
+      handleRefresh();
     };
 
     const handleEntryFeeUpdated = async (payload) => {
@@ -281,7 +285,7 @@ const GroupStats = () => {
       } catch (err) {
         console.error('Failed to refetch tables on entry_fee_updated:', err);
       }
-      fetchData(true);
+      handleRefresh();
     };
 
     socket.on('table_created', handleRefresh);
@@ -334,6 +338,7 @@ const GroupStats = () => {
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (pollTimer) clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
