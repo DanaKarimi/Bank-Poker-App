@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -11,6 +11,8 @@ import {
   getGroupStatsDetails,
   createTable,
   getGroupPlayersList,
+  getGroupPasswordResets,
+  resetGroupMemberPassword,
 } from '../api';
 import TableCard from '../components/TableCard';
 import RequestCard from '../components/RequestCard';
@@ -35,7 +37,9 @@ import {
   BarChart3,
   X,
   Check,
-  AlertCircle
+  AlertCircle,
+  KeyRound,
+  Copy
 } from 'lucide-react';
 
 const CHIP_PRESETS = [5, 10, 25, 50, 100];
@@ -73,6 +77,13 @@ const GroupStats = () => {
   const [manualPlayerNames, setManualPlayerNames] = useState('');
   const [createTableLoading, setCreateTableLoading] = useState(false);
   const [createTableError, setCreateTableError] = useState('');
+  const [passwordResets, setPasswordResets] = useState([]);
+  const [resetModalTarget, setResetModalTarget] = useState(null); // { userId, username, displayName }
+  const [resetTempPassword, setResetTempPassword] = useState('');
+  const [resetResult, setResetResult] = useState(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const isFetchingRef = useRef(false);
 
   // 1. Fetch group info
   const fetchGroupInfo = async () => {
@@ -90,6 +101,8 @@ const GroupStats = () => {
 
   // 2. Fetch stats, tables & requests
   const fetchData = async (isBackground = false) => {
+    if (isBackground && isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (!isBackground) {
       setLoading(true);
       setError('');
@@ -103,6 +116,7 @@ const GroupStats = () => {
         balancesRes,
         settlementRes,
         groupStatsRes,
+        passwordResetsRes,
       ] = await Promise.allSettled([
         getGroupStats(groupId),
         getGroupTables(groupId),
@@ -110,6 +124,7 @@ const GroupStats = () => {
         getGroupBalances(groupId),
         getGroupSettlementPlan(groupId),
         getGroupStatsDetails(groupId),
+        getGroupPasswordResets(groupId),
       ]);
 
       if (statsRes.status === 'fulfilled') {
@@ -181,12 +196,17 @@ const GroupStats = () => {
       if (groupStatsRes.status === 'fulfilled') {
         setGroupStatsDetails(groupStatsRes.value.data?.stats || groupStatsRes.value.data || null);
       }
+
+      if (passwordResetsRes.status === 'fulfilled') {
+        setPasswordResets(passwordResetsRes.value.data?.requests || []);
+      }
     } catch (err) {
       console.error('Failed to load group details:', err);
       if (!isBackground) {
         setError('Failed to load group data. Please try again.');
       }
     } finally {
+      isFetchingRef.current = false;
       if (!isBackground) {
         setLoading(false);
       }
@@ -271,18 +291,42 @@ const GroupStats = () => {
     socket.on('settlement_done', handleRefresh);
     socket.on('entry_fee_updated', handleEntryFeeUpdated);
 
-    const interval = setInterval(() => {
-      fetchData(true);
-    }, 3500);
-
-    const handleFocus = () => {
-      fetchData(true);
+    let pollTimer = null;
+    const schedulePoll = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      const intervalMs = socket.connected ? 25000 : 8000;
+      pollTimer = setInterval(() => {
+        if (!document.hidden) {
+          fetchData(true);
+        }
+      }, intervalMs);
     };
+
+    const handleSocketConnect = () => schedulePoll();
+    const handleSocketDisconnect = () => schedulePoll();
+    socket.on('connect', handleSocketConnect);
+    socket.on('disconnect', handleSocketDisconnect);
+    schedulePoll();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchData(true);
+      }
+    };
+    const handleFocus = () => {
+      if (!document.hidden) {
+        fetchData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
     return () => {
-      clearInterval(interval);
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
+      socket.off('connect', handleSocketConnect);
+      socket.off('disconnect', handleSocketDisconnect);
       leaveGroup(groupId);
       socket.off('table_created', handleRefresh);
       socket.off('table_closed', handleTableClosed);
@@ -401,6 +445,42 @@ const GroupStats = () => {
   const isPositive = myBalance >= 0;
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
 
+  const isGroupAdmin = Boolean(
+    user?.role === 'SUPER_ADMIN' ||
+    group?.role === 'ADMIN' ||
+    group?.role === 'SUPERADMIN' ||
+    group?.role === 'SUPER_ADMIN' ||
+    group?.owner_user_id === user?.id
+  );
+
+  const handleAdminResetPassword = async (targetUser, mode) => {
+    if (!targetUser?.userId) return;
+    setResetBusy(true);
+    setResetResult(null);
+    setCopiedCode(false);
+    try {
+      const payload =
+        mode === 'direct'
+          ? { newPassword: resetTempPassword }
+          : { generateCode: true };
+      const res = await resetGroupMemberPassword(groupId, targetUser.userId, payload);
+      setResetResult(res.data);
+      setResetTempPassword('');
+      fetchData(true);
+    } catch (err) {
+      setResetResult({ error: err.response?.data?.error || 'Failed to reset password' });
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const handleCopyResetCode = (code) => {
+    if (!code || !navigator.clipboard) return;
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2500);
+  };
+
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-clip bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
       <div className="w-full max-w-4xl min-w-0 space-y-6">
@@ -499,6 +579,71 @@ const GroupStats = () => {
             </div>
           </div>
         </div>
+
+        {/* Pending Password Reset Requests (Group Admin / Super Admin) */}
+        {isGroupAdmin && passwordResets.length > 0 && (
+          <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 space-y-2.5 shadow-lg">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+                <KeyRound className="w-4 h-4 shrink-0" />
+                <span>Password Reset Requests ({passwordResets.length})</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {passwordResets.map((reqItem) => (
+                <div
+                  key={reqItem.id}
+                  className="p-3 bg-felt-dark/70 border border-gold-accent/25 rounded-xl flex flex-wrap items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-cream-text truncate">
+                      {reqItem.displayName} <span className="text-cream-text/50 font-normal">@{reqItem.username}</span>
+                    </div>
+                    <div className="text-[11px] text-cream-text/60">
+                      {reqItem.status === 'APPROVED' && reqItem.resetCode ? (
+                        <span>
+                          Active Code:{' '}
+                          <span className="font-mono font-black text-gold-accent tracking-widest">
+                            {reqItem.resetCode}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-amber-300">Awaiting admin reset code</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {reqItem.resetCode && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyResetCode(reqItem.resetCode)}
+                        className="px-2.5 py-1.5 bg-felt-card border border-gold-accent/40 hover:border-gold-accent text-gold-accent rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetModalTarget({
+                          userId: reqItem.userId,
+                          username: reqItem.username,
+                          displayName: reqItem.displayName
+                        });
+                        setResetTempPassword('');
+                        setResetResult(reqItem.resetCode ? { mode: 'code', resetCode: reqItem.resetCode } : null);
+                      }}
+                      className="px-3 py-1.5 bg-gold-accent text-black hover:bg-gold-light rounded-lg text-[11px] font-bold cursor-pointer"
+                    >
+                      Reset Password
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Navigation Tabs (Like Android App) */}
         <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-3 overflow-x-auto max-w-full">
@@ -647,6 +792,100 @@ const GroupStats = () => {
           />
         )}
       </div>
+
+      {/* MEMBER PASSWORD RESET MODAL */}
+      {resetModalTarget && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gold-accent/30">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-gold-accent" />
+                <h3 className="text-sm font-bold text-cream-text uppercase tracking-wider">
+                  Reset Password
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetModalTarget(null)}
+                className="text-cream-text/60 hover:text-cream-text p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-felt-dark/70 rounded-xl border border-gold-accent/25 text-xs">
+              <div className="text-cream-text/60">Member</div>
+              <div className="font-bold text-cream-text text-sm">
+                {resetModalTarget.displayName}{' '}
+                <span className="text-gold-accent font-normal">@{resetModalTarget.username}</span>
+              </div>
+            </div>
+
+            {resetResult?.error && (
+              <div className="p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-red-200 text-xs">
+                {resetResult.error}
+              </div>
+            )}
+
+            {resetResult?.resetCode && (
+              <div className="p-4 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-center space-y-2">
+                <div className="text-[11px] uppercase tracking-wider text-emerald-300 font-bold">
+                  6-Character Reset Code (Valid 24h)
+                </div>
+                <div className="text-2xl font-mono font-black tracking-[0.3em] text-gold-accent">
+                  {resetResult.resetCode}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyResetCode(resetResult.resetCode)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-felt-dark border border-gold-accent/50 rounded-lg text-xs font-bold text-gold-accent hover:bg-felt-card cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Code'}</span>
+                </button>
+              </div>
+            )}
+
+            {resetResult?.mode === 'direct' && (
+              <div className="p-3 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs font-semibold">
+                {resetResult.message}
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={resetBusy}
+              onClick={() => handleAdminResetPassword(resetModalTarget, 'code')}
+              className="w-full py-2.5 bg-gold-accent text-black font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-gold-light transition cursor-pointer disabled:opacity-50"
+            >
+              {resetBusy ? 'Working...' : 'Generate 6-Char Reset Code (24h)'}
+            </button>
+
+            <div className="pt-2 border-t border-gold-accent/20 space-y-2">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-cream-text/70">
+                Or Set Temporary Password Directly
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={resetTempPassword}
+                  onChange={(e) => setResetTempPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="flex-1 min-w-0 px-3 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text text-xs focus:outline-none focus:border-gold-accent"
+                />
+                <button
+                  type="button"
+                  disabled={resetBusy || resetTempPassword.length < 6}
+                  onClick={() => handleAdminResetPassword(resetModalTarget, 'direct')}
+                  className="px-4 py-2 bg-felt-dark border border-gold-accent/60 text-gold-accent hover:bg-gold-accent hover:text-black font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-40 shrink-0"
+                >
+                  Set Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CREATE TABLE MODAL (Checklist + Manual + Entry Fee) */}
       {isCreateTableOpen && (

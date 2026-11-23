@@ -19,7 +19,8 @@ import {
   Sliders,
   X,
   Plus,
-  Minus
+  Minus,
+  Copy
 } from 'lucide-react';
 import { UserBadge, PokerAvatar } from '../components/AvatarSystem';
 import GroupCodeChip from '../components/GroupCodeChip';
@@ -34,6 +35,7 @@ import {
   deleteAdminTable,
   getAdminTablePlayers,
   updateAdminTablePlayer,
+  resetAdminUserPassword,
   getServerHealth
 } from '../api';
 
@@ -42,6 +44,29 @@ export const AdminDashboard = () => {
   const navigate = useNavigate();
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const [resetUserTarget, setResetUserTarget] = useState(null);
+  const [resetTempPass, setResetTempPass] = useState('');
+  const [resetUserResult, setResetUserResult] = useState(null);
+  const [resetUserBusy, setResetUserBusy] = useState(false);
+  const [resetCodeCopied, setResetCodeCopied] = useState(false);
+
+  const handleAdminUserPasswordReset = async (mode) => {
+    if (!resetUserTarget) return;
+    setResetUserBusy(true);
+    setResetUserResult(null);
+    setResetCodeCopied(false);
+    try {
+      const payload = mode === 'direct' ? { newPassword: resetTempPass } : { generateCode: true };
+      const res = await resetAdminUserPassword(resetUserTarget.id, payload);
+      setResetUserResult(res.data);
+      setResetTempPass('');
+    } catch (err) {
+      setResetUserResult({ error: err.response?.data?.error || 'Failed to reset password' });
+    } finally {
+      setResetUserBusy(false);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'users' | 'groups' | 'tables'
   const [stats, setStats] = useState(null);
@@ -495,17 +520,33 @@ export const AdminDashboard = () => {
                             {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
                           </td>
                           <td className="p-3.5 text-right">
-                            {u.id !== user.id ? (
-                              <button
-                                onClick={() => setDeleteTarget({ type: 'user', id: u.id, name: u.username })}
-                                className="p-1.5 text-red-400 hover:text-red-200 hover:bg-red-900/40 rounded-lg transition cursor-pointer"
-                                title="Delete user"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <span className="text-[10px] text-cream-text/40 italic">Self</span>
-                            )}
+                            <div className="inline-flex items-center gap-1 justify-end">
+                              {!u.is_guest && (
+                                <button
+                                  onClick={() => {
+                                    setResetUserTarget(u);
+                                    setResetTempPass('');
+                                    setResetUserResult(null);
+                                    setResetCodeCopied(false);
+                                  }}
+                                  className="p-1.5 text-gold-accent hover:text-gold-light hover:bg-gold-accent/15 rounded-lg transition cursor-pointer"
+                                  title="Reset password"
+                                >
+                                  <Key className="w-4 h-4" />
+                                </button>
+                              )}
+                              {u.id !== user.id ? (
+                                <button
+                                  onClick={() => setDeleteTarget({ type: 'user', id: u.id, name: u.username })}
+                                  className="p-1.5 text-red-400 hover:text-red-200 hover:bg-red-900/40 rounded-lg transition cursor-pointer"
+                                  title="Delete user"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-cream-text/40 italic">Self</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -825,6 +866,105 @@ export const AdminDashboard = () => {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+      {/* ADMIN USER PASSWORD RESET MODAL */}
+      {resetUserTarget && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-felt-card border-2 border-gold-accent rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gold-accent/30">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-gold-accent" />
+                <h3 className="text-sm font-bold text-cream-text uppercase tracking-wider">
+                  Reset User Password
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetUserTarget(null)}
+                className="text-cream-text/60 hover:text-cream-text p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-felt-dark/70 rounded-xl border border-gold-accent/25 text-xs">
+              <div className="text-cream-text/60">User</div>
+              <div className="font-bold text-cream-text text-sm">
+                {resetUserTarget.display_name || resetUserTarget.username}{' '}
+                <span className="text-gold-accent font-normal">@{resetUserTarget.username}</span>
+              </div>
+            </div>
+
+            {resetUserResult?.error && (
+              <div className="p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-red-200 text-xs">
+                {resetUserResult.error}
+              </div>
+            )}
+
+            {resetUserResult?.resetCode && (
+              <div className="p-4 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-center space-y-2">
+                <div className="text-[11px] uppercase tracking-wider text-emerald-300 font-bold">
+                  6-Character Reset Code (Valid 24h)
+                </div>
+                <div className="text-2xl font-mono font-black tracking-[0.3em] text-gold-accent">
+                  {resetUserResult.resetCode}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(resetUserResult.resetCode);
+                      setResetCodeCopied(true);
+                      setTimeout(() => setResetCodeCopied(false), 2500);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-felt-dark border border-gold-accent/50 rounded-lg text-xs font-bold text-gold-accent hover:bg-felt-card cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{resetCodeCopied ? 'Copied!' : 'Copy Code'}</span>
+                </button>
+              </div>
+            )}
+
+            {resetUserResult?.mode === 'direct' && (
+              <div className="p-3 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs font-semibold">
+                {resetUserResult.message}
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={resetUserBusy}
+              onClick={() => handleAdminUserPasswordReset('code')}
+              className="w-full py-2.5 bg-gold-accent text-black font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-gold-light transition cursor-pointer disabled:opacity-50"
+            >
+              {resetUserBusy ? 'Working...' : 'Generate 6-Char Reset Code (24h)'}
+            </button>
+
+            <div className="pt-2 border-t border-gold-accent/20 space-y-2">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-cream-text/70">
+                Or Set New Password Directly
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={resetTempPass}
+                  onChange={(e) => setResetTempPass(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="flex-1 min-w-0 px-3 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text text-xs focus:outline-none focus:border-gold-accent"
+                />
+                <button
+                  type="button"
+                  disabled={resetUserBusy || resetTempPass.length < 6}
+                  onClick={() => handleAdminUserPasswordReset('direct')}
+                  className="px-4 py-2 bg-felt-dark border border-gold-accent/60 text-gold-accent hover:bg-gold-accent hover:text-black font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-40 shrink-0"
+                >
+                  Set Password
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

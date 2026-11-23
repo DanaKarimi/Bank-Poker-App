@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Lock, User, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
+import { forgotPassword } from '../api';
+import { Lock, User, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle, KeyRound, ArrowLeft } from 'lucide-react';
 import { PokerAvatar, AvatarPickerModal } from '../components/AvatarSystem';
 
 const Login = () => {
-  const [activeTab, setActiveTab] = useState('guest'); // 'guest' | 'login' | 'register'
+  const [activeTab, setActiveTab] = useState('guest'); // 'guest' | 'login' | 'register' | 'forgot'
+  const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'reset'
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -16,7 +20,7 @@ const Login = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { user, login, register, guestJoin } = useAuth();
+  const { user, login, register, guestJoin, completeResetPassword } = useAuth();
   const navigate = useNavigate();
 
   // If already logged in, redirect to dashboard
@@ -62,6 +66,28 @@ const Login = () => {
         setSuccessMsg('Account created successfully! Logging you in...');
         await login(username.trim(), password);
         navigate('/dashboard');
+      } else if (activeTab === 'forgot') {
+        if (!username.trim()) {
+          setError('Please enter your username.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (forgotStep === 'request') {
+          const res = await forgotPassword(username.trim());
+          setSuccessMsg(
+            res.data?.message ||
+              'Reset request submitted. Ask your group admin for the 6-character reset code, then enter it below.'
+          );
+          setForgotStep('reset');
+        } else {
+          if (!resetCode.trim() || newPassword.length < 6) {
+            setError('Enter the 6-character reset code and a new password (at least 6 characters).');
+            setIsSubmitting(false);
+            return;
+          }
+          await completeResetPassword(username.trim(), resetCode.trim().toUpperCase(), newPassword);
+          navigate('/dashboard');
+        }
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -246,7 +272,115 @@ const Login = () => {
                     required
                   />
                 </div>
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('forgot');
+                      setForgotStep('request');
+                      setError('');
+                      setSuccessMsg('');
+                    }}
+                    className="text-[11px] font-semibold text-gold-accent hover:underline cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
               </div>
+            </>
+          )}
+
+          {activeTab === 'forgot' && (
+            <>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-gold-accent uppercase tracking-wider flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5" />
+                  {forgotStep === 'request' ? 'Request Password Reset' : 'Enter Reset Code'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('login');
+                    setError('');
+                    setSuccessMsg('');
+                  }}
+                  className="text-[11px] text-cream-text/70 hover:text-gold-accent flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  Back to Sign In
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1">
+                  Username
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gold-accent/70">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Enter your username"
+                    className="w-full pl-10 pr-4 py-2 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text placeholder-cream-text/40 text-sm focus:outline-none focus:border-gold-accent transition"
+                    required
+                  />
+                </div>
+              </div>
+
+              {forgotStep === 'request' ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotStep('reset');
+                      setError('');
+                    }}
+                    className="text-[11px] font-semibold text-gold-accent hover:underline cursor-pointer"
+                  >
+                    I already have a reset code →
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1">
+                      6-Character Reset Code
+                    </label>
+                    <input
+                      type="text"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. A7K9P2"
+                      maxLength={8}
+                      className="w-full px-4 py-2 bg-felt-dark border border-gold-accent/50 rounded-xl text-gold-accent font-mono tracking-[0.25em] uppercase text-center text-sm focus:outline-none focus:border-gold-accent transition"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gold-light mb-1">
+                      New Password (min 6 chars)
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gold-accent/70">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        minLength={6}
+                        className="w-full pl-10 pr-4 py-2 bg-felt-dark border border-gold-accent/50 rounded-xl text-cream-text placeholder-cream-text/40 text-sm focus:outline-none focus:border-gold-accent transition"
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -345,6 +479,11 @@ const Login = () => {
               <>
                 <UserPlus className="w-4 h-4" />
                 <span>Create Permanent Account</span>
+              </>
+            ) : activeTab === 'forgot' ? (
+              <>
+                <KeyRound className="w-4 h-4" />
+                <span>{forgotStep === 'request' ? 'Request Reset from Admin' : 'Reset Password & Sign In'}</span>
               </>
             ) : (
               <>

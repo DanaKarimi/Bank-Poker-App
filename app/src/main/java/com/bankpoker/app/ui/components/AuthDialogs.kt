@@ -41,7 +41,11 @@ fun AuthDialog(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Guest, 1: Login, 2: Register
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Guest, 1: Login, 2: Register, 3: Forgot Password
+    var forgotStep by remember { mutableIntStateOf(0) } // 0: Request reset, 1: Enter reset code + new password
+    var resetCode by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var infoMessage by remember { mutableStateOf<String?>(null) }
     var displayName by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -110,6 +114,14 @@ fun AuthDialog(
                     Text(
                         text = errorMessage!!,
                         color = LoseRed,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                if (infoMessage != null) {
+                    Text(
+                        text = infoMessage!!,
+                        color = WinGreen,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
                     )
@@ -249,6 +261,151 @@ fun AuthDialog(
                             } else {
                                 Text("Sign In", fontWeight = FontWeight.Bold)
                             }
+                        }
+
+                        TextButton(
+                            onClick = {
+                                selectedTab = 3
+                                forgotStep = 0
+                                errorMessage = null
+                                infoMessage = null
+                            }
+                        ) {
+                            Text("Forgot Password?", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    3 -> {
+                        // Forgot Password Recovery Flow
+                        Text(
+                            text = if (forgotStep == 0) "Request Password Reset" else "Enter Reset Code",
+                            color = Gold,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text("Username", color = Cream) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Gold,
+                                unfocusedBorderColor = Gold.copy(alpha = 0.5f),
+                                focusedTextColor = Cream,
+                                unfocusedTextColor = Cream
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (forgotStep == 0) {
+                            Button(
+                                onClick = {
+                                    if (username.isBlank()) {
+                                        errorMessage = "Please enter your username"
+                                        return@Button
+                                    }
+                                    isLoading = true
+                                    errorMessage = null
+                                    infoMessage = null
+                                    coroutineScope.launch {
+                                        val result = remoteRepository.forgotPassword(username)
+                                        isLoading = false
+                                        if (result.isSuccess) {
+                                            infoMessage = result.getOrNull() ?: "Reset request sent to group admins."
+                                            forgotStep = 1
+                                        } else {
+                                            errorMessage = result.exceptionOrNull()?.message ?: "Request failed"
+                                        }
+                                    }
+                                },
+                                enabled = !isLoading,
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                                } else {
+                                    Text("Request Reset from Admin", fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            TextButton(
+                                onClick = {
+                                    forgotStep = 1
+                                    errorMessage = null
+                                }
+                            ) {
+                                Text("I already have a reset code", color = Gold, fontSize = 12.sp)
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = resetCode,
+                                onValueChange = { resetCode = it.uppercase().take(8) },
+                                label = { Text("6-Char Reset Code", color = Cream) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Gold,
+                                    unfocusedBorderColor = Gold.copy(alpha = 0.5f),
+                                    focusedTextColor = Gold,
+                                    unfocusedTextColor = Gold
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("New Password (min 6 chars)", color = Cream) },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Gold,
+                                    unfocusedBorderColor = Gold.copy(alpha = 0.5f),
+                                    focusedTextColor = Cream,
+                                    unfocusedTextColor = Cream
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (username.isBlank() || resetCode.isBlank() || newPassword.length < 6) {
+                                        errorMessage = "Enter username, reset code, and a 6+ char password"
+                                        return@Button
+                                    }
+                                    isLoading = true
+                                    errorMessage = null
+                                    coroutineScope.launch {
+                                        val result = remoteRepository.resetPasswordWithCode(username, resetCode, newPassword)
+                                        isLoading = false
+                                        if (result.isSuccess) {
+                                            Toast.makeText(context, "Password reset! Signed in.", Toast.LENGTH_SHORT).show()
+                                            onAuthSuccess()
+                                        } else {
+                                            errorMessage = result.exceptionOrNull()?.message ?: "Reset failed"
+                                        }
+                                    }
+                                },
+                                enabled = !isLoading,
+                                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black)
+                                } else {
+                                    Text("Reset Password & Sign In", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        TextButton(
+                            onClick = {
+                                selectedTab = 1
+                                errorMessage = null
+                                infoMessage = null
+                            }
+                        ) {
+                            Text("Back to Sign In", color = Cream.copy(alpha = 0.7f), fontSize = 12.sp)
                         }
                     }
                     2 -> {

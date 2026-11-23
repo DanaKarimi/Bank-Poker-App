@@ -68,6 +68,7 @@ fun AdminManagementScreen(
     // Dialog States
     var userToDelete by remember { mutableStateOf<AdminUserDto?>(null) }
     var userToChangeRole by remember { mutableStateOf<AdminUserDto?>(null) }
+    var userToResetPassword by remember { mutableStateOf<AdminUserDto?>(null) }
     var groupToDelete by remember { mutableStateOf<AdminGroupDto?>(null) }
     var tableToDelete by remember { mutableStateOf<AdminTableDto?>(null) }
 
@@ -279,7 +280,8 @@ fun AdminManagementScreen(
                     1 -> UsersTabContent(
                         users = usersList,
                         onDeleteUser = { userToDelete = it },
-                        onChangeRole = { userToChangeRole = it }
+                        onChangeRole = { userToChangeRole = it },
+                        onResetPassword = { userToResetPassword = it }
                     )
                     2 -> GroupsTabContent(
                         groups = groupsList,
@@ -293,6 +295,129 @@ fun AdminManagementScreen(
                 }
             }
         }
+    }
+
+    // --- Reset User Password Dialog ---
+    if (userToResetPassword != null) {
+        val targetUser = userToResetPassword!!
+        var tempPassword by remember(targetUser.id) { mutableStateOf("") }
+        var generatedCode by remember(targetUser.id) { mutableStateOf<String?>(null) }
+        var statusMsg by remember(targetUser.id) { mutableStateOf<String?>(null) }
+        var isResetting by remember(targetUser.id) { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { if (!isResetting) userToResetPassword = null },
+            containerColor = FeltCard,
+            title = {
+                Text("Reset Password: ${targetUser.username}", color = Gold, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (generatedCode != null) {
+                        Surface(
+                            color = FeltDark,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Gold)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("6-Char Reset Code (Valid 24h)", color = WinGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = generatedCode!!,
+                                    color = Gold,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 4.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (statusMsg != null) {
+                        Text(statusMsg!!, color = Cream, fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            isResetting = true
+                            statusMsg = null
+                            coroutineScope.launch {
+                                val res = remoteRepository.resetAdminUserPassword(targetUser.id, generateCode = true)
+                                isResetting = false
+                                if (res.isSuccess) {
+                                    generatedCode = res.getOrNull()?.resetCode
+                                    statusMsg = "Share this code with ${targetUser.username}."
+                                } else {
+                                    statusMsg = res.exceptionOrNull()?.message ?: "Failed to generate code"
+                                }
+                            }
+                        },
+                        enabled = !isResetting,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Generate 6-Char Reset Code", fontWeight = FontWeight.Bold)
+                    }
+
+                    HorizontalDivider(color = Gold.copy(alpha = 0.25f))
+
+                    OutlinedTextField(
+                        value = tempPassword,
+                        onValueChange = { tempPassword = it },
+                        label = { Text("Or set temp password (6+ chars)", color = Cream) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Gold,
+                            unfocusedBorderColor = Gold.copy(alpha = 0.5f),
+                            focusedTextColor = Cream,
+                            unfocusedTextColor = Cream
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+                            if (tempPassword.length < 6) {
+                                statusMsg = "Password must be at least 6 characters"
+                                return@OutlinedButton
+                            }
+                            isResetting = true
+                            statusMsg = null
+                            coroutineScope.launch {
+                                val res = remoteRepository.resetAdminUserPassword(
+                                    userId = targetUser.id,
+                                    newPassword = tempPassword,
+                                    generateCode = false
+                                )
+                                isResetting = false
+                                if (res.isSuccess) {
+                                    Toast.makeText(context, "Password updated for ${targetUser.username}", Toast.LENGTH_SHORT).show()
+                                    userToResetPassword = null
+                                } else {
+                                    statusMsg = res.exceptionOrNull()?.message ?: "Failed to update password"
+                                }
+                            }
+                        },
+                        enabled = !isResetting && tempPassword.length >= 6,
+                        border = BorderStroke(1.dp, Gold),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Set Temporary Password", color = Gold, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { userToResetPassword = null }) {
+                    Text("Close", color = Cream)
+                }
+            }
+        )
     }
 
     // --- Delete User Confirmation Dialog ---
@@ -861,7 +986,8 @@ fun AdminMetricCard(
 fun UsersTabContent(
     users: List<AdminUserDto>,
     onDeleteUser: (AdminUserDto) -> Unit,
-    onChangeRole: (AdminUserDto) -> Unit
+    onChangeRole: (AdminUserDto) -> Unit,
+    onResetPassword: (AdminUserDto) -> Unit = {}
 ) {
     if (users.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -885,7 +1011,7 @@ fun UsersTabContent(
                 letterSpacing = 1.sp
             )
         }
-        items(users) { user ->
+        items(users, key = { it.id }) { user ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = FeltCard,
@@ -958,6 +1084,16 @@ fun UsersTabContent(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        OutlinedButton(
+                            onClick = { onResetPassword(user) },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("Reset PW", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = { onChangeRole(user) },
                             shape = RoundedCornerShape(8.dp),

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { run, get, all } = require('../database/db');
 const { authenticateToken, requireSuperAdmin } = require('../middleware/auth');
 
@@ -374,6 +375,132 @@ router.put('/tables/:tableId/players/:playerId', async (req, res) => {
     } catch (err) {
         console.error('Error updating player by admin:', err);
         res.status(500).json({ error: 'Failed to update player' });
+    }
+});
+
+const ADMIN_RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateAdminResetCode(length = 6) {
+    const bytes = crypto.randomBytes(length);
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += ADMIN_RESET_CODE_ALPHABET[bytes[i] % ADMIN_RESET_CODE_ALPHABET.length];
+    }
+    return code;
+}
+
+/**
+ * GET /api/admin/password-resets
+ * List all active pending/approved password reset requests across the platform
+ */
+router.get('/password-resets', async (req, res) => {
+    try {
+        const now = Date.now();
+        await run(
+            `UPDATE password_reset_requests SET status = 'EXPIRED'
+             WHERE status IN ('PENDING', 'APPROVED') AND expires_at IS NOT NULL AND expires_at < ?`,
+            [now]
+        );
+        const rows = await all(
+            `SELECT pr.id, pr.user_id, pr.username, u.display_name, u.avatar_id,
+                    pr.reset_code, pr.status, pr.expires_at, pr.created_at, pr.resolved_at
+             FROM password_reset_requests pr
+             JOIN users u ON u.id = pr.user_id
+             WHERE pr.status IN ('PENDING', 'APPROVED')
+               AND (pr.expires_at IS NULL OR pr.expires_at >= ?)
+             ORDER BY CASE WHEN pr.status = 'PENDING' THEN 0 ELSE 1 END, pr.created_at DESC`,
+            [now]
+        );
+        return res.json({
+            requests: rows.map(r => ({
+                id: r.id,
+                userId: r.user_id,
+                username: r.username,
+                displayName: r.display_name || r.username,
+                avatarId: r.avatar_id || 'avatar_1',
+                resetCode: r.reset_code || null,
+                status: r.status,
+                expiresAt: r.expires_at,
+                createdAt: r.created_at,
+                resolvedAt: r.resolved_at
+            }))
+        });
+    } catch (err) {
+        console.error('Error listing admin password resets:', err);
+        return res.status(500).json({ error: 'Failed to list password reset requests' });
+    }
+});
+
+/**
+ * POST /api/admin/users/:userId/reset-password
+ * Super Admin generates a 6-char 24h reset code OR directly sets a new password
+ */
+router.post('/users/:userId/reset-password', async (req, res) => {
+    try {
+        const targetUserId = req.params.userId;
+        const { newPassword, generateCode } = req.body || {};
+
+        const targetUser = await get('SELECT id, username, display_name FROM users WHERE id = ?', [targetUserId]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const now = Date.now();
+        if (newPassword !== undefined && newPassword !== null && String(newPassword).length > 0 && !generateCode) {
+            if (String(newPassword).length < 6) {
+                return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+            }
+            const passwordHash = await bcrypt.hash(String(newPassword), 10);
+            await run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [passwordHash, now, targetUser.id]);
+            await run(
+                `UPDATE password_reset_requests SET status = 'COMPLETED', resolved_by = ?, resolved_at = ?
+                 WHERE user_id = ? AND status IN ('PENDING', 'APPROVED')`,
+                [req.user.id, now, targetUser.id]
+            );
+            return res.status(200).json({
+                message: `Password updated for ${targetUser.username}`,
+                mode: 'direct',
+                userId: targetUser.id,
+                username: targetUser.username
+            });
+        }
+
+        const resetCode = generateAdminResetCode(6);
+        const expiresAt = now + 24 * 60 * 60 * 1000;
+        const existingPending = await get(
+            `SELECT id FROM password_reset_requests WHERE user_id = ? AND status = 'PENDING' ORDER BY created_at DESC LIMIT 1`,
+            [targetUser.id]
+        );
+
+        let requestId;
+        if (existingPending) {
+            requestId = existingPending.id;
+            await run(
+                `UPDATE password_reset_requests
+                 SET reset_code = ?, status = 'APPROVED', expires_at = ?, resolved_by = ?, resolved_at = ?
+                 WHERE id = ?`,
+                [resetCode, expiresAt, req.user.id, now, requestId]
+            );
+        } else {
+            requestId = crypto.randomUUID();
+            await run(
+                `INSERT INTO password_reset_requests (id, user_id, username, reset_code, status, expires_at, created_at, resolved_by, resolved_at)
+                 VALUES (?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
+                [requestId, targetUser.id, targetUser.username, resetCode, expiresAt, now, req.user.id, now]
+            );
+        }
+
+        return res.status(200).json({
+            message: `Reset code generated for ${targetUser.username}`,
+            mode: 'code',
+            requestId,
+            resetCode,
+            expiresAt,
+            userId: targetUser.id,
+            username: targetUser.username
+        });
+    } catch (err) {
+        console.error('Error resetting user password by admin:', err);
+        return res.status(500).json({ error: 'Failed to reset user password' });
     }
 });
 

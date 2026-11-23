@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { run, get, all } = require('../database/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { generateInviteCode } = require('../utils/helpers');
@@ -1911,6 +1912,9 @@ router.put('/:id/payments/:paymentId', authenticateToken, async (req, res) => {
     }
 });
 
+const entryFeeReconcileCache = new Map();
+const ENTRY_FEE_RECONCILE_TTL_MS = 30000;
+
 /**
  * GET /api/groups/:id/entry-fees
  * Return all entry fee records for this group (single source of truth with players table)
@@ -1922,57 +1926,75 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
         const actualGroupId = group.id;
-
-        // Auto-seed and synchronize any missing or out-of-sync entry fee records from active players
-        const seatedPlayers = await all(
-            `SELECT p.id, p.table_id, p.name, p.entry_fee_paid, p.created_at, t.name as table_name, t.entry_fee, t.server_id as table_server_id
-             FROM players p
-             JOIN tables t ON (p.table_id = t.id OR p.table_id = t.server_id)
-             WHERE (t.group_id = ? OR t.group_id = ?) 
-               AND (t.has_entry_fee = 1 OR (t.entry_fee IS NOT NULL AND t.entry_fee > 0)) 
-               AND p.is_deleted = 0 AND t.is_deleted = 0`,
-            [actualGroupId, groupId]
-        );
-
-        const existingFeeRecords = await all(
-            `SELECT id, table_id, player_name, paid, amount
-             FROM entry_fee_records
-             WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0`,
-            [actualGroupId, groupId]
-        );
-
         const now = Date.now();
-        for (const p of seatedPlayers) {
-            const matched = existingFeeRecords.find(f => 
-                (f.table_id === p.table_id || (p.table_server_id && f.table_id === p.table_server_id)) && 
-                ((f.player_name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase())
+        const lastReconciledAt = entryFeeReconcileCache.get(actualGroupId) || 0;
+        const shouldReconcile = req.query.forceReconcile === '1' || (now - lastReconciledAt > ENTRY_FEE_RECONCILE_TTL_MS);
+
+        if (shouldReconcile) {
+            // Auto-seed and synchronize any missing or out-of-sync entry fee records from active players (throttled + O(N) map lookup)
+            const seatedPlayers = await all(
+                `SELECT p.id, p.table_id, p.name, p.entry_fee_paid, p.created_at, t.name as table_name, t.entry_fee, t.server_id as table_server_id
+                 FROM players p
+                 JOIN tables t ON (p.table_id = t.id OR p.table_id = t.server_id)
+                 WHERE (t.group_id = ? OR t.group_id = ?) 
+                   AND (t.has_entry_fee = 1 OR (t.entry_fee IS NOT NULL AND t.entry_fee > 0)) 
+                   AND p.is_deleted = 0 AND t.is_deleted = 0`,
+                [actualGroupId, groupId]
             );
 
-            if (!matched) {
-                const newEfId = crypto.randomUUID();
-                const numFee = Number(p.entry_fee) || 0;
-                await run(
-                    `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-                    [
-                        newEfId,
-                        actualGroupId,
-                        p.table_id,
-                        p.table_name || 'Table',
-                        p.name,
-                        numFee,
-                        p.entry_fee_paid ? 1 : 0,
-                        p.created_at || now,
-                        newEfId,
-                        now
-                    ]
-                );
-            } else if (Boolean(matched.paid) !== Boolean(p.entry_fee_paid)) {
-                // Reconcile: if either is paid, both become paid; if records was updated, sync player
-                const unifiedPaid = (matched.paid || p.entry_fee_paid) ? 1 : 0;
-                await run('UPDATE entry_fee_records SET paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, matched.id]);
-                await run('UPDATE players SET entry_fee_paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, p.id]);
+            const existingFeeRecords = await all(
+                `SELECT id, table_id, player_name, paid, amount
+                 FROM entry_fee_records
+                 WHERE (group_id = ? OR group_id = ?) AND is_deleted = 0`,
+                [actualGroupId, groupId]
+            );
+
+            const feeLookup = new Map();
+            for (const f of existingFeeRecords) {
+                const key = `${(f.table_id || '').trim()}::${(f.player_name || '').trim().toLowerCase()}`;
+                feeLookup.set(key, f);
             }
+
+            for (const p of seatedPlayers) {
+                const normName = (p.name || '').trim().toLowerCase();
+                const matched =
+                    feeLookup.get(`${(p.table_id || '').trim()}::${normName}`) ||
+                    (p.table_server_id ? feeLookup.get(`${String(p.table_server_id).trim()}::${normName}`) : undefined);
+
+                if (!matched) {
+                    const newEfId = crypto.randomUUID();
+                    const numFee = Number(p.entry_fee) || 0;
+                    await run(
+                        `INSERT INTO entry_fee_records (id, group_id, table_id, table_name, player_name, amount, paid, timestamp, server_id, updated_at, is_synced, is_deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+                        [
+                            newEfId,
+                            actualGroupId,
+                            p.table_id,
+                            p.table_name || 'Table',
+                            p.name,
+                            numFee,
+                            p.entry_fee_paid ? 1 : 0,
+                            p.created_at || now,
+                            newEfId,
+                            now
+                        ]
+                    );
+                    feeLookup.set(`${(p.table_id || '').trim()}::${normName}`, {
+                        id: newEfId,
+                        table_id: p.table_id,
+                        player_name: p.name,
+                        paid: p.entry_fee_paid ? 1 : 0,
+                        amount: numFee
+                    });
+                } else if (Boolean(matched.paid) !== Boolean(p.entry_fee_paid)) {
+                    const unifiedPaid = (matched.paid || p.entry_fee_paid) ? 1 : 0;
+                    await run('UPDATE entry_fee_records SET paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, matched.id]);
+                    await run('UPDATE players SET entry_fee_paid = ?, updated_at = ? WHERE id = ?', [unifiedPaid, now, p.id]);
+                    matched.paid = unifiedPaid;
+                }
+            }
+            entryFeeReconcileCache.set(actualGroupId, now);
         }
 
         const records = await all(
@@ -1983,23 +2005,24 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
             [actualGroupId, groupId]
         );
 
-        // Deduplicate records by (player_name, table)
+        // O(N) deduplication by (player_name, tableId / tableName)
         const dedupedRecords = [];
+        const byTableId = new Map();
+        const byTableName = new Map();
         for (const r of records) {
             const normPlayer = (r.player_name || '').trim().toLowerCase();
             const normTableId = (r.table_id || '').trim();
             const normTableName = (r.table_name || '').trim().toLowerCase();
 
-            const existing = dedupedRecords.find(e => {
-                const samePlayer = (e.player_name || '').trim().toLowerCase() === normPlayer;
-                if (!samePlayer) return false;
-                const sameTableId = normTableId && (e.table_id || '').trim() === normTableId;
-                const sameTableName = normTableName && (e.table_name || '').trim().toLowerCase() === normTableName;
-                return sameTableId || sameTableName;
-            });
+            const idKey = normTableId ? `${normPlayer}::id::${normTableId}` : null;
+            const nameKey = normTableName ? `${normPlayer}::name::${normTableName}` : null;
+            const existing = (idKey && byTableId.get(idKey)) || (nameKey && byTableName.get(nameKey));
 
             if (!existing) {
-                dedupedRecords.push({ ...r });
+                const copy = { ...r };
+                dedupedRecords.push(copy);
+                if (idKey) byTableId.set(idKey, copy);
+                if (nameKey) byTableName.set(nameKey, copy);
             } else {
                 if (r.paid) existing.paid = 1;
                 if ((!existing.amount || existing.amount <= 0) && r.amount > 0) {
@@ -2007,6 +2030,8 @@ router.get('/:id/entry-fees', authenticateToken, async (req, res) => {
                 }
                 if (!existing.table_name && r.table_name) existing.table_name = r.table_name;
                 if (!existing.table_id && r.table_id) existing.table_id = r.table_id;
+                if (idKey) byTableId.set(idKey, existing);
+                if (nameKey) byTableName.set(nameKey, existing);
             }
         }
 
@@ -2597,6 +2622,186 @@ router.post('/:id/join-new-player', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error joining as new player:', error);
         return res.status(500).json({ error: 'Internal server error while creating new player' });
+    }
+});
+
+const RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateResetCode(length = 6) {
+    const bytes = crypto.randomBytes(length);
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += RESET_CODE_ALPHABET[bytes[i] % RESET_CODE_ALPHABET.length];
+    }
+    return code;
+}
+
+async function isGroupAdminOrSuperAdmin(user, group) {
+    if (!user || !group) return false;
+    if (user.role === 'SUPER_ADMIN') return true;
+    if (group.owner_user_id === user.id || group.created_by === user.id) return true;
+    const membership = await get(
+        'SELECT role FROM group_members WHERE user_id = ? AND group_id = ?',
+        [user.id, group.id]
+    );
+    return Boolean(membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+}
+
+/**
+ * GET /api/groups/:groupId/password-resets
+ * List pending & active approved password reset requests for members of this group (Group Admin / Super Admin)
+ */
+router.get('/:groupId/password-resets', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.groupId;
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const allowed = await isGroupAdminOrSuperAdmin(req.user, group);
+        if (!allowed) {
+            return res.status(403).json({ error: 'Permission denied: group admin privileges required' });
+        }
+
+        const now = Date.now();
+        // Auto-expire stale requests
+        await run(
+            `UPDATE password_reset_requests SET status = 'EXPIRED'
+             WHERE status IN ('PENDING', 'APPROVED') AND expires_at IS NOT NULL AND expires_at < ?`,
+            [now]
+        );
+
+        const rows = await all(
+            `SELECT pr.id, pr.user_id, pr.username, u.display_name, u.avatar_id,
+                    pr.reset_code, pr.status, pr.expires_at, pr.created_at, pr.resolved_at
+             FROM password_reset_requests pr
+             JOIN users u ON u.id = pr.user_id
+             WHERE pr.status IN ('PENDING', 'APPROVED')
+               AND (pr.expires_at IS NULL OR pr.expires_at >= ?)
+               AND (
+                 pr.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?)
+                 OR pr.user_id IN (
+                   SELECT DISTINCT p.user_id FROM players p
+                   JOIN tables t ON p.table_id = t.id
+                   WHERE t.group_id = ? AND p.user_id IS NOT NULL AND p.is_deleted = 0 AND t.is_deleted = 0
+                 )
+               )
+             ORDER BY CASE WHEN pr.status = 'PENDING' THEN 0 ELSE 1 END, pr.created_at DESC`,
+            [now, group.id, group.id]
+        );
+
+        return res.status(200).json({
+            requests: rows.map(r => ({
+                id: r.id,
+                userId: r.user_id,
+                username: r.username,
+                displayName: r.display_name || r.username,
+                avatarId: r.avatar_id || 'avatar_1',
+                resetCode: r.reset_code || null,
+                status: r.status,
+                expiresAt: r.expires_at,
+                createdAt: r.created_at,
+                resolvedAt: r.resolved_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching group password resets:', error);
+        return res.status(500).json({ error: 'Failed to load password reset requests' });
+    }
+});
+
+/**
+ * POST /api/groups/:groupId/members/:userId/reset-password
+ * Group Admin / Super Admin generates a 6-char reset code (24h) OR directly sets a temporary password
+ */
+router.post('/:groupId/members/:userId/reset-password', authenticateToken, async (req, res) => {
+    try {
+        const { groupId, userId: targetUserId } = req.params;
+        const { newPassword, generateCode } = req.body || {};
+
+        const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const allowed = await isGroupAdminOrSuperAdmin(req.user, group);
+        if (!allowed) {
+            return res.status(403).json({ error: 'Permission denied: group admin privileges required' });
+        }
+
+        const targetUser = await get('SELECT id, username, display_name, role FROM users WHERE id = ?', [targetUserId]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'Target user not found' });
+        }
+
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const memberRow = await get(
+                `SELECT 1 AS ok FROM group_members WHERE user_id = ? AND group_id = ?
+                 UNION
+                 SELECT 1 AS ok FROM players p JOIN tables t ON p.table_id = t.id
+                 WHERE p.user_id = ? AND t.group_id = ? AND p.is_deleted = 0 AND t.is_deleted = 0
+                 LIMIT 1`,
+                [targetUserId, group.id, targetUserId, group.id]
+            );
+            if (!memberRow) {
+                return res.status(403).json({ error: 'Target user is not a member of this group' });
+            }
+        }
+
+        const now = Date.now();
+        if (newPassword !== undefined && newPassword !== null && String(newPassword).length > 0 && !generateCode) {
+            if (String(newPassword).length < 6) {
+                return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+            }
+            const passwordHash = await bcrypt.hash(String(newPassword), 10);
+            await run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [passwordHash, now, targetUser.id]);
+            await run(
+                `UPDATE password_reset_requests SET status = 'COMPLETED', resolved_by = ?, resolved_at = ?
+                 WHERE user_id = ? AND status IN ('PENDING', 'APPROVED')`,
+                [req.user.id, now, targetUser.id]
+            );
+            return res.status(200).json({
+                message: `Password updated for ${targetUser.username}`,
+                mode: 'direct',
+                userId: targetUser.id,
+                username: targetUser.username
+            });
+        }
+
+        // Default / generateCode: create or approve a 6-char 24h reset code
+        const resetCode = generateResetCode(6);
+        const expiresAt = now + 24 * 60 * 60 * 1000;
+        const existingPending = await get(
+            `SELECT id FROM password_reset_requests WHERE user_id = ? AND status = 'PENDING' ORDER BY created_at DESC LIMIT 1`,
+            [targetUser.id]
+        );
+
+        let requestId;
+        if (existingPending) {
+            requestId = existingPending.id;
+            await run(
+                `UPDATE password_reset_requests
+                 SET reset_code = ?, status = 'APPROVED', expires_at = ?, resolved_by = ?, resolved_at = ?
+                 WHERE id = ?`,
+                [resetCode, expiresAt, req.user.id, now, requestId]
+            );
+        } else {
+            requestId = crypto.randomUUID();
+            await run(
+                `INSERT INTO password_reset_requests (id, user_id, username, reset_code, status, expires_at, created_at, resolved_by, resolved_at)
+                 VALUES (?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)`,
+                [requestId, targetUser.id, targetUser.username, resetCode, expiresAt, now, req.user.id, now]
+            );
+        }
+
+        return res.status(200).json({
+            message: `Reset code generated for ${targetUser.username}`,
+            mode: 'code',
+            requestId,
+            resetCode,
+            expiresAt,
+            userId: targetUser.id,
+            username: targetUser.username
+        });
+    } catch (error) {
+        console.error('Error resetting member password:', error);
+        return res.status(500).json({ error: 'Failed to reset member password' });
     }
 });
 

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -101,6 +102,8 @@ fun GroupDetailScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showPasswordResetsDialog by remember { mutableStateOf(false) }
+    val passwordResetRequests by viewModel.passwordResetRequests.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var selectedTableForAction by remember { mutableStateOf<PokerTable?>(null) }
@@ -265,6 +268,24 @@ fun GroupDetailScreen(
                             )
                         }
                         DropdownMenuItem(
+                            text = {
+                                val countSuffix = if (passwordResetRequests.isNotEmpty()) " (${passwordResetRequests.size})" else ""
+                                Text("Password Resets$countSuffix", color = Cream)
+                            },
+                            onClick = {
+                                showMenu = false
+                                viewModel.fetchPasswordResets()
+                                showPasswordResetsDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Gold
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Edit Name", color = Cream) },
                             onClick = {
                                 showMenu = false
@@ -419,6 +440,168 @@ fun GroupDetailScreen(
                         Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                     }
                 )
+            }
+        )
+    }
+
+    if (showPasswordResetsDialog) {
+        var selectedResetUser by remember { mutableStateOf<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto?>(null) }
+        var tempPassInput by remember { mutableStateOf("") }
+        var generatedCodeText by remember { mutableStateOf<String?>(null) }
+        var statusFeedback by remember { mutableStateOf<String?>(null) }
+        var isResetting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showPasswordResetsDialog = false },
+            containerColor = FeltCard,
+            title = {
+                Text(
+                    text = if (selectedResetUser == null) "Password Reset Requests" else "Reset: ${selectedResetUser!!.username}",
+                    color = Gold,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (selectedResetUser == null) {
+                        if (passwordResetRequests.isEmpty()) {
+                            Text(
+                                text = "No pending password reset requests in this group.",
+                                color = Cream.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        } else {
+                            passwordResetRequests.forEach { req ->
+                                Surface(
+                                    color = FeltBackground,
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = req.displayName ?: req.username,
+                                                color = Cream,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = if (!req.resetCode.isNullOrBlank()) "Code: ${req.resetCode}" else "@${req.username} • Pending",
+                                                color = if (!req.resetCode.isNullOrBlank()) Gold else Cream.copy(alpha = 0.6f),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                        Button(
+                                            onClick = {
+                                                selectedResetUser = req
+                                                generatedCodeText = req.resetCode
+                                                tempPassInput = ""
+                                                statusFeedback = null
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Reset", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val target = selectedResetUser!!
+                        if (!generatedCodeText.isNullOrBlank()) {
+                            Surface(
+                                color = FeltBackground,
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Gold)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("6-Char Reset Code (Valid 24h)", color = WinGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = generatedCodeText!!,
+                                        color = Gold,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 4.sp
+                                    )
+                                }
+                            }
+                        }
+                        if (statusFeedback != null) {
+                            Text(statusFeedback!!, color = Cream, fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                isResetting = true
+                                statusFeedback = null
+                                viewModel.resetMemberPassword(target.userId, generateCode = true) { res ->
+                                    isResetting = false
+                                    if (res.isSuccess) {
+                                        generatedCodeText = res.getOrNull()?.resetCode
+                                        statusFeedback = "Share this code with ${target.username}."
+                                    } else {
+                                        statusFeedback = res.exceptionOrNull()?.message ?: "Failed to generate code"
+                                    }
+                                }
+                            },
+                            enabled = !isResetting,
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Generate 6-Char Reset Code", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedTextField(
+                            value = tempPassInput,
+                            onValueChange = { tempPassInput = it },
+                            label = { Text("Or set temp password (6+ chars)", color = Cream) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                isResetting = true
+                                statusFeedback = null
+                                viewModel.resetMemberPassword(target.userId, newPassword = tempPassInput, generateCode = false) { res ->
+                                    isResetting = false
+                                    if (res.isSuccess) {
+                                        statusFeedback = "Password updated for ${target.username}."
+                                        tempPassInput = ""
+                                    } else {
+                                        statusFeedback = res.exceptionOrNull()?.message ?: "Failed to update password"
+                                    }
+                                }
+                            },
+                            enabled = !isResetting && tempPassInput.length >= 6,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Set Temporary Password", color = Gold, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (selectedResetUser != null) {
+                            selectedResetUser = null
+                        } else {
+                            showPasswordResetsDialog = false
+                        }
+                    }
+                ) {
+                    Text(if (selectedResetUser != null) "Back" else "Close", color = Cream)
+                }
             }
         )
     }
@@ -609,7 +792,7 @@ fun TablesTab(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filteredTables) { table ->
+                items(filteredTables, key = { it.id }) { table ->
                     TableCardSimple(
                         table = table,
                         onClick = { onTableClick(table.id) },
@@ -1646,7 +1829,7 @@ fun PaymentsTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(payments) { payment ->
+            items(payments, key = { it.id }) { payment ->
                 PaymentCard(payment = payment)
             }
         }

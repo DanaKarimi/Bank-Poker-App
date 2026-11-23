@@ -114,6 +114,145 @@ class RemoteRepository(
     }
 
     /**
+     * Request a password reset by username (notifies group admins + super admins)
+     */
+    suspend fun forgotPassword(username: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.forgotPassword(
+                com.bankpoker.app.data.remote.dto.ForgotPasswordRequest(username.trim())
+            )
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.message ?: "Reset request submitted")
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to submit reset request (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Complete password reset with 6-character admin code and save session immediately
+     */
+    suspend fun resetPasswordWithCode(
+        username: String,
+        resetCode: String,
+        newPassword: String
+    ): Result<LoginResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.resetPasswordWithCode(
+                com.bankpoker.app.data.remote.dto.ResetPasswordWithCodeRequest(
+                    username = username.trim(),
+                    resetCode = resetCode.trim().uppercase(),
+                    newPassword = newPassword
+                )
+            )
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                body.token?.let { token ->
+                    tokenManager.saveToken(token)
+                    com.bankpoker.app.service.BankPokerMessagingService.syncCurrentToken(tokenManager.context)
+                }
+                body.user?.let { user ->
+                    tokenManager.saveUser(user)
+                }
+                Result.success(body)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reset password (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error: Cannot connect to server."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch pending password reset requests for a group (Group Admin / Super Admin)
+     */
+    suspend fun getGroupPasswordResets(
+        groupId: String
+    ): Result<List<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupPasswordResets(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.requests)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to load reset requests (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Group Admin / Super Admin: generate a 6-char reset code or set temporary password for a member
+     */
+    suspend fun resetGroupMemberPassword(
+        groupId: String,
+        userId: String,
+        newPassword: String? = null,
+        generateCode: Boolean = true
+    ): Result<com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.bankpoker.app.data.remote.dto.AdminResetPasswordRequest(
+                newPassword = newPassword,
+                generateCode = if (newPassword.isNullOrBlank()) generateCode else false
+            )
+            val response = apiService.resetGroupMemberPassword(groupId, userId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reset member password (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Super Admin: generate a 6-char reset code or set temporary password for any user
+     */
+    suspend fun resetAdminUserPassword(
+        userId: String,
+        newPassword: String? = null,
+        generateCode: Boolean = true
+    ): Result<com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = com.bankpoker.app.data.remote.dto.AdminResetPasswordRequest(
+                newPassword = newPassword,
+                generateCode = if (newPassword.isNullOrBlank()) generateCode else false
+            )
+            val response = apiService.resetAdminUserPassword(userId, request, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to reset user password (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Register a new user
      */
     suspend fun register(

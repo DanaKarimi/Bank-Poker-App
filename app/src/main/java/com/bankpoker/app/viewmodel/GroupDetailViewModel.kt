@@ -54,6 +54,51 @@ class GroupDetailViewModel(
     private val _isOffline = MutableStateFlow(false)
     val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
+    private val _passwordResetRequests = MutableStateFlow<List<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto>>(emptyList())
+    val passwordResetRequests: StateFlow<List<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto>> = _passwordResetRequests.asStateFlow()
+
+    fun fetchPasswordResets() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            try {
+                val g = _group.value ?: repository.getGroupById(groupId)
+                val targetGroupId = g?.serverId ?: groupId
+                val res = remoteRepository.getGroupPasswordResets(targetGroupId)
+                if (res.isSuccess) {
+                    _passwordResetRequests.value = res.getOrNull() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                Log.w("GroupDetailVM", "Non-fatal error fetching password resets", e)
+            }
+        }
+    }
+
+    fun resetMemberPassword(
+        userId: String,
+        newPassword: String? = null,
+        generateCode: Boolean = true,
+        onResult: (Result<com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse>) -> Unit
+    ) {
+        if (remoteRepository == null) {
+            onResult(Result.failure(Exception("Online connection required")))
+            return
+        }
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val targetGroupId = g?.serverId ?: groupId
+            val res = remoteRepository.resetGroupMemberPassword(
+                groupId = targetGroupId,
+                userId = userId,
+                newPassword = newPassword,
+                generateCode = generateCode
+            )
+            if (res.isSuccess) {
+                fetchPasswordResets()
+            }
+            onResult(res)
+        }
+    }
+
     init {
         viewModelScope.launch {
             var g = repository.getGroupById(groupId)
@@ -79,6 +124,7 @@ class GroupDetailViewModel(
             fetchServerBalances()
             fetchServerSettlement()
             fetchServerTables()
+            fetchPasswordResets()
         }
 
         if (socketManager != null) {

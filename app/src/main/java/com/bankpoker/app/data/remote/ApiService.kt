@@ -26,6 +26,11 @@ import com.bankpoker.app.data.remote.dto.ActivateRequest
 import com.bankpoker.app.data.remote.dto.UpdateProfileRequest
 import com.bankpoker.app.data.remote.dto.LookupResponse
 import com.bankpoker.app.data.remote.dto.UserDto
+import com.bankpoker.app.data.remote.dto.ForgotPasswordRequest
+import com.bankpoker.app.data.remote.dto.ResetPasswordWithCodeRequest
+import com.bankpoker.app.data.remote.dto.AdminResetPasswordRequest
+import com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse
+import com.bankpoker.app.data.remote.dto.PasswordResetListResponse
 
 /**
  * Retrofit API Service definition for communication with the Node.js backend.
@@ -46,6 +51,37 @@ interface ApiService {
         @Body request: ActivateRequest,
         @Header("Authorization") token: String
     ): Response<LoginResponse>
+
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(
+        @Body request: ForgotPasswordRequest
+    ): Response<MessageResponse>
+
+    @POST("api/auth/reset-password")
+    suspend fun resetPasswordWithCode(
+        @Body request: ResetPasswordWithCodeRequest
+    ): Response<LoginResponse>
+
+    @GET("api/groups/{groupId}/password-resets")
+    suspend fun getGroupPasswordResets(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<PasswordResetListResponse>
+
+    @POST("api/groups/{groupId}/members/{userId}/reset-password")
+    suspend fun resetGroupMemberPassword(
+        @Path("groupId") groupId: String,
+        @Path("userId") userId: String,
+        @Body request: AdminResetPasswordRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<AdminResetPasswordResponse>
+
+    @POST("api/admin/users/{userId}/reset-password")
+    suspend fun resetAdminUserPassword(
+        @Path("userId") userId: String,
+        @Body request: AdminResetPasswordRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<AdminResetPasswordResponse>
 
     @GET("api/auth/me")
     suspend fun getCurrentUser(

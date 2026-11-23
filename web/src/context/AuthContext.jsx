@@ -134,6 +134,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Complete password reset with admin-issued reset code and sign in immediately
+   */
+  const completeResetPassword = async (username, resetCode, newPassword) => {
+    const response = await api.post('/api/auth/reset-password', {
+      username,
+      resetCode,
+      newPassword
+    });
+    const { token: receivedToken, user: receivedUser } = response.data;
+    localStorage.setItem('token', receivedToken);
+    localStorage.setItem('user', JSON.stringify(receivedUser));
+    setToken(receivedToken);
+    setUser(receivedUser);
+    return receivedUser;
+  };
+
+  /**
    * Log out and clear state and storage
    */
   const logout = () => {
@@ -155,6 +172,7 @@ export const AuthProvider = ({ children }) => {
         activateAccount,
         updateProfile,
         fetchCurrentUser,
+        completeResetPassword,
         logout
       }}
     >

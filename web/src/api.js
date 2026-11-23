@@ -141,6 +141,12 @@ export const updateAdminTablePlayer = (tableId, playerId, data) => api.put(`/api
 export const getGroupEntryFees = (groupId) => api.get(`/api/groups/${groupId}/entry-fees`);
 export const updateGroupEntryFee = (groupId, feeId, data) => api.put(`/api/groups/${groupId}/entry-fees/${feeId}`, data);
 export const deleteGroupEntryFee = (groupId, feeId) => api.delete(`/api/groups/${groupId}/entry-fees/${feeId}`);
+export const forgotPassword = (username) => api.post('/api/auth/forgot-password', { username });
+export const resetPasswordWithCode = (username, resetCode, newPassword) => api.post('/api/auth/reset-password', { username, resetCode, newPassword });
+export const getGroupPasswordResets = (groupId) => api.get(`/api/groups/${groupId}/password-resets`);
+export const resetGroupMemberPassword = (groupId, userId, data) => api.post(`/api/groups/${groupId}/members/${userId}/reset-password`, data);
+export const getAdminPasswordResets = () => api.get('/api/admin/password-resets');
+export const resetAdminUserPassword = (userId, data) => api.post(`/api/admin/users/${userId}/reset-password`, data);
 export const getServerHealth = () => api.get('/api/health');
 
 export default api;
