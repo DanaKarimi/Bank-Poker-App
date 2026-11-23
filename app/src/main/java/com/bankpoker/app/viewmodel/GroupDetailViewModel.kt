@@ -57,6 +57,31 @@ class GroupDetailViewModel(
     private val _passwordResetRequests = MutableStateFlow<List<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto>>(emptyList())
     val passwordResetRequests: StateFlow<List<com.bankpoker.app.data.remote.dto.PasswordResetRequestDto>> = _passwordResetRequests.asStateFlow()
 
+    private val _leaderboard = MutableStateFlow<com.bankpoker.app.data.remote.dto.LeaderboardResponse?>(null)
+    val leaderboard: StateFlow<com.bankpoker.app.data.remote.dto.LeaderboardResponse?> = _leaderboard.asStateFlow()
+
+    private val _isLoadingLeaderboard = MutableStateFlow(false)
+    val isLoadingLeaderboard: StateFlow<Boolean> = _isLoadingLeaderboard.asStateFlow()
+
+    fun fetchLeaderboard() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            _isLoadingLeaderboard.value = true
+            try {
+                val g = _group.value ?: repository.getGroupById(groupId)
+                val targetGroupId = g?.serverId ?: groupId
+                val res = remoteRepository.getGroupLeaderboard(targetGroupId)
+                if (res.isSuccess) {
+                    _leaderboard.value = res.getOrNull()
+                }
+            } catch (e: Exception) {
+                Log.w("GroupDetailVM", "Non-fatal error fetching leaderboard", e)
+            } finally {
+                _isLoadingLeaderboard.value = false
+            }
+        }
+    }
+
     fun fetchPasswordResets() {
         if (remoteRepository == null) return
         viewModelScope.launch {
@@ -125,6 +150,7 @@ class GroupDetailViewModel(
             fetchServerSettlement()
             fetchServerTables()
             fetchPasswordResets()
+            fetchLeaderboard()
         }
 
         if (socketManager != null) {

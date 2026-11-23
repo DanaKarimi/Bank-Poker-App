@@ -174,6 +174,28 @@ class RemoteRepository(
     }
 
     /**
+     * Fetch chronological leaderboard & rank progression history for a group
+     */
+    suspend fun getGroupLeaderboard(
+        groupId: String
+    ): Result<com.bankpoker.app.data.remote.dto.LeaderboardResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupLeaderboard(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = parseErrorMessage(response.errorBody()?.string())
+                    ?: "Failed to load leaderboard (HTTP ${response.code()})"
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetch pending password reset requests for a group (Group Admin / Super Admin)
      */
     suspend fun getGroupPasswordResets(

@@ -9,6 +9,7 @@ import {
   getGroupBalances,
   getGroupSettlementPlan,
   getGroupStatsDetails,
+  getGroupLeaderboard,
   createTable,
   getGroupPlayersList,
   getGroupPasswordResets,
@@ -19,6 +20,7 @@ import RequestCard from '../components/RequestCard';
 import BalancesTab from '../components/BalancesTab';
 import StatsTab from '../components/StatsTab';
 import HistoryTab from '../components/HistoryTab';
+import LeaderboardTab from '../components/LeaderboardTab';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 import { getSocket, joinGroup, leaveGroup } from '../socket';
 import {
@@ -57,6 +59,7 @@ const GroupStats = () => {
   const [balances, setBalances] = useState([]);
   const [settlementPlan, setSettlementPlan] = useState([]);
   const [groupStatsDetails, setGroupStatsDetails] = useState(null);
+  const [leaderboardData, setLeaderboardData] = useState(null);
 
   // Tab State: 'tables' | 'balances' | 'stats'
   const [activeTab, setActiveTab] = useState('tables');
@@ -117,6 +120,7 @@ const GroupStats = () => {
         settlementRes,
         groupStatsRes,
         passwordResetsRes,
+        leaderboardRes,
       ] = await Promise.allSettled([
         getGroupStats(groupId),
         getGroupTables(groupId),
@@ -125,6 +129,7 @@ const GroupStats = () => {
         getGroupSettlementPlan(groupId),
         getGroupStatsDetails(groupId),
         getGroupPasswordResets(groupId),
+        getGroupLeaderboard(groupId),
       ]);
 
       if (statsRes.status === 'fulfilled') {
@@ -199,6 +204,10 @@ const GroupStats = () => {
 
       if (passwordResetsRes.status === 'fulfilled') {
         setPasswordResets(passwordResetsRes.value.data?.requests || []);
+      }
+
+      if (leaderboardRes.status === 'fulfilled') {
+        setLeaderboardData(leaderboardRes.value.data || { snapshots: [], leaderboard: [] });
       }
     } catch (err) {
       console.error('Failed to load group details:', err);
@@ -684,6 +693,18 @@ const GroupStats = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('leaderboard')}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
+              activeTab === 'leaderboard'
+                ? 'bg-gold-accent text-black shadow-md'
+                : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
+            }`}
+          >
+            <Trophy className="w-4 h-4 shrink-0" />
+            <span>Leaderboard</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('history')}
             className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
               activeTab === 'history'
@@ -783,7 +804,12 @@ const GroupStats = () => {
           />
         )}
 
-        {/* TAB 4: HISTORY (PAYMENTS & ENTRY FEES) */}
+        {/* TAB 4: LEADERBOARD (RANK PROGRESSION BUMP CHART & STANDINGS) */}
+        {activeTab === 'leaderboard' && (
+          <LeaderboardTab data={leaderboardData} loading={loading} />
+        )}
+
+        {/* TAB 5: HISTORY (PAYMENTS & ENTRY FEES) */}
         {activeTab === 'history' && (
           <HistoryTab
             groupId={groupId}

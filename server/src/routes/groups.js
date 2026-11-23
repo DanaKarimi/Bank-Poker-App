@@ -2379,6 +2379,238 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/groups/:id/leaderboard
+ * Chronological closed-table standings and rank progression history for bump chart
+ */
+router.get('/:id/leaderboard', authenticateToken, async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        const group = await get(
+            'SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0',
+            [groupId, groupId]
+        );
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const actualGroupId = group.id;
+
+        // 1. Fetch all non-deleted CLOSED tables chronologically
+        const closedTables = await all(
+            `SELECT id, name, closed_at, created_at
+             FROM tables
+             WHERE (group_id = ? OR group_id = ?)
+               AND is_deleted = 0
+               AND UPPER(COALESCE(status, '')) = 'CLOSED'
+             ORDER BY COALESCE(closed_at, created_at) ASC, id ASC`,
+            [actualGroupId, groupId]
+        );
+
+        if (closedTables.length === 0) {
+            return res.status(200).json({
+                groupId: actualGroupId,
+                snapshots: [],
+                leaderboard: []
+            });
+        }
+
+        const tableIds = closedTables.map(t => t.id);
+        const placeholders = tableIds.map(() => '?').join(',');
+
+        // 2. Single batch query for all player sessions + buy-ins + exits across closed tables (zero N+1)
+        const sessionRows = await all(
+            `SELECT p.id AS player_id,
+                    p.table_id,
+                    p.user_id,
+                    p.name,
+                    u.username,
+                    u.display_name,
+                    u.avatar_id,
+                    COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.player_id = p.id AND b.is_deleted = 0), 0) AS total_buy_ins,
+                    COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.player_id = p.id AND e.is_deleted = 0), 0) AS total_exits
+             FROM players p
+             LEFT JOIN users u ON p.user_id = u.id
+             WHERE p.table_id IN (${placeholders}) AND p.is_deleted = 0`,
+            tableIds
+        );
+
+        // 3. Build unified player identity map (user_id takes precedence; link unlinked name rows matching username/display_name)
+        const nameToUserKey = new Map();
+        for (const row of sessionRows) {
+            if (row.user_id) {
+                const uKey = `u:${row.user_id}`;
+                const candidates = [row.name, row.username, row.display_name]
+                    .map(v => (typeof v === 'string' ? v.trim().toLowerCase() : ''))
+                    .filter(Boolean);
+                for (const c of candidates) {
+                    if (!nameToUserKey.has(c)) {
+                        nameToUserKey.set(c, uKey);
+                    }
+                }
+            }
+        }
+
+        const resolveIdentityKey = (row) => {
+            if (row.user_id) return `u:${row.user_id}`;
+            const normName = (row.name || '').trim().toLowerCase();
+            if (normName && nameToUserKey.has(normName)) {
+                return nameToUserKey.get(normName);
+            }
+            return `n:${normName || row.player_id}`;
+        };
+
+        // Group session rows by table_id
+        const rowsByTable = new Map();
+        for (const row of sessionRows) {
+            if (!rowsByTable.has(row.table_id)) {
+                rowsByTable.set(row.table_id, []);
+            }
+            rowsByTable.get(row.table_id).push(row);
+        }
+
+        const formatDateLabel = (ts) => {
+            const d = new Date(Number(ts) || Date.now());
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+
+        const snapshots = [];
+        const playerStates = new Map(); // key -> running player state
+
+        for (let i = 0; i < closedTables.length; i++) {
+            const tbl = closedTables[i];
+            const closedAt = Number(tbl.closed_at || tbl.created_at || 0);
+            const dateLabel = formatDateLabel(closedAt);
+
+            snapshots.push({
+                index: i,
+                tableId: tbl.id,
+                tableName: tbl.name,
+                closedAt,
+                dateLabel
+            });
+
+            // Aggregate per-table net by unified identity (handles any duplicate seat rows safely)
+            const tablePlayerNets = new Map();
+            const tblRows = rowsByTable.get(tbl.id) || [];
+            for (const r of tblRows) {
+                const key = resolveIdentityKey(r);
+                const buyIns = Number(r.total_buy_ins) || 0;
+                const exits = Number(r.total_exits) || 0;
+                const net = exits - buyIns;
+
+                if (!tablePlayerNets.has(key)) {
+                    tablePlayerNets.set(key, {
+                        playerId: r.player_id,
+                        userId: r.user_id || null,
+                        name: (r.display_name || r.name || r.username || 'Player').trim(),
+                        avatarId: r.avatar_id || 'avatar_1',
+                        sessionNet: net
+                    });
+                } else {
+                    const prev = tablePlayerNets.get(key);
+                    prev.sessionNet += net;
+                    if (!prev.userId && r.user_id) prev.userId = r.user_id;
+                    if (r.display_name && r.display_name.trim()) prev.name = r.display_name.trim();
+                    if (r.avatar_id && prev.avatarId === 'avatar_1') prev.avatarId = r.avatar_id;
+                }
+            }
+
+            // Update running cumulative stats for players who participated in this table
+            for (const [key, entry] of tablePlayerNets.entries()) {
+                if (!playerStates.has(key)) {
+                    playerStates.set(key, {
+                        key,
+                        playerId: entry.playerId,
+                        userId: entry.userId,
+                        name: entry.name,
+                        avatarId: entry.avatarId,
+                        cumulativeNet: 0,
+                        tablesPlayed: 0,
+                        winningSessions: 0,
+                        bestSessionNet: null,
+                        history: []
+                    });
+                }
+                const st = playerStates.get(key);
+                if (!st.userId && entry.userId) st.userId = entry.userId;
+                if (entry.name && (!st.name || st.name === 'Player')) st.name = entry.name;
+                if (entry.avatarId && st.avatarId === 'avatar_1') st.avatarId = entry.avatarId;
+
+                st.cumulativeNet += entry.sessionNet;
+                st.tablesPlayed += 1;
+                if (entry.sessionNet > 0) st.winningSessions += 1;
+                st.bestSessionNet = st.bestSessionNet === null
+                    ? entry.sessionNet
+                    : Math.max(st.bestSessionNet, entry.sessionNet);
+            }
+
+            // Rank all active-to-date players after snapshot t_i
+            const activePlayers = Array.from(playerStates.values());
+            activePlayers.sort((a, b) => {
+                if (b.cumulativeNet !== a.cumulativeNet) return b.cumulativeNet - a.cumulativeNet;
+                if (b.winningSessions !== a.winningSessions) return b.winningSessions - a.winningSessions;
+                return a.name.localeCompare(b.name);
+            });
+
+            activePlayers.forEach((st, idx) => {
+                const rank = idx + 1;
+                const playedThisTable = tablePlayerNets.has(st.key);
+                st.history.push({
+                    snapshotIndex: i,
+                    tableId: tbl.id,
+                    tableName: tbl.name,
+                    closedAt,
+                    dateLabel,
+                    rank,
+                    cumulativeNet: st.cumulativeNet,
+                    sessionNet: playedThisTable ? tablePlayerNets.get(st.key).sessionNet : null
+                });
+            });
+        }
+
+        // Build final leaderboard sorted by latest rank ASC
+        const leaderboard = Array.from(playerStates.values())
+            .map(st => {
+                const last = st.history[st.history.length - 1];
+                const prev = st.history.length >= 2 ? st.history[st.history.length - 2] : null;
+                const rank = last ? last.rank : 0;
+                const previousRank = prev ? prev.rank : null;
+                const rankDelta = previousRank !== null ? previousRank - rank : 0;
+                const winRate = st.tablesPlayed > 0
+                    ? Math.round((st.winningSessions / st.tablesPlayed) * 100)
+                    : 0;
+
+                return {
+                    playerId: st.playerId,
+                    userId: st.userId,
+                    name: st.name,
+                    avatarId: st.avatarId,
+                    rank,
+                    previousRank,
+                    rankDelta,
+                    cumulativeNet: st.cumulativeNet,
+                    tablesPlayed: st.tablesPlayed,
+                    winningSessions: st.winningSessions,
+                    winRate,
+                    bestSessionNet: st.bestSessionNet ?? 0,
+                    history: st.history
+                };
+            })
+            .sort((a, b) => a.rank - b.rank);
+
+        return res.status(200).json({
+            groupId: actualGroupId,
+            snapshots,
+            leaderboard
+        });
+    } catch (error) {
+        console.error('Error computing group leaderboard:', error);
+        return res.status(500).json({ error: 'Internal server error while computing leaderboard' });
+    }
+});
+
+/**
  * GET /api/groups/:id/players-list and GET /api/groups/:id/players
  * (Requires Auth)
  * Return list of player identities in this group with claim status and aggregate balance

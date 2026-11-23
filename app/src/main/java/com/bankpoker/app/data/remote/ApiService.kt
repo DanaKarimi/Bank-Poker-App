@@ -31,6 +31,7 @@ import com.bankpoker.app.data.remote.dto.ResetPasswordWithCodeRequest
 import com.bankpoker.app.data.remote.dto.AdminResetPasswordRequest
 import com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse
 import com.bankpoker.app.data.remote.dto.PasswordResetListResponse
+import com.bankpoker.app.data.remote.dto.LeaderboardResponse
 
 /**
  * Retrofit API Service definition for communication with the Node.js backend.
@@ -67,6 +68,12 @@ interface ApiService {
         @Path("groupId") groupId: String,
         @Header("Authorization") token: String = ""
     ): Response<PasswordResetListResponse>
+
+    @GET("api/groups/{groupId}/leaderboard")
+    suspend fun getGroupLeaderboard(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<LeaderboardResponse>
 
     @POST("api/groups/{groupId}/members/{userId}/reset-password")
     suspend fun resetGroupMemberPassword(

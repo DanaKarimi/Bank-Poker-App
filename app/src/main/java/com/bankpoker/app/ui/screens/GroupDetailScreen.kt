@@ -104,6 +104,8 @@ fun GroupDetailScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPasswordResetsDialog by remember { mutableStateOf(false) }
     val passwordResetRequests by viewModel.passwordResetRequests.collectAsState()
+    val leaderboardData by viewModel.leaderboard.collectAsState()
+    val isLoadingLeaderboard by viewModel.isLoadingLeaderboard.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var selectedTableForAction by remember { mutableStateOf<PokerTable?>(null) }
@@ -160,6 +162,9 @@ fun GroupDetailScreen(
         viewModel.fetchServerBalances()
         viewModel.fetchServerSettlement()
         viewModel.fetchServerTables()
+        if (selectedTab == 3) {
+            viewModel.fetchLeaderboard()
+        }
     }
 
     Scaffold(
@@ -379,6 +384,15 @@ fun GroupDetailScreen(
                         onClick = { selectedTab = 2 },
                         modifier = Modifier.weight(1f)
                     )
+                    TabButton(
+                        text = "RANK",
+                        selected = selectedTab == 3,
+                        onClick = {
+                            selectedTab = 3
+                            viewModel.fetchLeaderboard()
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
                 AnimatedContent(
@@ -416,6 +430,10 @@ fun GroupDetailScreen(
                             },
                             onNavigateToHistory = onNavigateToHistory,
                             onPlayerClick = onPlayerClick
+                        )
+                        3 -> LeaderboardSection(
+                            data = leaderboardData,
+                            isLoading = isLoadingLeaderboard
                         )
                     }
                 }

@@ -69,6 +69,7 @@ export const getGroupSettlementPlan = (groupId) => api.get(`/api/groups/${groupI
 export const toggleSettlementPaid = (groupId, recordId, paid) => api.post(`/api/groups/${groupId}/settlement/${recordId}/toggle-paid`, { paid });
 export const regenerateSettlementPlan = (groupId) => api.post(`/api/groups/${groupId}/settlement/regenerate`);
 export const getGroupStatsDetails = (groupId) => api.get(`/api/groups/${groupId}/stats`);
+export const getGroupLeaderboard = (groupId) => api.get(`/api/groups/${groupId}/leaderboard`);
 export const getGroupByInvite = (code) => api.get(`/api/groups/by-invite/${encodeURIComponent(code)}`);
 export const getGroupPlayersList = (groupId) => api.get(`/api/groups/${groupId}/players-list`);
 export const recordGroupPayment = (groupId, data) => api.post(`/api/groups/${groupId}/payments`, data);
