@@ -402,8 +402,8 @@ const GroupStats = () => {
   const activeTablesCount = tables.filter((t) => t.status === 'ACTIVE' || t.isActive).length;
 
   return (
-    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
-      <div className="w-full max-w-4xl space-y-6">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6">
+      <div className="w-full max-w-4xl min-w-0 space-y-6">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between">
           <Link
@@ -501,52 +501,52 @@ const GroupStats = () => {
         </div>
 
         {/* Navigation Tabs (Like Android App) */}
-        <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-3">
+        <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-3 overflow-x-auto max-w-full">
           <button
             onClick={() => setActiveTab('tables')}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
               activeTab === 'tables'
                 ? 'bg-gold-accent text-black shadow-md'
                 : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-4 h-4 shrink-0" />
             <span>Tables ({tables.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('balances')}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
               activeTab === 'balances'
                 ? 'bg-gold-accent text-black shadow-md'
                 : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-4 h-4 shrink-0" />
             <span>Balances ({balances.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
               activeTab === 'stats'
                 ? 'bg-gold-accent text-black shadow-md'
                 : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            <BarChart3 className="w-4 h-4" />
+            <BarChart3 className="w-4 h-4 shrink-0" />
             <span>Stats & Settlement</span>
           </button>
 
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
               activeTab === 'history'
                 ? 'bg-gold-accent text-black shadow-md'
                 : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-4 h-4 shrink-0" />
             <span>History</span>
           </button>
         </div>

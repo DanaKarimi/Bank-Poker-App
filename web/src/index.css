@@ -32,6 +32,13 @@
   --spacing-xxl: 24px;
 }
 
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 body {
   background-color: var(--felt-green);
   color: var(--cream-text);

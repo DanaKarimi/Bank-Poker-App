@@ -391,7 +391,7 @@ const Dashboard = () => {
   const quickTables = activeTables.filter((t) => t.isQuickTable);
 
   return (
-    <div className="min-h-screen bg-felt-green text-cream-text flex flex-col relative pb-20">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-felt-green text-cream-text flex flex-col relative pb-20">
       {/* Top Navigation Bar */}
       <header className="bg-felt-dark/95 border-b border-gold-accent/40 sticky top-0 z-30 shadow-lg backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
