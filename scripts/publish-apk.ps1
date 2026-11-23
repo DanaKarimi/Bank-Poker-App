@@ -1,7 +1,8 @@
 param(
     [string]$RemoteHost = "dd-karimi@192.168.70.162",
     [string]$RemoteReleasesDir = "~/BankPoker/releases",
-    [string]$ApkPath = ""
+    [string]$ApkPath = "",
+    [bool]$ForceUpdate = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,12 +36,21 @@ $sizeBytes = $apkItem.Length
 $sizeMB = [math]::Round($sizeBytes / 1MB, 2)
 $builtAt = $apkItem.LastWriteTimeUtc.ToString("o")
 $publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+$versionedFileName = "BankPoker-v$versionName.apk"
 
 $versionObj = [ordered]@{
     versionName = $versionName
     versionCode = $versionCode
-    fileName    = "bankpoker-latest.apk"
-    apkUrl      = "/releases/bankpoker-latest.apk"
+    fileName    = $versionedFileName
+    apkUrl      = "/releases/$versionedFileName"
+    forceUpdate = $ForceUpdate
+    whatsNew    = @(
+        "Unified Poker-Felt & Gold theme matching the Web App",
+        "Added +50 quick chip button for Buy-In & Exit sheets",
+        "Group Admin Panel for members, closed-table edits & password resets",
+        "Historical Rank Progression Leaderboard & Member Picker",
+        "Built-in automatic in-app update downloader"
+    )
     sizeBytes   = $sizeBytes
     sizeMB      = $sizeMB
     builtAt     = $builtAt
@@ -49,20 +59,24 @@ $versionObj = [ordered]@{
 
 $tmpVersionJson = Join-Path ([System.IO.Path]::GetTempPath()) "bankpoker-version-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()).json"
 try {
-    $jsonText = $versionObj | ConvertTo-Json -Depth 3
+    $jsonText = $versionObj | ConvertTo-Json -Depth 4
     [System.IO.File]::WriteAllText($tmpVersionJson, $jsonText, (New-Object System.Text.UTF8Encoding($false)))
 
-    Write-Host "Publishing BankPoker APK v$versionName (code $versionCode, $sizeMB MB / $sizeBytes bytes) to ${RemoteHost}:${RemoteReleasesDir}..."
+    Write-Host "Publishing $versionedFileName (code $versionCode, $sizeMB MB / $sizeBytes bytes, forceUpdate=$ForceUpdate) to ${RemoteHost}:${RemoteReleasesDir}..."
     ssh -o BatchMode=yes -o ConnectTimeout=10 $RemoteHost "mkdir -p $RemoteReleasesDir"
     if ($LASTEXITCODE -ne 0) { throw "Failed to create remote releases directory." }
 
-    scp -o BatchMode=yes -o ConnectTimeout=10 $ApkPath "${RemoteHost}:${RemoteReleasesDir}/bankpoker-latest.apk"
-    if ($LASTEXITCODE -ne 0) { throw "Failed to upload APK via scp." }
+    scp -o BatchMode=yes -o ConnectTimeout=10 $ApkPath "${RemoteHost}:${RemoteReleasesDir}/${versionedFileName}"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to upload $versionedFileName via scp." }
+
+    # Maintain bankpoker-latest.apk copy for backwards compatibility
+    ssh -o BatchMode=yes -o ConnectTimeout=10 $RemoteHost "cp -f ${RemoteReleasesDir}/${versionedFileName} ${RemoteReleasesDir}/bankpoker-latest.apk"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to update bankpoker-latest.apk copy." }
 
     scp -o BatchMode=yes -o ConnectTimeout=10 $tmpVersionJson "${RemoteHost}:${RemoteReleasesDir}/version.json"
     if ($LASTEXITCODE -ne 0) { throw "Failed to upload version.json via scp." }
 
-    Write-Host "Successfully published bankpoker-latest.apk and version.json."
+    Write-Host "Successfully published $versionedFileName, bankpoker-latest.apk, and version.json."
 }
 finally {
     if (Test-Path $tmpVersionJson) {

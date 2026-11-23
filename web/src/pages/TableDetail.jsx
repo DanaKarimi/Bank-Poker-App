@@ -1546,10 +1546,10 @@ const TableDetail = () => {
         </button>
       )}
 
-      {/* Add Player Member Picker + Manual Guest Modal */}
+      {/* Add Player Member Picker + Manual Guest Bottom Sheet */}
       {isAddPlayerModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-md p-5 sm:p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[88vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-felt-card border-t-2 sm:border-2 border-gold-accent rounded-t-3xl sm:rounded-[28px] w-full max-w-md p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl relative animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[88dvh] flex flex-col overscroll-contain">
             <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3 shrink-0" />
 
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-gold-accent/30 shrink-0">

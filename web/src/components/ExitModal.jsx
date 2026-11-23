@@ -104,15 +104,16 @@ const ExitModal = ({
 
   const numAmount = Number(amount) || 0;
   const chipDenominations = [
-    { label: '100', val: 100 },
-    { label: '500', val: 500 },
-    { label: '1K', val: 1000 },
-    { label: '5K', val: 5000 },
+    { label: '+50', val: 50 },
+    { label: '+100', val: 100 },
+    { label: '+200', val: 200 },
+    { label: '+500', val: 500 },
+    { label: '+1K', val: 1000 },
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#064e3b] border-2 border-[#d4af37] rounded-[28px] w-full max-w-md p-6 shadow-2xl relative text-[#f5f5dc] animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-[#064e3b] border-t-2 sm:border-2 border-[#d4af37] rounded-t-3xl sm:rounded-[28px] w-full max-w-md p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl relative text-[#f5f5dc] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[90dvh] overflow-y-auto overscroll-contain">
         {/* Drag Handle */}
         <div className="w-10 h-1 bg-[#d4af37]/60 rounded-full mx-auto mb-3" />
 

@@ -242,17 +242,17 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-felt-card border-2 border-gold-accent rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-felt-card border-t-2 sm:border-2 border-gold-accent rounded-t-3xl sm:rounded-3xl w-full max-w-3xl max-h-[88dvh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-felt-dark/90 border-b border-gold-accent/30 flex items-center justify-between gap-2">
+        <div className="p-4 sm:p-5 bg-felt-dark/90 border-b border-gold-accent/30 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <Shield className="w-5 h-5 text-gold-accent shrink-0" />
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-black text-gold-accent uppercase tracking-wider truncate">
                 Group Admin • {groupName || overview?.groupName || 'Club'}
               </h2>
-              <p className="text-[11px] text-cream-text/60">
+              <p className="text-[11px] text-cream-text/60 truncate">
                 Manage members, correct closed tables, and resolve resets
               </p>
             </div>
@@ -276,54 +276,56 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
           </div>
         </div>
 
-        {/* Sub-Tabs */}
-        <div className="px-4 pt-3 pb-2 bg-felt-dark/50 border-b border-gold-accent/20 flex items-center gap-2 overflow-x-auto">
-          {[
-            { id: 'members', label: `Members (${overview?.members?.length || 0})`, icon: Users },
-            { id: 'tables', label: `Tables & Corrections (${overview?.tables?.length || 0})`, icon: Layers },
-            { id: 'payments', label: `Payments & Resets (${overview?.passwordResets?.length || 0})`, icon: CreditCard },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setTab(item.id);
-                  setEditingTableId(null);
-                  setTableDetail(null);
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer transition ${
-                  tab === item.id
-                    ? 'bg-gold-accent text-black shadow'
-                    : 'bg-felt-card/80 text-cream-text/70 hover:text-cream-text'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+        {/* Pinned Full-Width 3-Column Segmented Tab Bar */}
+        <div className="px-3 sm:px-4 py-2.5 bg-felt-dark/60 border-b border-gold-accent/20 shrink-0">
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-felt-dark/90 rounded-2xl border border-gold-accent/25">
+            {[
+              { id: 'members', label: `Members (${overview?.members?.length || 0})`, icon: Users },
+              { id: 'tables', label: `Tables (${overview?.tables?.length || 0})`, icon: Layers },
+              { id: 'payments', label: `Resets (${overview?.passwordResets?.length || 0})`, icon: CreditCard },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setTab(item.id);
+                    setEditingTableId(null);
+                    setTableDetail(null);
+                  }}
+                  className={`py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 min-w-0 cursor-pointer transition ${
+                    tab === item.id
+                      ? 'bg-gold-accent text-black shadow'
+                      : 'text-cream-text/70 hover:text-cream-text'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Banner */}
         {banner.text && (
           <div
-            className={`mx-4 mt-3 p-3 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 ${
+            className={`mx-4 mt-3 p-3 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 shrink-0 ${
               banner.type === 'error'
                 ? 'bg-red-950/80 border border-red-500/60 text-red-200'
                 : 'bg-emerald-950/80 border border-emerald-500/60 text-emerald-200'
             }`}
           >
-            <span>{banner.text}</span>
-            <button type="button" onClick={() => setBanner({ type: '', text: '' })} className="cursor-pointer">
+            <span className="min-w-0 break-words">{banner.text}</span>
+            <button type="button" onClick={() => setBanner({ type: '', text: '' })} className="cursor-pointer shrink-0">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
         {/* Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
+        <div className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain flex-1 min-h-0 space-y-3">
           {loading && !overview ? (
             <div className="py-10 text-center text-xs text-cream-text/60">Loading admin data...</div>
           ) : tab === 'members' ? (
@@ -333,39 +335,49 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                 return (
                   <div
                     key={m.userId}
-                    className="p-3.5 rounded-2xl bg-felt-dark/70 border border-gold-accent/25 flex flex-wrap items-center justify-between gap-3"
+                    className="p-3.5 rounded-2xl bg-felt-dark/70 border border-gold-accent/25 space-y-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <PokerAvatar avatarId={m.avatarId} name={m.displayName} size={38} />
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-cream-text truncate flex items-center gap-1.5">
-                          <span>{m.displayName}</span>
-                          {m.isOwner && (
-                            <span className="px-1.5 py-0.5 rounded bg-gold-accent/20 text-gold-accent text-[9px] font-black uppercase">
-                              Owner
-                            </span>
-                          )}
+                    {/* Row 1: Avatar + Name/Badges/@username + Balance */}
+                    <div className="flex items-center justify-between gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <PokerAvatar avatarId={m.avatarId} name={m.displayName} size={40} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm font-bold text-cream-text truncate">{m.displayName}</span>
+                            {m.isOwner ? (
+                              <span className="px-1.5 py-0.5 rounded bg-gold-accent/20 text-gold-accent text-[9px] font-black uppercase shrink-0">
+                                Owner
+                              </span>
+                            ) : m.role === 'ADMIN' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase shrink-0">
+                                Admin
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-[11px] text-cream-text/55 truncate mt-0.5">
+                            @{m.username}
+                          </div>
                         </div>
-                        <div className="text-[11px] text-cream-text/55 flex items-center gap-2">
-                          <span>@{m.username}</span>
-                          <span>•</span>
-                          <span
-                            className={`font-mono font-bold ${
-                              m.balance > 0 ? 'text-emerald-400' : m.balance < 0 ? 'text-red-400' : 'text-cream-text/70'
-                            }`}
-                          >
-                            {formatSigned(m.balance)}
-                          </span>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div
+                          className={`text-sm sm:text-base font-mono font-black ${
+                            m.balance > 0 ? 'text-emerald-400' : m.balance < 0 ? 'text-rose-400' : 'text-cream-text/75'
+                          }`}
+                        >
+                          {formatSigned(m.balance)}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    {/* Row 2: Action Buttons */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-gold-accent/15">
                       <button
                         type="button"
                         disabled={m.isOwner}
                         onClick={() => handleToggleRole(m)}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer disabled:opacity-40 ${
+                        className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold border transition cursor-pointer disabled:opacity-40 text-center ${
                           m.role === 'ADMIN'
                             ? 'bg-gold-accent/20 text-gold-accent border-gold-accent/60'
                             : 'bg-felt-card text-cream-text/80 border-gold-accent/25 hover:border-gold-accent'
@@ -382,9 +394,9 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                           setResetResult(null);
                           setCopiedCode(false);
                         }}
-                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-felt-card text-gold-accent border border-gold-accent/40 hover:border-gold-accent flex items-center gap-1 cursor-pointer"
+                        className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-felt-card text-gold-accent border border-gold-accent/40 hover:border-gold-accent flex items-center justify-center gap-1 cursor-pointer"
                       >
-                        <KeyRound className="w-3.5 h-3.5" />
+                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
                         <span>Reset PW</span>
                       </button>
 
@@ -393,13 +405,13 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                           type="button"
                           onClick={() => handleRemoveMember(m)}
                           title={unsettled ? `Settle balance (${formatSigned(m.balance)}) to $0 before removing` : 'Remove from group'}
-                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+                          className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold border flex items-center justify-center gap-1 cursor-pointer ${
                             unsettled
                               ? 'bg-amber-950/50 text-amber-300 border-amber-500/40'
                               : 'bg-red-950/60 text-red-300 border-red-500/50 hover:bg-red-900'
                           }`}
                         >
-                          {unsettled ? <AlertTriangle className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          {unsettled ? <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> : <Trash2 className="w-3.5 h-3.5 shrink-0" />}
                           <span>Remove</span>
                         </button>
                       )}

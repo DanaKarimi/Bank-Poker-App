@@ -137,7 +137,7 @@ fun ChipSelector(
     onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val denominations = listOf(100L, 500L, 1000L, 5000L)
+    val denominations = listOf(50L, 100L, 200L, 500L, 1000L)
 
     Row(
         modifier = modifier.fillMaxWidth(),

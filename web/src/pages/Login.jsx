@@ -108,7 +108,7 @@ const Login = () => {
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-clip flex flex-col items-center justify-center p-4 relative bg-felt-green">
       {/* Top Bar: Direct Android APK Download */}
-      <div className="w-full max-w-md flex justify-end mb-3 z-10">
+      <div className="w-full max-w-md flex justify-center mb-3 z-10">
         <AndroidDownloadButton />
       </div>
 

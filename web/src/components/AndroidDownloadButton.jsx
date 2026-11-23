@@ -34,39 +34,42 @@ const AndroidDownloadButton = ({ compact = false, className = '' }) => {
     ? `${(Number(releaseInfo.sizeBytes) / (1024 * 1024)).toFixed(1)} MB`
     : null;
 
+  const fileName =
+    releaseInfo?.fileName ||
+    (releaseInfo?.versionName ? `BankPoker-v${releaseInfo.versionName}.apk` : 'BankPoker-latest.apk');
+
+  const apkUrl = releaseInfo?.apkUrl || `/releases/${fileName}`;
+
   const versionBadge = releaseInfo?.versionName
     ? `v${releaseInfo.versionName}${sizeLabel ? ` • ${sizeLabel}` : ''}`
     : sizeLabel;
-
-  const apkUrl = releaseInfo?.apkUrl || '/releases/bankpoker-latest.apk';
 
   return (
     <div className={`relative inline-flex items-center max-w-full ${className}`}>
       <a
         href={apkUrl}
-        download="BankPoker-latest.apk"
+        download={fileName}
         onClick={() => setShowTip(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-950/90 hover:bg-emerald-900 border border-gold-accent/60 hover:border-gold-accent text-cream-text text-xs font-bold shadow-md transition active:scale-95 cursor-pointer max-w-full"
-        title="Download Android APK"
+        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/90 hover:bg-emerald-900 border border-gold-accent/60 hover:border-gold-accent text-cream-text text-xs font-bold shadow-md transition active:scale-95 cursor-pointer max-w-full"
+        title={`Download ${fileName}`}
       >
         <Smartphone className="w-3.5 h-3.5 text-gold-accent shrink-0" />
-        <span className={compact ? 'hidden md:inline truncate' : 'truncate'}>
-          Download Android App
+        <span className="truncate">
+          {compact ? fileName : `Download ${fileName}`}
         </span>
-        {compact && <span className="md:hidden">APK</span>}
         {versionBadge && (
-          <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-full bg-gold-accent/20 border border-gold-accent/40 text-gold-light text-[10px] font-mono font-bold shrink-0">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-gold-accent/20 border border-gold-accent/40 text-gold-light text-[10px] font-mono font-bold shrink-0">
             {versionBadge}
           </span>
         )}
-        <Download className="w-3 h-3 text-gold-accent shrink-0" />
+        <Download className="w-3.5 h-3.5 text-gold-accent shrink-0" />
       </a>
 
       {showTip && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-5 z-50 w-[calc(100vw-2rem)] max-w-sm bg-felt-dark/95 border-2 border-gold-accent rounded-2xl p-3.5 shadow-2xl text-xs text-cream-text flex items-start gap-2.5">
           <Info className="w-4 h-4 text-gold-accent shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0 leading-relaxed">
-            <div className="font-bold text-gold-accent mb-0.5">Downloading BankPoker APK...</div>
+            <div className="font-bold text-gold-accent mb-0.5">Downloading {fileName}...</div>
             <p className="text-cream-text/85 text-[11px]">
               If prompted by your browser, allow &ldquo;Install unknown apps&rdquo; to update BankPoker without losing offline data.
             </p>

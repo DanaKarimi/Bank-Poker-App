@@ -8,11 +8,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.bankpoker.app.data.local.BankPokerDatabase
+import com.bankpoker.app.ui.components.AppUpdateDialog
 import com.bankpoker.app.ui.navigation.AppNavigation
 import com.bankpoker.app.ui.theme.BankPokerTheme
+import com.bankpoker.app.update.AppReleaseInfo
+import com.bankpoker.app.update.AppUpdateManager
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: BankPokerDatabase
@@ -40,10 +48,23 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
+                    var pendingUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
+
+                    LaunchedEffect(Unit) {
+                        pendingUpdate = AppUpdateManager.checkForUpdate(this@MainActivity)
+                    }
+
                     AppNavigation(
                         navController = navController,
                         database = database
                     )
+
+                    pendingUpdate?.let { release ->
+                        AppUpdateDialog(
+                            release = release,
+                            onDismiss = { pendingUpdate = null }
+                        )
+                    }
                 }
             }
         }

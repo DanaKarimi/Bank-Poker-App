@@ -7,24 +7,25 @@ import androidx.compose.ui.unit.dp
 // UNIFIED DESIGN SYSTEM TOKENS (Shared Parity with Web)
 // =======================================================
 object DesignTokens {
-    // Brand & Felt Surface Palette
-    val FeltGreen = Color(0xFF0B4625)
-    val FeltDark = Color(0xFF062815)
-    val FeltCard = Color(0xFF0F532D)
-    val FeltCardDark = Color(0xFF0A3A20)
-    
+    // Brand & Felt Surface Palette (Exact Web App Poker-Felt Parity)
+    val FeltGreen = Color(0xFF081C14)
+    val FeltDark = Color(0xFF061610)
+    val FeltCard = Color(0xFF103023)
+    val FeltCardDark = Color(0xFF0B241A)
+    val FeltBorder = Color(0xFF234E3B)
+
     // Gold Accent Palette
     val GoldAccent = Color(0xFFD4AF37)
-    val GoldLight = Color(0xFFF3E5AB)
+    val GoldLight = Color(0xFFEAB308)
     val GoldDark = Color(0xFFAA8C2C)
-    
+
     // Text Palette
     val CreamText = Color(0xFFF5F5DC)
     val CreamMuted = Color(0x99F5F5DC)
-    
-    // Status & Feedback Palette
-    val WinGreen = Color(0xFF4CAF50)
-    val LoseRed = Color(0xFFF44336)
+
+    // Status & Feedback Palette (Emerald & Rose)
+    val WinGreen = Color(0xFF10B981)
+    val LoseRed = Color(0xFFF43F5E)
     val LiveRed = Color(0xFFE53935)
     
     // Ranks & Trophies
