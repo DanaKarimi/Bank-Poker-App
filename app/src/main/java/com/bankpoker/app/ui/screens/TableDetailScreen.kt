@@ -487,12 +487,24 @@ fun TableDetailScreen(
     
     if (showAddPlayerDialog) {
         val savedNames by viewModel.savedPlayerNames.collectAsState(initial = emptyList())
+        val groupMembers by viewModel.groupMembers.collectAsState()
+        LaunchedEffect(showAddPlayerDialog) {
+            if (showAddPlayerDialog) {
+                viewModel.fetchGroupMembers()
+            }
+        }
         AddPlayerBottomSheet(
             onDismiss = { showAddPlayerDialog = false },
             onAddPlayer = { name ->
                 viewModel.addPlayer(name)
                 showAddPlayerDialog = false
             },
+            onSelectGroupMember = { member ->
+                viewModel.addPlayer(member.displayName, userId = member.userId)
+                showAddPlayerDialog = false
+            },
+            groupMembers = groupMembers,
+            seatedUserIds = players.mapNotNull { it.userId }.toSet(),
             savedNames = savedNames,
             existingNames = players.map { it.name }
         )
@@ -2066,16 +2078,117 @@ fun PlayerResultCard(
 fun AddPlayerBottomSheet(
     onDismiss: () -> Unit,
     onAddPlayer: (String) -> Unit,
+    onSelectGroupMember: ((com.bankpoker.app.data.remote.dto.GroupMemberDto) -> Unit)? = null,
+    groupMembers: List<com.bankpoker.app.data.remote.dto.GroupMemberDto> = emptyList(),
+    seatedUserIds: Set<String> = emptySet(),
     savedNames: List<String> = emptyList(),
     existingNames: List<String> = emptyList()
 ) {
     var playerName by remember { mutableStateOf("") }
+    var memberQuery by remember { mutableStateOf("") }
+    var showManualMode by remember(groupMembers.isEmpty()) { mutableStateOf(groupMembers.isEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val suggestions = savedNames
         .filter { it.contains(playerName, ignoreCase = true) && it.trim() != playerName.trim() }
         .take(8)
+
+    if (!showManualMode && groupMembers.isNotEmpty() && onSelectGroupMember != null) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = sheetState,
+            containerColor = FeltCard,
+            dragHandle = {
+                Box(
+                    modifier = Modifier
+                        .padding(vertical = 12.dp)
+                        .width(40.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(Gold.copy(alpha = 0.6f))
+                )
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "SELECT GROUP MEMBER",
+                    color = Gold,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.5.sp
+                )
+                OutlinedTextField(
+                    value = memberQuery,
+                    onValueChange = { memberQuery = it },
+                    placeholder = { Text("Search by name or @username...", color = Cream.copy(alpha = 0.5f)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val filteredMembers = groupMembers.filter { m ->
+                    memberQuery.isBlank() ||
+                        m.displayName.contains(memberQuery, ignoreCase = true) ||
+                        m.username.contains(memberQuery, ignoreCase = true)
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredMembers, key = { it.userId }) { m ->
+                        val isSeated = seatedUserIds.contains(m.userId) ||
+                            existingNames.any { it.equals(m.displayName, ignoreCase = true) }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSeated) FeltBackground.copy(alpha = 0.4f) else FeltBackground,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSeated) Gold.copy(alpha = 0.2f) else Gold.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !isSeated) { onSelectGroupMember(m) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                PokerAvatar(avatarId = m.avatarId ?: "avatar_1", name = m.displayName, size = 36.dp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(m.displayName, color = Cream, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("@${m.username}", color = Cream.copy(alpha = 0.6f), fontSize = 11.sp)
+                                }
+                                Text(
+                                    text = if (isSeated) "Seated" else "Seat",
+                                    color = if (isSeated) WinGreen else Gold,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showManualMode = true },
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("+ Add Guest / New Player", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        return
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

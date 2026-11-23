@@ -21,6 +21,7 @@ import BalancesTab from '../components/BalancesTab';
 import StatsTab from '../components/StatsTab';
 import HistoryTab from '../components/HistoryTab';
 import LeaderboardTab from '../components/LeaderboardTab';
+import GroupAdminModal from '../components/GroupAdminModal';
 import NotificationsDropdown from '../components/NotificationsDropdown';
 import { getSocket, joinGroup, leaveGroup } from '../socket';
 import {
@@ -86,6 +87,7 @@ const GroupStats = () => {
   const [resetResult, setResetResult] = useState(null);
   const [resetBusy, setResetBusy] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isGroupAdminOpen, setIsGroupAdminOpen] = useState(false);
   const isFetchingRef = useRef(false);
 
   // 1. Fetch group info
@@ -296,6 +298,7 @@ const GroupStats = () => {
     socket.on('player_added', handleRefresh);
     socket.on('player_deleted', handleRefresh);
     socket.on('group_updated', handleRefresh);
+    socket.on('profile_updated', handleRefresh);
     socket.on('claim_done', handleRefresh);
     socket.on('settlement_done', handleRefresh);
     socket.on('entry_fee_updated', handleEntryFeeUpdated);
@@ -351,6 +354,7 @@ const GroupStats = () => {
       socket.off('player_added', handleRefresh);
       socket.off('player_deleted', handleRefresh);
       socket.off('group_updated', handleRefresh);
+      socket.off('profile_updated', handleRefresh);
       socket.off('claim_done', handleRefresh);
       socket.off('settlement_done', handleRefresh);
       socket.off('entry_fee_updated', handleEntryFeeUpdated);
@@ -504,6 +508,17 @@ const GroupStats = () => {
           </Link>
 
           <div className="flex items-center gap-2">
+            {isGroupAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsGroupAdminOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-yellow-950/70 hover:bg-yellow-900 border border-gold-accent/70 rounded-xl text-gold-accent text-xs font-extrabold transition shadow cursor-pointer"
+                title="Open Group Admin Panel"
+              >
+                <Shield className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Group Admin</span>
+              </button>
+            )}
             <NotificationsDropdown />
             <button
               onClick={() => fetchData()}
@@ -818,6 +833,16 @@ const GroupStats = () => {
           />
         )}
       </div>
+
+      {/* GROUP ADMIN PANEL MODAL */}
+      {isGroupAdminOpen && isGroupAdmin && (
+        <GroupAdminModal
+          groupId={groupId}
+          groupName={group?.name}
+          onClose={() => setIsGroupAdminOpen(false)}
+          onDataChanged={() => fetchData(true)}
+        />
+      )}
 
       {/* MEMBER PASSWORD RESET MODAL */}
       {resetModalTarget && (

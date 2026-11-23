@@ -515,33 +515,65 @@ router.post('/:id/invite-code', authenticateToken, requireAdmin, async (req, res
 
 /**
  * GET /api/groups/:id/members
- * (Requires Auth + role='ADMIN')
- * Return list of users who joined this group
+ * Accessible to group members, group admins, and super admins.
+ * Returns active (non-removed) group members with canonical displayName, @username, avatarId, role, joinedAt.
  */
-router.get('/:id/members', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/:id/members', authenticateToken, async (req, res) => {
     try {
         const groupId = req.params.id;
-
         const group = await get(
-            'SELECT * FROM groups WHERE id = ? AND is_deleted = 0',
-            [groupId]
+            'SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0',
+            [groupId, groupId]
         );
-
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
 
-        const members = await all(
-            `SELECT u.id as user_id, u.username, u.role, gm.joined_at
+        const actualGroupId = group.id;
+        const isSuperAdmin = req.user.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === req.user.id || group.created_by === req.user.id;
+        const callerMember = await get(
+            'SELECT * FROM group_members WHERE user_id = ? AND group_id = ? AND COALESCE(is_deleted, 0) = 0',
+            [req.user.id, actualGroupId]
+        );
+        if (!isSuperAdmin && !isOwner && !callerMember) {
+            return res.status(403).json({ error: 'Not a member of this group' });
+        }
+
+        const rows = await all(
+            `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_id, u.role AS global_role,
+                    gm.role AS group_role, gm.joined_at
              FROM group_members gm
              INNER JOIN users u ON gm.user_id = u.id
-             WHERE gm.group_id = ?
-             ORDER BY gm.joined_at ASC`,
-            [groupId]
+             WHERE gm.group_id = ? AND COALESCE(gm.is_deleted, 0) = 0`,
+            [actualGroupId]
         );
 
+        const members = rows
+            .map(r => {
+                const displayName = (r.display_name && r.display_name.trim()) || r.username || 'Player';
+                const memberIsOwner = group.owner_user_id === r.user_id || group.created_by === r.user_id;
+                const effectiveRole = memberIsOwner
+                    ? 'ADMIN'
+                    : (r.group_role === 'ADMIN' || r.group_role === 'SUPER_ADMIN' ? 'ADMIN' : 'MEMBER');
+                return {
+                    userId: r.user_id,
+                    user_id: r.user_id,
+                    username: r.username,
+                    displayName,
+                    display_name: displayName,
+                    avatarId: r.avatar_id || null,
+                    avatar_id: r.avatar_id || null,
+                    role: effectiveRole,
+                    isOwner: memberIsOwner,
+                    joinedAt: r.joined_at,
+                    joined_at: r.joined_at
+                };
+            })
+            .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }));
+
         return res.status(200).json({
-            groupId: group.id,
+            groupId: actualGroupId,
             groupName: group.name,
             members
         });
@@ -1076,10 +1108,12 @@ router.get('/:id/tables', authenticateToken, async (req, res) => {
  * - Returns id, name, status, user_id, balance, totalBuyIns, totalExits, etc.
  * - Balances and history are aggregated across ALL rows of that identity.
  */
-async function getGroupUniquePlayers(groupId, currentUserId = null) {
+async function getGroupUniquePlayers(groupId, currentUserId = null, options = {}) {
+    const includeRemoved = Boolean(options.includeRemoved);
+
     const rawPlayers = await all(
         `SELECT p.id, p.table_id, p.user_id, p.name, p.status, p.created_at, p.entry_fee_paid,
-                u.username as user_username
+                u.username as user_username, u.display_name as user_display_name, u.avatar_id as user_avatar_id
          FROM players p
          JOIN tables t ON p.table_id = t.id
          LEFT JOIN users u ON p.user_id = u.id
@@ -1088,14 +1122,49 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
         [groupId]
     );
 
-    // Build map of lower(trim(name)) -> user_id for players who have a claimed user_id
+    const memberRows = await all(
+        `SELECT gm.user_id, COALESCE(gm.is_deleted, 0) AS is_deleted,
+                u.username, u.display_name, u.avatar_id
+         FROM group_members gm
+         JOIN users u ON u.id = gm.user_id
+         WHERE gm.group_id = ?`,
+        [groupId]
+    );
+
+    const removedUserIds = new Set();
+    const userProfileMap = new Map();
     const nameToUserId = new Map();
+
+    for (const m of memberRows) {
+        if (m.is_deleted === 1) {
+            removedUserIds.add(String(m.user_id));
+        }
+        const canonicalDisplay = (m.display_name && m.display_name.trim()) || m.username || '';
+        userProfileMap.set(String(m.user_id), {
+            username: m.username || null,
+            displayName: canonicalDisplay,
+            avatarId: m.avatar_id || null
+        });
+        [m.username, m.display_name].forEach(n => {
+            const clean = (n || '').trim().toLowerCase();
+            if (clean && !nameToUserId.has(clean)) nameToUserId.set(clean, m.user_id);
+        });
+    }
+
     for (const p of rawPlayers) {
-        if (p.user_id && p.name) {
-            const clean = p.name.trim().toLowerCase();
-            if (!nameToUserId.has(clean)) {
-                nameToUserId.set(clean, p.user_id);
+        if (p.user_id) {
+            if (!userProfileMap.has(String(p.user_id))) {
+                const canonicalDisplay = (p.user_display_name && p.user_display_name.trim()) || p.user_username || (p.name || '').trim();
+                userProfileMap.set(String(p.user_id), {
+                    username: p.user_username || null,
+                    displayName: canonicalDisplay,
+                    avatarId: p.user_avatar_id || null
+                });
             }
+            [p.name, p.user_username, p.user_display_name].forEach(n => {
+                const clean = (n || '').trim().toLowerCase();
+                if (clean && !nameToUserId.has(clean)) nameToUserId.set(clean, p.user_id);
+            });
         }
     }
 
@@ -1207,6 +1276,16 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
     for (const [, entry] of identityMap.entries()) {
         const { repRow, effectiveUserId, rows, playerIds, names } = entry;
 
+        if (!includeRemoved && effectiveUserId && removedUserIds.has(String(effectiveUserId))) {
+            continue;
+        }
+
+        const profile = effectiveUserId ? userProfileMap.get(String(effectiveUserId)) : null;
+        if (profile) {
+            if (profile.username) names.add(profile.username);
+            if (profile.displayName) names.add(profile.displayName);
+        }
+
         let totalBuyIns = 0;
         let totalExits = 0;
         for (const pid of playerIds) {
@@ -1230,14 +1309,22 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
 
         const balance = (totalExits - totalBuyIns) + (paymentsSent - paymentsReceived);
         const isMe = Boolean(currentUserId && effectiveUserId && String(effectiveUserId) === String(currentUserId));
+        const canonicalName = (profile && profile.displayName) || (repRow.user_display_name && repRow.user_display_name.trim()) || repRow.user_username || repRow.name.trim();
+        const canonicalUsername = (profile && profile.username) || repRow.user_username || null;
+        const canonicalAvatarId = (profile && profile.avatarId) || repRow.user_avatar_id || null;
 
         uniquePlayers.push({
             id: repRow.id,
-            name: repRow.name.trim(),
+            name: canonicalName,
+            displayName: canonicalName,
+            display_name: canonicalName,
             status: repRow.status || 'ACTIVE',
             userId: effectiveUserId,
             user_id: effectiveUserId,
-            username: repRow.user_username || repRow.name.trim(),
+            username: canonicalUsername || canonicalName,
+            accountUsername: canonicalUsername,
+            avatarId: canonicalAvatarId,
+            avatar_id: canonicalAvatarId,
             isClaimed: Boolean(effectiveUserId),
             isMe: isMe,
             createdAt: repRow.created_at,
@@ -1259,14 +1346,18 @@ async function getGroupUniquePlayers(groupId, currentUserId = null) {
 /**
  * Helper to calculate all player balances in a group (deduplicated)
  */
-async function calculateGroupBalances(groupId, currentUserId = null) {
-    const players = await getGroupUniquePlayers(groupId, currentUserId);
+async function calculateGroupBalances(groupId, currentUserId = null, options = {}) {
+    const players = await getGroupUniquePlayers(groupId, currentUserId, options);
     return players.map(p => ({
         id: p.id,
         playerId: p.id,
         userId: p.userId,
-        username: p.name,
-        name: p.name,
+        username: p.displayName || p.name,
+        accountUsername: p.accountUsername || null,
+        displayName: p.displayName || p.name,
+        name: p.displayName || p.name,
+        avatarId: p.avatarId || null,
+        avatar_id: p.avatarId || null,
         totalBuyIns: p.totalBuyIns,
         totalExits: p.totalExits,
         paymentsSent: p.paymentsSent,
@@ -2569,8 +2660,16 @@ router.get('/:id/leaderboard', authenticateToken, async (req, res) => {
             });
         }
 
+        // Filter out soft-removed group members from active leaderboard standings while preserving historical calculations
+        const removedRows = await all(
+            'SELECT user_id FROM group_members WHERE group_id = ? AND COALESCE(is_deleted, 0) = 1',
+            [actualGroupId]
+        );
+        const removedUserIds = new Set(removedRows.map(r => String(r.user_id)));
+
         // Build final leaderboard sorted by latest rank ASC
         const leaderboard = Array.from(playerStates.values())
+            .filter(st => !(st.userId && removedUserIds.has(String(st.userId))))
             .map(st => {
                 const last = st.history[st.history.length - 1];
                 const prev = st.history.length >= 2 ? st.history[st.history.length - 2] : null;
@@ -2585,6 +2684,7 @@ router.get('/:id/leaderboard', authenticateToken, async (req, res) => {
                     playerId: st.playerId,
                     userId: st.userId,
                     name: st.name,
+                    displayName: st.name,
                     avatarId: st.avatarId,
                     rank,
                     previousRank,
@@ -2597,7 +2697,8 @@ router.get('/:id/leaderboard', authenticateToken, async (req, res) => {
                     history: st.history
                 };
             })
-            .sort((a, b) => a.rank - b.rank);
+            .sort((a, b) => a.rank - b.rank)
+            .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
         return res.status(200).json({
             groupId: actualGroupId,
@@ -3034,6 +3135,559 @@ router.post('/:groupId/members/:userId/reset-password', authenticateToken, async
     } catch (error) {
         console.error('Error resetting member password:', error);
         return res.status(500).json({ error: 'Failed to reset member password' });
+    }
+});
+
+/**
+ * Strict middleware ensuring caller is SUPER_ADMIN, group owner/creator, or active group ADMIN
+ */
+async function requireGroupAdmin(req, res, next) {
+    try {
+        const groupId = req.params.groupId || req.params.id;
+        const group = await get(
+            'SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0',
+            [groupId, groupId]
+        );
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+        const isOwner = group.owner_user_id === req.user?.id || group.created_by === req.user?.id;
+        const membership = await get(
+            'SELECT role FROM group_members WHERE user_id = ? AND group_id = ? AND COALESCE(is_deleted, 0) = 0',
+            [req.user?.id, group.id]
+        );
+        const isAdmin = isSuperAdmin || isOwner || Boolean(membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+        if (!isAdmin) {
+            return res.status(403).json({ error: 'Permission denied: group admin privileges required' });
+        }
+        req.group = group;
+        next();
+    } catch (err) {
+        console.error('Error in requireGroupAdmin:', err);
+        return res.status(500).json({ error: 'Failed to verify group admin permissions' });
+    }
+}
+
+/**
+ * DELETE /api/groups/:groupId/members/:userId
+ * Soft-remove a member from a group ONLY if their exact current net balance is $0 (abs <= 0.005).
+ * Never deletes or mutates historical players, buy_ins, exit_records, or payments.
+ */
+router.delete('/:groupId/members/:userId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const targetUserId = req.params.userId;
+
+        if (targetUserId === group.owner_user_id || targetUserId === group.created_by) {
+            return res.status(400).json({ error: 'Cannot remove the group owner/creator.' });
+        }
+
+        const membership = await get(
+            'SELECT * FROM group_members WHERE group_id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0',
+            [group.id, targetUserId]
+        );
+        if (!membership) {
+            return res.status(404).json({ error: 'Active group member not found' });
+        }
+
+        // Compute exact current net balance across all non-deleted tables & payments in this group
+        const allBalances = await calculateGroupBalances(group.id, null, { includeRemoved: true });
+        const targetBalanceRow = allBalances.find(b => b.userId && String(b.userId) === String(targetUserId));
+        const netBalance = targetBalanceRow ? Number(targetBalanceRow.balance) || 0 : 0;
+
+        if (Math.abs(netBalance) > 0.005) {
+            return res.status(400).json({
+                error: 'unsettled_balance',
+                balance: netBalance,
+                message: 'Cannot remove member until their balance is settled ($0).'
+            });
+        }
+
+        const now = Date.now();
+        await run(
+            `UPDATE group_members
+             SET is_deleted = 1, removed_at = ?, removed_by = ?
+             WHERE group_id = ? AND user_id = ?`,
+            [now, req.user.id, group.id, targetUserId]
+        );
+
+        emitToGroup(group.id, 'group_updated', { groupId: group.id });
+        return res.status(200).json({
+            message: 'Member removed from group',
+            userId: targetUserId,
+            groupId: group.id,
+            removedAt: now
+        });
+    } catch (error) {
+        console.error('Error soft-removing group member:', error);
+        return res.status(500).json({ error: 'Failed to remove group member' });
+    }
+});
+
+/**
+ * PUT /api/groups/:groupId/members/:userId/role
+ * Promote/demote a group member between ADMIN and MEMBER (owner protected)
+ */
+router.put('/:groupId/members/:userId/role', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const targetUserId = req.params.userId;
+        const { role } = req.body || {};
+        if (!['ADMIN', 'MEMBER'].includes(role)) {
+            return res.status(400).json({ error: 'Role must be ADMIN or MEMBER' });
+        }
+        if ((targetUserId === group.owner_user_id || targetUserId === group.created_by) && role !== 'ADMIN') {
+            return res.status(400).json({ error: 'Cannot demote the group owner/creator' });
+        }
+        const membership = await get(
+            'SELECT * FROM group_members WHERE group_id = ? AND user_id = ? AND COALESCE(is_deleted, 0) = 0',
+            [group.id, targetUserId]
+        );
+        if (!membership) {
+            return res.status(404).json({ error: 'Active group member not found' });
+        }
+        await run(
+            'UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?',
+            [role, group.id, targetUserId]
+        );
+        emitToGroup(group.id, 'group_updated', { groupId: group.id });
+        return res.status(200).json({ message: 'Member role updated', userId: targetUserId, role });
+    } catch (error) {
+        console.error('Error updating group member role:', error);
+        return res.status(500).json({ error: 'Failed to update member role' });
+    }
+});
+
+/**
+ * GET /api/groups/:groupId/admin/overview
+ * Group-scoped admin overview: active members (with exact balances & roles), all tables, recent payments, password resets
+ */
+router.get('/:groupId/admin/overview', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const now = Date.now();
+
+        const [memberRows, balances, tableRows, paymentRows, resetRows] = await Promise.all([
+            all(
+                `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_id, gm.role AS group_role, gm.joined_at
+                 FROM group_members gm
+                 JOIN users u ON u.id = gm.user_id
+                 WHERE gm.group_id = ? AND COALESCE(gm.is_deleted, 0) = 0`,
+                [group.id]
+            ),
+            calculateGroupBalances(group.id, null, { includeRemoved: false }),
+            all(
+                `SELECT t.id, t.name, t.status, t.code, t.chip_value, t.entry_fee, t.created_at, t.closed_at,
+                        (SELECT COUNT(*) FROM players p WHERE p.table_id = t.id AND p.is_deleted = 0) AS player_count,
+                        COALESCE((SELECT SUM(b.amount) FROM buy_ins b WHERE b.table_id = t.id AND b.is_deleted = 0), 0) AS total_buy_ins,
+                        COALESCE((SELECT SUM(e.amount) FROM exit_records e WHERE e.table_id = t.id AND e.is_deleted = 0), 0) AS total_exits
+                 FROM tables t
+                 WHERE t.group_id = ? AND t.is_deleted = 0
+                 ORDER BY t.created_at DESC`,
+                [group.id]
+            ),
+            all(
+                `SELECT id, from_player, to_player, amount, created_at
+                 FROM payments
+                 WHERE group_id = ? AND is_deleted = 0
+                 ORDER BY created_at DESC LIMIT 50`,
+                [group.id]
+            ),
+            all(
+                `SELECT pr.id, pr.user_id, pr.username, u.display_name, u.avatar_id,
+                        pr.reset_code, pr.status, pr.expires_at, pr.created_at
+                 FROM password_reset_requests pr
+                 JOIN users u ON u.id = pr.user_id
+                 WHERE pr.status IN ('PENDING', 'APPROVED')
+                   AND (pr.expires_at IS NULL OR pr.expires_at >= ?)
+                   AND pr.user_id IN (SELECT user_id FROM group_members WHERE group_id = ? AND COALESCE(is_deleted, 0) = 0)
+                 ORDER BY pr.created_at DESC`,
+                [now, group.id]
+            )
+        ]);
+
+        const balanceByUserId = new Map();
+        for (const b of balances) {
+            if (b.userId) balanceByUserId.set(String(b.userId), Number(b.balance) || 0);
+        }
+
+        const members = memberRows
+            .map(m => {
+                const displayName = (m.display_name && m.display_name.trim()) || m.username;
+                const isOwner = m.user_id === group.owner_user_id || m.user_id === group.created_by;
+                const role = isOwner ? 'ADMIN' : (m.group_role === 'ADMIN' || m.group_role === 'SUPER_ADMIN' ? 'ADMIN' : 'MEMBER');
+                return {
+                    userId: m.user_id,
+                    username: m.username,
+                    displayName,
+                    avatarId: m.avatar_id || null,
+                    role,
+                    isOwner,
+                    balance: balanceByUserId.get(String(m.user_id)) || 0,
+                    joinedAt: m.joined_at
+                };
+            })
+            .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }));
+
+        return res.status(200).json({
+            groupId: group.id,
+            groupName: group.name,
+            members,
+            tables: tableRows.map(t => ({
+                id: t.id,
+                name: t.name,
+                status: t.status,
+                code: t.code,
+                chipValue: t.chip_value,
+                entryFee: t.entry_fee,
+                playerCount: Number(t.player_count) || 0,
+                totalBuyIns: Number(t.total_buy_ins) || 0,
+                totalExits: Number(t.total_exits) || 0,
+                createdAt: t.created_at,
+                closedAt: t.closed_at
+            })),
+            payments: paymentRows.map(p => ({
+                id: p.id,
+                fromPlayer: p.from_player,
+                toPlayer: p.to_player,
+                amount: Number(p.amount) || 0,
+                createdAt: p.created_at
+            })),
+            passwordResets: resetRows.map(r => ({
+                id: r.id,
+                userId: r.user_id,
+                username: r.username,
+                displayName: (r.display_name && r.display_name.trim()) || r.username,
+                avatarId: r.avatar_id || null,
+                resetCode: r.reset_code || null,
+                status: r.status,
+                expiresAt: r.expires_at,
+                createdAt: r.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching group admin overview:', error);
+        return res.status(500).json({ error: 'Failed to load group admin overview' });
+    }
+});
+
+/**
+ * GET /api/groups/:groupId/admin/tables/:tableId
+ * Full table detail (ACTIVE or CLOSED) with players, buyIns, exits for group admin correction
+ */
+router.get('/:groupId/admin/tables/:tableId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const tableId = req.params.tableId;
+        const table = await get(
+            'SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0',
+            [tableId, group.id]
+        );
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const [rawPlayers, rawBuyIns, rawExits] = await Promise.all([
+            all(
+                `SELECT p.id, p.user_id, p.name, p.status, p.entry_fee_paid, u.username, u.display_name, u.avatar_id
+                 FROM players p
+                 LEFT JOIN users u ON p.user_id = u.id
+                 WHERE p.table_id = ? AND p.is_deleted = 0
+                 ORDER BY p.created_at ASC`,
+                [table.id]
+            ),
+            all(
+                `SELECT b.id, b.player_id, b.amount, b.note, b.created_at, p.name AS player_name
+                 FROM buy_ins b
+                 JOIN players p ON p.id = b.player_id
+                 WHERE b.table_id = ? AND b.is_deleted = 0
+                 ORDER BY b.created_at DESC`,
+                [table.id]
+            ),
+            all(
+                `SELECT e.id, e.player_id, e.amount, e.note, e.created_at, p.name AS player_name
+                 FROM exit_records e
+                 JOIN players p ON p.id = e.player_id
+                 WHERE e.table_id = ? AND e.is_deleted = 0
+                 ORDER BY e.created_at DESC`,
+                [table.id]
+            )
+        ]);
+
+        return res.status(200).json({
+            table: {
+                id: table.id,
+                name: table.name,
+                status: table.status,
+                createdAt: table.created_at,
+                closedAt: table.closed_at
+            },
+            players: rawPlayers.map(p => ({
+                id: p.id,
+                userId: p.user_id || null,
+                name: (p.display_name && p.display_name.trim()) || p.username || p.name,
+                username: p.username || null,
+                avatarId: p.avatar_id || null,
+                status: p.status,
+                entryFeePaid: Boolean(p.entry_fee_paid)
+            })),
+            buyIns: rawBuyIns.map(b => ({
+                id: b.id,
+                playerId: b.player_id,
+                playerName: b.player_name,
+                amount: Number(b.amount) || 0,
+                note: b.note || '',
+                createdAt: b.created_at
+            })),
+            exits: rawExits.map(e => ({
+                id: e.id,
+                playerId: e.player_id,
+                playerName: e.player_name,
+                amount: Number(e.amount) || 0,
+                note: e.note || '',
+                createdAt: e.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Error loading admin table detail:', error);
+        return res.status(500).json({ error: 'Failed to load table detail' });
+    }
+});
+
+const broadcastAdminTableCorrection = (groupId, tableId) => {
+    emitToTable(tableId, 'table_updated', { tableId });
+    emitToGroup(groupId, 'table_updated', { tableId });
+    emitToGroup(groupId, 'group_updated', { groupId });
+    emitToGroup(groupId, 'settlement_done', { groupId });
+};
+
+/**
+ * PUT /api/groups/:groupId/admin/tables/:tableId/status
+ * Reopen, close, or soft-delete a table in the group
+ */
+router.put('/:groupId/admin/tables/:tableId/status', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const tableId = req.params.tableId;
+        const { status, isDeleted } = req.body || {};
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const now = Date.now();
+        if (isDeleted === true || isDeleted === 1) {
+            await run('UPDATE tables SET is_deleted = 1, updated_at = ? WHERE id = ?', [now, table.id]);
+            broadcastAdminTableCorrection(group.id, table.id);
+            return res.status(200).json({ message: 'Table deleted', tableId: table.id });
+        }
+
+        if (!['ACTIVE', 'CLOSED'].includes(status)) {
+            return res.status(400).json({ error: 'Status must be ACTIVE or CLOSED' });
+        }
+        const closedAt = status === 'CLOSED' ? (table.closed_at || now) : null;
+        await run('UPDATE tables SET status = ?, closed_at = ?, updated_at = ? WHERE id = ?', [status, closedAt, now, table.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: `Table status set to ${status}`, tableId: table.id, status });
+    } catch (error) {
+        console.error('Error updating table status:', error);
+        return res.status(500).json({ error: 'Failed to update table status' });
+    }
+});
+
+/**
+ * Admin table players: POST / DELETE (works even on CLOSED tables)
+ */
+router.post('/:groupId/admin/tables/:tableId/players', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const tableId = req.params.tableId;
+        const { name, userId } = req.body || {};
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        let resolvedName = (name || '').trim();
+        let resolvedUserId = userId || null;
+        if (resolvedUserId) {
+            const u = await get('SELECT id, username, display_name FROM users WHERE id = ?', [resolvedUserId]);
+            if (u) {
+                resolvedName = (u.display_name && u.display_name.trim()) || u.username || resolvedName;
+            }
+        }
+        if (!resolvedName) return res.status(400).json({ error: 'Player name is required' });
+
+        const now = Date.now();
+        const pid = crypto.randomUUID();
+        await run(
+            `INSERT INTO players (id, table_id, user_id, name, status, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 1, 0)`,
+            [pid, table.id, resolvedUserId, resolvedName, now, pid, now]
+        );
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(201).json({ message: 'Player added', id: pid, name: resolvedName, userId: resolvedUserId });
+    } catch (error) {
+        console.error('Error adding admin table player:', error);
+        return res.status(500).json({ error: 'Failed to add player' });
+    }
+});
+
+router.delete('/:groupId/admin/tables/:tableId/players/:playerId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const { tableId, playerId } = req.params;
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const now = Date.now();
+        await run('UPDATE buy_ins SET is_deleted = 1, updated_at = ? WHERE table_id = ? AND player_id = ?', [now, table.id, playerId]);
+        await run('UPDATE exit_records SET is_deleted = 1, updated_at = ? WHERE table_id = ? AND player_id = ?', [now, table.id, playerId]);
+        await run('UPDATE players SET is_deleted = 1, updated_at = ? WHERE id = ? AND table_id = ?', [now, playerId, table.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: 'Player removed from table', playerId });
+    } catch (error) {
+        console.error('Error deleting admin table player:', error);
+        return res.status(500).json({ error: 'Failed to delete player' });
+    }
+});
+
+/**
+ * Admin table buy-ins: POST / PUT / DELETE (works even on CLOSED tables)
+ */
+router.post('/:groupId/admin/tables/:tableId/buy-ins', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const tableId = req.params.tableId;
+        const { playerId, amount, note } = req.body || {};
+        const numAmount = Number(amount);
+        if (!playerId || isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'Valid playerId and non-negative amount are required' });
+        }
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const now = Date.now();
+        const bid = crypto.randomUUID();
+        await run(
+            `INSERT INTO buy_ins (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [bid, table.id, playerId, numAmount, note ? String(note).trim() : null, req.user.id, now, bid, now]
+        );
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(201).json({ message: 'Buy-in added', id: bid, amount: numAmount });
+    } catch (error) {
+        console.error('Error adding admin buy-in:', error);
+        return res.status(500).json({ error: 'Failed to add buy-in' });
+    }
+});
+
+router.put('/:groupId/admin/tables/:tableId/buy-ins/:buyInId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const { tableId, buyInId } = req.params;
+        const { amount, note } = req.body || {};
+        const numAmount = Number(amount);
+        if (isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'Valid non-negative amount is required' });
+        }
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const existing = await get('SELECT * FROM buy_ins WHERE id = ? AND table_id = ? AND is_deleted = 0', [buyInId, table.id]);
+        if (!existing) return res.status(404).json({ error: 'Buy-in not found' });
+
+        const now = Date.now();
+        const updatedNote = note !== undefined ? (note ? String(note).trim() : null) : existing.note;
+        await run('UPDATE buy_ins SET amount = ?, note = ?, updated_at = ? WHERE id = ?', [numAmount, updatedNote, now, existing.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: 'Buy-in updated', id: existing.id, amount: numAmount, note: updatedNote });
+    } catch (error) {
+        console.error('Error updating admin buy-in:', error);
+        return res.status(500).json({ error: 'Failed to update buy-in' });
+    }
+});
+
+router.delete('/:groupId/admin/tables/:tableId/buy-ins/:buyInId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const { tableId, buyInId } = req.params;
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        await run('UPDATE buy_ins SET is_deleted = 1, updated_at = ? WHERE id = ? AND table_id = ?', [Date.now(), buyInId, table.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: 'Buy-in deleted', id: buyInId });
+    } catch (error) {
+        console.error('Error deleting admin buy-in:', error);
+        return res.status(500).json({ error: 'Failed to delete buy-in' });
+    }
+});
+
+/**
+ * Admin table exits: POST / PUT / DELETE (works even on CLOSED tables)
+ */
+router.post('/:groupId/admin/tables/:tableId/exits', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const tableId = req.params.tableId;
+        const { playerId, amount, note } = req.body || {};
+        const numAmount = Number(amount);
+        if (!playerId || isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'Valid playerId and non-negative amount are required' });
+        }
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const now = Date.now();
+        const eid = crypto.randomUUID();
+        await run(
+            `INSERT INTO exit_records (id, table_id, player_id, amount, note, actor_user_id, created_at, server_id, updated_at, is_synced, is_deleted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+            [eid, table.id, playerId, numAmount, note ? String(note).trim() : null, req.user.id, now, eid, now]
+        );
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(201).json({ message: 'Exit added', id: eid, amount: numAmount });
+    } catch (error) {
+        console.error('Error adding admin exit:', error);
+        return res.status(500).json({ error: 'Failed to add exit' });
+    }
+});
+
+router.put('/:groupId/admin/tables/:tableId/exits/:exitId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const { tableId, exitId } = req.params;
+        const { amount, note } = req.body || {};
+        const numAmount = Number(amount);
+        if (isNaN(numAmount) || numAmount < 0) {
+            return res.status(400).json({ error: 'Valid non-negative amount is required' });
+        }
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        const existing = await get('SELECT * FROM exit_records WHERE id = ? AND table_id = ? AND is_deleted = 0', [exitId, table.id]);
+        if (!existing) return res.status(404).json({ error: 'Exit record not found' });
+
+        const now = Date.now();
+        const updatedNote = note !== undefined ? (note ? String(note).trim() : null) : existing.note;
+        await run('UPDATE exit_records SET amount = ?, note = ?, updated_at = ? WHERE id = ?', [numAmount, updatedNote, now, existing.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: 'Exit updated', id: existing.id, amount: numAmount, note: updatedNote });
+    } catch (error) {
+        console.error('Error updating admin exit:', error);
+        return res.status(500).json({ error: 'Failed to update exit' });
+    }
+});
+
+router.delete('/:groupId/admin/tables/:tableId/exits/:exitId', authenticateToken, requireGroupAdmin, async (req, res) => {
+    try {
+        const group = req.group;
+        const { tableId, exitId } = req.params;
+        const table = await get('SELECT * FROM tables WHERE id = ? AND group_id = ? AND is_deleted = 0', [tableId, group.id]);
+        if (!table) return res.status(404).json({ error: 'Table not found in this group' });
+
+        await run('UPDATE exit_records SET is_deleted = 1, updated_at = ? WHERE id = ? AND table_id = ?', [Date.now(), exitId, table.id]);
+        broadcastAdminTableCorrection(group.id, table.id);
+        return res.status(200).json({ message: 'Exit deleted', id: exitId });
+    } catch (error) {
+        console.error('Error deleting admin exit:', error);
+        return res.status(500).json({ error: 'Failed to delete exit' });
     }
 });
 

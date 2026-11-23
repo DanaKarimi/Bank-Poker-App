@@ -1237,17 +1237,18 @@ router.get('/:id/players', authenticateToken, async (req, res) => {
             const totalBuyIns = Number(p.total_buy_ins) || 0;
             const totalExits = Number(p.total_exits) || 0;
             const balance = totalExits - totalBuyIns;
+            const canonicalName = (p.display_name && p.display_name.trim()) || p.username || p.name;
             return {
                 id: p.id,
                 tableId: p.table_id,
                 userId: p.user_id,
-                name: p.name,
+                name: canonicalName,
                 status: p.status,
                 createdAt: p.created_at,
                 entryFeePaid: Boolean(p.entry_fee_paid),
-                username: p.username,
-                displayName: p.display_name || p.name,
-                avatarId: p.avatar_id || 'avatar_1',
+                username: p.username || null,
+                displayName: canonicalName,
+                avatarId: p.avatar_id || null,
                 totalBuyIns,
                 totalExits,
                 balance

@@ -334,15 +334,29 @@ class TableDetailViewModel(
         }
     }
 
-    fun addPlayer(name: String, onResult: ((Boolean, String?) -> Unit)? = null) {
+    private val _groupMembers = MutableStateFlow<List<com.bankpoker.app.data.remote.dto.GroupMemberDto>>(emptyList())
+    val groupMembers: StateFlow<List<com.bankpoker.app.data.remote.dto.GroupMemberDto>> = _groupMembers.asStateFlow()
+
+    fun fetchGroupMembers() {
+        val gId = uiState.value.table?.groupId
+        if (gId.isNullOrBlank() || remoteRepository == null) return
         viewModelScope.launch {
-            val cleanName = name.trim().uppercase()
-            Log.d("TableDetail", "Adding player to table $tableId: $cleanName")
+            val res = remoteRepository.getGroupMembers(gId)
+            if (res.isSuccess) {
+                _groupMembers.value = res.getOrNull() ?: emptyList()
+            }
+        }
+    }
+
+    fun addPlayer(name: String, userId: String? = null, onResult: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            val cleanName = if (userId.isNullOrBlank()) name.trim().uppercase() else name.trim()
+            Log.d("TableDetail", "Adding player to table $tableId: $cleanName (userId=$userId)")
             repository.addPlayer(tableId, cleanName)
             onRefreshCounts?.invoke()
 
             if (isTableOnline()) {
-                val remoteResult = remoteRepository?.addTablePlayer(tableId, cleanName)
+                val remoteResult = remoteRepository?.addTablePlayer(tableId, cleanName, userId)
                 if (remoteResult != null && remoteResult.isSuccess) {
                     val serverPlayerObj = remoteResult.getOrNull()?.getAsJsonObject("player")
                     val serverPlayerId = serverPlayerObj?.get("id")?.asString

@@ -173,6 +173,180 @@ class RemoteRepository(
         }
     }
 
+    suspend fun getGroupMembers(
+        groupId: String
+    ): Result<List<com.bankpoker.app.data.remote.dto.GroupMemberDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupMembers(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.members)
+            } else {
+                Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed to load group members"))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeGroupMember(groupId: String, userId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.removeGroupMember(groupId, userId, getAuthHeader())
+            if (response.isSuccessful) {
+                Result.success(response.body()?.message ?: "Member removed")
+            } else {
+                val raw = response.errorBody()?.string()
+                Result.failure(Exception(parseErrorMessage(raw) ?: "Cannot remove member"))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupMemberRole(groupId: String, userId: String, role: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateGroupMemberRole(
+                groupId,
+                userId,
+                com.bankpoker.app.data.remote.dto.UpdateMemberRoleRequest(role),
+                getAuthHeader()
+            )
+            if (response.isSuccessful) {
+                Result.success(response.body()?.message ?: "Role updated")
+            } else {
+                Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed to update role"))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getGroupAdminOverview(
+        groupId: String
+    ): Result<com.bankpoker.app.data.remote.dto.GroupAdminOverviewResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupAdminOverview(groupId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Admin access required"))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getGroupAdminTable(
+        groupId: String,
+        tableId: String
+    ): Result<com.bankpoker.app.data.remote.dto.GroupAdminTableDetailResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getGroupAdminTable(groupId, tableId, getAuthHeader())
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed to load table"))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupAdminTableStatus(
+        groupId: String,
+        tableId: String,
+        status: String? = null,
+        isDeleted: Boolean? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateGroupAdminTableStatus(
+                groupId,
+                tableId,
+                com.bankpoker.app.data.remote.dto.AdminTableStatusRequest(status, isDeleted),
+                getAuthHeader()
+            )
+            if (response.isSuccessful) Result.success(response.body()?.message ?: "Updated")
+            else Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addGroupAdminTablePlayer(groupId: String, tableId: String, name: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.addGroupAdminTablePlayer(
+                groupId,
+                tableId,
+                com.bankpoker.app.data.remote.dto.AdminTablePlayerRequest(name),
+                getAuthHeader()
+            )
+            if (response.isSuccessful) Result.success("Player added")
+            else Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteGroupAdminTablePlayer(groupId: String, tableId: String, playerId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteGroupAdminTablePlayer(groupId, tableId, playerId, getAuthHeader())
+            if (response.isSuccessful) Result.success("Player removed")
+            else Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupAdminTableTx(
+        groupId: String,
+        tableId: String,
+        isBuyIn: Boolean,
+        txId: String,
+        amount: Long,
+        note: String? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val req = com.bankpoker.app.data.remote.dto.AdminTableTxRequest(amount = amount, note = note)
+            val response = if (isBuyIn) {
+                apiService.updateGroupAdminTableBuyIn(groupId, tableId, txId, req, getAuthHeader())
+            } else {
+                apiService.updateGroupAdminTableExit(groupId, tableId, txId, req, getAuthHeader())
+            }
+            if (response.isSuccessful) Result.success("Updated")
+            else Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteGroupAdminTableTx(
+        groupId: String,
+        tableId: String,
+        isBuyIn: Boolean,
+        txId: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = if (isBuyIn) {
+                apiService.deleteGroupAdminTableBuyIn(groupId, tableId, txId, getAuthHeader())
+            } else {
+                apiService.deleteGroupAdminTableExit(groupId, tableId, txId, getAuthHeader())
+            }
+            if (response.isSuccessful) Result.success("Deleted")
+            else Result.failure(Exception(parseErrorMessage(response.errorBody()?.string()) ?: "Failed"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /**
      * Fetch chronological leaderboard & rank progression history for a group
      */
@@ -741,10 +915,13 @@ class RemoteRepository(
     /**
      * Add player to an online table by name
      */
-    suspend fun addTablePlayer(tableId: String, name: String): Result<com.google.gson.JsonObject> = withContext(Dispatchers.IO) {
+    suspend fun addTablePlayer(tableId: String, name: String, userId: String? = null): Result<com.google.gson.JsonObject> = withContext(Dispatchers.IO) {
         try {
             val body = com.google.gson.JsonObject().apply {
                 addProperty("name", name.trim())
+                if (!userId.isNullOrBlank()) {
+                    addProperty("userId", userId)
+                }
             }
             val response = apiService.addTablePlayer(tableId, body, getAuthHeader())
             if (response.isSuccessful && response.body() != null) {

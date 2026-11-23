@@ -15,6 +15,7 @@ import {
   publishTable,
   deleteTablePlayer,
   addTablePlayer,
+  getGroupMembers,
   directBuyIn,
   directExit,
   closeTable,
@@ -82,6 +83,10 @@ const TableDetail = () => {
   const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showManualGuestInput, setShowManualGuestInput] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [selectedPlayerForBuyIn, setSelectedPlayerForBuyIn] = useState(null);
   const [selectedPlayerForExit, setSelectedPlayerForExit] = useState(null);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
@@ -225,6 +230,7 @@ const TableDetail = () => {
     socket.on('request_created', handleRefresh);
     socket.on('request_resolved', handleRefresh);
     socket.on('entry_fee_updated', handleRefresh);
+    socket.on('profile_updated', handleRefresh);
 
     // 2. Smart visibility-aware & socket-aware safety-net polling
     let pollTimer = null;
@@ -272,6 +278,7 @@ const TableDetail = () => {
       socket.off('request_created', handleRefresh);
       socket.off('request_resolved', handleRefresh);
       socket.off('entry_fee_updated', handleRefresh);
+      socket.off('profile_updated', handleRefresh);
     };
   }, [groupId, tableId]);
 
@@ -1508,13 +1515,29 @@ const TableDetail = () => {
         )}
       </div>
 
-      {/* Floating Action Button (+) for Add Player (Matches Android lines 881-896) */}
+      {/* Floating Action Button (+) for Add Player */}
       {!isClosed && isHostOrAdmin && (
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
             setNewPlayerName('');
+            setMemberSearchQuery('');
+            const effGroupId = groupId || table?.groupId;
+            setShowManualGuestInput(!effGroupId);
             setIsAddPlayerModalOpen(true);
+            if (effGroupId) {
+              setLoadingMembers(true);
+              try {
+                const res = await getGroupMembers(effGroupId);
+                setGroupMembers(res.data?.members || []);
+              } catch (err) {
+                console.warn('Failed to fetch group members:', err);
+                setGroupMembers([]);
+                setShowManualGuestInput(true);
+              } finally {
+                setLoadingMembers(false);
+              }
+            }
           }}
           className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-yellow-600 via-gold-accent to-yellow-400 hover:opacity-95 text-black rounded-full shadow-2xl border-2 border-gold-light flex items-center justify-center active:scale-95 transition-all z-40 cursor-pointer"
           title="Add Player"
@@ -1523,14 +1546,13 @@ const TableDetail = () => {
         </button>
       )}
 
-      {/* Add Player Modal (Matches Android AddPlayerBottomSheet) */}
+      {/* Add Player Member Picker + Manual Guest Modal */}
       {isAddPlayerModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-sm p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
-            {/* Drag Handle */}
-            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3" />
+          <div className="bg-felt-card border-2 border-gold-accent rounded-[28px] w-full max-w-md p-5 sm:p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[88vh] flex flex-col">
+            <div className="w-10 h-1 bg-gold-accent/60 rounded-full mx-auto mb-3 shrink-0" />
 
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-gold-accent/30">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-gold-accent/30 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-gold-accent text-sm font-bold">♠</span>
                 <h3 className="text-sm font-bold text-cream-text uppercase tracking-[2px]">
@@ -1550,34 +1572,133 @@ const TableDetail = () => {
               </button>
             </div>
 
-            {/* Live Chip-Style Avatar Preview (Matches Android) */}
-            <div className="flex flex-col items-center mb-4">
-              <span className="text-[10px] font-bold text-gold-accent/75 uppercase tracking-[1.5px] mb-2">
-                AVATAR PREVIEW
-              </span>
-              <PokerAvatar
-                avatarId={null}
-                name={newPlayerName.trim() || '?'}
-                size={72}
-              />
-            </div>
+            {(groupId || table?.groupId) && !showManualGuestInput ? (
+              <div className="flex flex-col flex-1 min-h-0 space-y-3">
+                <div className="relative shrink-0">
+                  <Search className="w-4 h-4 text-gold-accent absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={memberSearchQuery}
+                    onChange={(e) => setMemberSearchQuery(e.target.value)}
+                    placeholder="Search member by name or @username..."
+                    className="w-full pl-10 pr-4 py-2 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text text-xs focus:outline-none focus:border-gold-accent"
+                  />
+                </div>
 
-            <form onSubmit={handleAddPlayerSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-cream-text/70 uppercase tracking-wider mb-1.5">
-                  Player Name
-                </label>
-                <input
-                  type="text"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  placeholder="e.g. DANA"
-                  autoFocus
-                  className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent uppercase placeholder:normal-case"
-                />
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-64">
+                  {loadingMembers ? (
+                    <div className="py-6 text-center text-xs text-cream-text/60">Loading group members...</div>
+                  ) : (
+                    groupMembers
+                      .filter((m) => {
+                        if (!memberSearchQuery.trim()) return true;
+                        const q = memberSearchQuery.trim().toLowerCase();
+                        return (
+                          (m.displayName || '').toLowerCase().includes(q) ||
+                          (m.username || '').toLowerCase().includes(q)
+                        );
+                      })
+                      .map((m) => {
+                        const isSeated = players.some(
+                          (p) =>
+                            (p.userId && String(p.userId) === String(m.userId)) ||
+                            (p.user_id && String(p.user_id) === String(m.userId)) ||
+                            (p.name || '').trim().toLowerCase() === (m.displayName || '').trim().toLowerCase()
+                        );
+                        return (
+                          <button
+                            key={m.userId}
+                            type="button"
+                            disabled={isSeated || isAddingPlayer}
+                            onClick={async () => {
+                              setIsAddingPlayer(true);
+                              try {
+                                await addTablePlayer(tableId, { name: m.displayName, userId: m.userId });
+                                setSuccessMessage(`${m.displayName} seated at the table!`);
+                                setIsAddPlayerModalOpen(false);
+                                fetchTableData(true);
+                                setTimeout(() => setSuccessMessage(''), 4000);
+                              } catch (err) {
+                                setError(err.response?.data?.error || 'Failed to seat player');
+                              } finally {
+                                setIsAddingPlayer(false);
+                              }
+                            }}
+                            className={`w-full p-2.5 rounded-xl border flex items-center justify-between gap-2.5 text-left transition ${
+                              isSeated
+                                ? 'bg-felt-dark/40 border-gold-accent/15 opacity-55 cursor-not-allowed'
+                                : 'bg-felt-dark/80 border-gold-accent/30 hover:border-gold-accent cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <PokerAvatar avatarId={m.avatarId} name={m.displayName} size={36} />
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-cream-text truncate">{m.displayName}</div>
+                                <div className="text-[11px] text-cream-text/55 truncate">@{m.username}</div>
+                              </div>
+                            </div>
+                            {isSeated ? (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold shrink-0">
+                                Seated
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-lg bg-gold-accent text-black text-[11px] font-extrabold shrink-0">
+                                Seat
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowManualGuestInput(true)}
+                  className="w-full py-2.5 rounded-xl border border-dashed border-gold-accent/60 text-gold-accent hover:bg-felt-dark text-xs font-bold transition cursor-pointer shrink-0"
+                >
+                  + Add Guest / New Player (Manual Name)
+                </button>
               </div>
+            ) : (
+              <>
+                <div className="flex flex-col items-center mb-4">
+                  <span className="text-[10px] font-bold text-gold-accent/75 uppercase tracking-[1.5px] mb-2">
+                    AVATAR PREVIEW
+                  </span>
+                  <PokerAvatar
+                    avatarId={null}
+                    name={newPlayerName.trim() || '?'}
+                    size={72}
+                  />
+                </div>
 
-              <div className="pt-2">
+                <form onSubmit={handleAddPlayerSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-cream-text/70 uppercase tracking-wider mb-1.5">
+                      Guest / Player Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      placeholder="e.g. DANA"
+                      autoFocus
+                      className="w-full px-4 py-2.5 bg-felt-dark border border-gold-accent/40 rounded-xl text-cream-text font-bold text-sm focus:outline-none focus:border-gold-accent uppercase placeholder:normal-case"
+                    />
+                  </div>
+
+                  {(groupId || table?.groupId) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowManualGuestInput(false)}
+                      className="text-xs text-gold-accent hover:underline font-semibold cursor-pointer"
+                    >
+                      ← Back to Group Members
+                    </button>
+                  )}
+
+                  <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isAddingPlayer || !newPlayerName.trim()}
@@ -1588,6 +1709,8 @@ const TableDetail = () => {
                 </button>
               </div>
             </form>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -106,6 +106,8 @@ fun GroupDetailScreen(
     val passwordResetRequests by viewModel.passwordResetRequests.collectAsState()
     val leaderboardData by viewModel.leaderboard.collectAsState()
     val isLoadingLeaderboard by viewModel.isLoadingLeaderboard.collectAsState()
+    val isGroupAdmin by viewModel.isGroupAdmin.collectAsState()
+    var showGroupAdminDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var selectedTableForAction by remember { mutableStateOf<PokerTable?>(null) }
@@ -268,6 +270,23 @@ fun GroupDetailScreen(
                                         imageVector = Icons.Default.Notifications,
                                         contentDescription = null,
                                         tint = Color(0xFFFFB300)
+                                    )
+                                }
+                            )
+                        }
+                        if (isGroupAdmin) {
+                            DropdownMenuItem(
+                                text = { Text("Group Admin Panel", color = Gold, fontWeight = FontWeight.Bold) },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.fetchAdminOverview()
+                                    showGroupAdminDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = Gold
                                     )
                                 }
                             )
@@ -459,6 +478,14 @@ fun GroupDetailScreen(
                     }
                 )
             }
+        )
+    }
+
+    if (showGroupAdminDialog && isGroupAdmin) {
+        GroupAdminDialog(
+            viewModel = viewModel,
+            groupName = group?.name ?: "Group",
+            onDismiss = { showGroupAdminDialog = false }
         )
     }
 

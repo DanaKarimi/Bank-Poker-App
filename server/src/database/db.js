@@ -115,6 +115,18 @@ const initDb = async () => {
             await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
         }
 
+        const gmColumns = await all("PRAGMA table_info(group_members)");
+        const gmColNames = gmColumns.map(c => c.name);
+        if (!gmColNames.includes('is_deleted')) {
+            await run("ALTER TABLE group_members ADD COLUMN is_deleted INTEGER DEFAULT 0");
+        }
+        if (!gmColNames.includes('removed_at')) {
+            await run("ALTER TABLE group_members ADD COLUMN removed_at INTEGER");
+        }
+        if (!gmColNames.includes('removed_by')) {
+            await run("ALTER TABLE group_members ADD COLUMN removed_by TEXT");
+        }
+
         // Ensure additive performance indexes exist on existing databases
         const perfIndexes = [
             'CREATE INDEX IF NOT EXISTS idx_players_table_deleted ON players(table_id, is_deleted)',

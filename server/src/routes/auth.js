@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { run, get, all } = require('../database/db');
 const { authenticateToken } = require('../middleware/auth');
 const { getUserPrefs, sendNotification } = require('../services/notifications');
+const { emitToGroup } = require('../socket');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_bankpoker_key_change_in_production';
 
@@ -320,6 +321,37 @@ router.put('/profile', authenticateToken, async (req, res) => {
              WHERE id = ?`,
             [newUsername, newDisplayName, newAvatarId, now, userId]
         );
+
+        // Keep linked player seats synced with canonical display_name
+        await run(
+            `UPDATE players
+             SET name = ?, updated_at = ?
+             WHERE user_id = ? AND is_deleted = 0`,
+            [newDisplayName, now, userId]
+        );
+
+        // Broadcast profile_updated & group_updated to all groups this user belongs to
+        try {
+            const userGroups = await all(
+                `SELECT DISTINCT group_id FROM group_members WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0
+                 UNION
+                 SELECT DISTINCT id AS group_id FROM groups WHERE (owner_user_id = ? OR created_by = ?) AND is_deleted = 0`,
+                [userId, userId, userId]
+            );
+            for (const gRow of userGroups) {
+                if (gRow.group_id) {
+                    emitToGroup(gRow.group_id, 'profile_updated', {
+                        userId,
+                        username: newUsername,
+                        displayName: newDisplayName,
+                        avatarId: newAvatarId
+                    });
+                    emitToGroup(gRow.group_id, 'group_updated', { groupId: gRow.group_id });
+                }
+            }
+        } catch (emitErr) {
+            console.warn('Non-fatal profile_updated socket broadcast error:', emitErr.message);
+        }
 
         const updatedUser = {
             id: userId,

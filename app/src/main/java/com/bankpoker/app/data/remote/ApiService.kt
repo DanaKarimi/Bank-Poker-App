@@ -32,6 +32,13 @@ import com.bankpoker.app.data.remote.dto.AdminResetPasswordRequest
 import com.bankpoker.app.data.remote.dto.AdminResetPasswordResponse
 import com.bankpoker.app.data.remote.dto.PasswordResetListResponse
 import com.bankpoker.app.data.remote.dto.LeaderboardResponse
+import com.bankpoker.app.data.remote.dto.GroupMembersResponse
+import com.bankpoker.app.data.remote.dto.GroupAdminOverviewResponse
+import com.bankpoker.app.data.remote.dto.GroupAdminTableDetailResponse
+import com.bankpoker.app.data.remote.dto.UpdateMemberRoleRequest
+import com.bankpoker.app.data.remote.dto.AdminTableStatusRequest
+import com.bankpoker.app.data.remote.dto.AdminTablePlayerRequest
+import com.bankpoker.app.data.remote.dto.AdminTableTxRequest
 
 /**
  * Retrofit API Service definition for communication with the Node.js backend.
@@ -74,6 +81,114 @@ interface ApiService {
         @Path("groupId") groupId: String,
         @Header("Authorization") token: String = ""
     ): Response<LeaderboardResponse>
+
+    @GET("api/groups/{groupId}/members")
+    suspend fun getGroupMembers(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<GroupMembersResponse>
+
+    @DELETE("api/groups/{groupId}/members/{userId}")
+    suspend fun removeGroupMember(
+        @Path("groupId") groupId: String,
+        @Path("userId") userId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @PUT("api/groups/{groupId}/members/{userId}/role")
+    suspend fun updateGroupMemberRole(
+        @Path("groupId") groupId: String,
+        @Path("userId") userId: String,
+        @Body request: UpdateMemberRoleRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @GET("api/groups/{groupId}/admin/overview")
+    suspend fun getGroupAdminOverview(
+        @Path("groupId") groupId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<GroupAdminOverviewResponse>
+
+    @GET("api/groups/{groupId}/admin/tables/{tableId}")
+    suspend fun getGroupAdminTable(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<GroupAdminTableDetailResponse>
+
+    @PUT("api/groups/{groupId}/admin/tables/{tableId}/status")
+    suspend fun updateGroupAdminTableStatus(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Body request: AdminTableStatusRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @POST("api/groups/{groupId}/admin/tables/{tableId}/players")
+    suspend fun addGroupAdminTablePlayer(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Body request: AdminTablePlayerRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @DELETE("api/groups/{groupId}/admin/tables/{tableId}/players/{playerId}")
+    suspend fun deleteGroupAdminTablePlayer(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Path("playerId") playerId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @POST("api/groups/{groupId}/admin/tables/{tableId}/buy-ins")
+    suspend fun addGroupAdminTableBuyIn(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Body request: AdminTableTxRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @PUT("api/groups/{groupId}/admin/tables/{tableId}/buy-ins/{buyInId}")
+    suspend fun updateGroupAdminTableBuyIn(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Path("buyInId") buyInId: String,
+        @Body request: AdminTableTxRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @DELETE("api/groups/{groupId}/admin/tables/{tableId}/buy-ins/{buyInId}")
+    suspend fun deleteGroupAdminTableBuyIn(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Path("buyInId") buyInId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @POST("api/groups/{groupId}/admin/tables/{tableId}/exits")
+    suspend fun addGroupAdminTableExit(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Body request: AdminTableTxRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @PUT("api/groups/{groupId}/admin/tables/{tableId}/exits/{exitId}")
+    suspend fun updateGroupAdminTableExit(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Path("exitId") exitId: String,
+        @Body request: AdminTableTxRequest,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
+
+    @DELETE("api/groups/{groupId}/admin/tables/{tableId}/exits/{exitId}")
+    suspend fun deleteGroupAdminTableExit(
+        @Path("groupId") groupId: String,
+        @Path("tableId") tableId: String,
+        @Path("exitId") exitId: String,
+        @Header("Authorization") token: String = ""
+    ): Response<MessageResponse>
 
     @POST("api/groups/{groupId}/members/{userId}/reset-password")
     suspend fun resetGroupMemberPassword(

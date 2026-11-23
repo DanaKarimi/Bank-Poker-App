@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS group_members (
     group_id TEXT NOT NULL,
     role TEXT DEFAULT 'MEMBER', -- 'ADMIN' or 'MEMBER'
     joined_at INTEGER NOT NULL,
+    is_deleted INTEGER DEFAULT 0,
+    removed_at INTEGER,
+    removed_by TEXT,
     PRIMARY KEY(user_id, group_id),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE

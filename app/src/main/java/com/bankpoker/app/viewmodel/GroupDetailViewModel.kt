@@ -63,6 +63,111 @@ class GroupDetailViewModel(
     private val _isLoadingLeaderboard = MutableStateFlow(false)
     val isLoadingLeaderboard: StateFlow<Boolean> = _isLoadingLeaderboard.asStateFlow()
 
+    private val _isGroupAdmin = MutableStateFlow(false)
+    val isGroupAdmin: StateFlow<Boolean> = _isGroupAdmin.asStateFlow()
+
+    private val _adminOverview = MutableStateFlow<com.bankpoker.app.data.remote.dto.GroupAdminOverviewResponse?>(null)
+    val adminOverview: StateFlow<com.bankpoker.app.data.remote.dto.GroupAdminOverviewResponse?> = _adminOverview.asStateFlow()
+
+    private val _isLoadingAdmin = MutableStateFlow(false)
+    val isLoadingAdmin: StateFlow<Boolean> = _isLoadingAdmin.asStateFlow()
+
+    fun fetchAdminOverview() {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            _isLoadingAdmin.value = true
+            try {
+                val g = _group.value ?: repository.getGroupById(groupId)
+                val targetGroupId = g?.serverId ?: groupId
+                val res = remoteRepository.getGroupAdminOverview(targetGroupId)
+                if (res.isSuccess) {
+                    _isGroupAdmin.value = true
+                    _adminOverview.value = res.getOrNull()
+                }
+            } catch (e: Exception) {
+                Log.w("GroupDetailVM", "Non-admin or error loading admin overview", e)
+            } finally {
+                _isLoadingAdmin.value = false
+            }
+        }
+    }
+
+    fun updateGroupMemberRole(userId: String, role: String, onResult: (Result<String>) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.updateGroupMemberRole(g?.serverId ?: groupId, userId, role)
+            if (res.isSuccess) fetchAdminOverview()
+            onResult(res)
+        }
+    }
+
+    fun removeGroupMember(userId: String, onResult: (Result<String>) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.removeGroupMember(g?.serverId ?: groupId, userId)
+            if (res.isSuccess) {
+                fetchAdminOverview()
+                fetchServerBalances()
+                fetchLeaderboard()
+            }
+            onResult(res)
+        }
+    }
+
+    fun loadAdminTableDetail(tableId: String, onLoaded: (com.bankpoker.app.data.remote.dto.GroupAdminTableDetailResponse?) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.getGroupAdminTable(g?.serverId ?: groupId, tableId)
+            onLoaded(res.getOrNull())
+        }
+    }
+
+    fun updateAdminTableStatus(tableId: String, status: String? = null, isDeleted: Boolean? = null, onResult: (Result<String>) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.updateGroupAdminTableStatus(g?.serverId ?: groupId, tableId, status, isDeleted)
+            if (res.isSuccess) {
+                fetchAdminOverview()
+                fetchServerTables()
+                fetchServerBalances()
+                fetchLeaderboard()
+            }
+            onResult(res)
+        }
+    }
+
+    fun updateAdminTableTx(tableId: String, isBuyIn: Boolean, txId: String, amount: Long, note: String?, onResult: (Result<String>) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.updateGroupAdminTableTx(g?.serverId ?: groupId, tableId, isBuyIn, txId, amount, note)
+            if (res.isSuccess) {
+                fetchAdminOverview()
+                fetchServerBalances()
+                fetchLeaderboard()
+            }
+            onResult(res)
+        }
+    }
+
+    fun deleteAdminTableTx(tableId: String, isBuyIn: Boolean, txId: String, onResult: (Result<String>) -> Unit) {
+        if (remoteRepository == null) return
+        viewModelScope.launch {
+            val g = _group.value ?: repository.getGroupById(groupId)
+            val res = remoteRepository.deleteGroupAdminTableTx(g?.serverId ?: groupId, tableId, isBuyIn, txId)
+            if (res.isSuccess) {
+                fetchAdminOverview()
+                fetchServerBalances()
+                fetchLeaderboard()
+            }
+            onResult(res)
+        }
+    }
+
     fun fetchLeaderboard() {
         if (remoteRepository == null) return
         viewModelScope.launch {
@@ -151,6 +256,7 @@ class GroupDetailViewModel(
             fetchServerTables()
             fetchPasswordResets()
             fetchLeaderboard()
+            fetchAdminOverview()
         }
 
         if (socketManager != null) {
