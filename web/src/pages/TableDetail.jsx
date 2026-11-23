@@ -110,7 +110,11 @@ const TableDetail = () => {
 
       let currentTableObj = null;
       if (tableRes.status === 'fulfilled') {
-        currentTableObj = tableRes.value.data?.table || (tableRes.value.data && !tableRes.value.data.error ? tableRes.value.data : null);
+        const resData = tableRes.value.data;
+        currentTableObj = resData?.table || (resData && !resData.error ? resData : null);
+        if (currentTableObj && resData?.myStats && !currentTableObj.myStats) {
+          currentTableObj = { ...currentTableObj, myStats: resData.myStats };
+        }
       }
 
       // Sync status override if available
@@ -209,7 +213,9 @@ const TableDetail = () => {
     socket.on('table_updated', handleRefresh);
     socket.on('table_published', handleRefresh);
     socket.on('buyin_recorded', handleRefresh);
+    socket.on('buyin_updated', handleRefresh);
     socket.on('exit_recorded', handleRefresh);
+    socket.on('exit_updated', handleRefresh);
     socket.on('player_added', handleRefresh);
     socket.on('player_deleted', handleRefresh);
     socket.on('request_created', handleRefresh);
@@ -231,7 +237,9 @@ const TableDetail = () => {
       socket.off('table_updated', handleRefresh);
       socket.off('table_published', handleRefresh);
       socket.off('buyin_recorded', handleRefresh);
+      socket.off('buyin_updated', handleRefresh);
       socket.off('exit_recorded', handleRefresh);
+      socket.off('exit_updated', handleRefresh);
       socket.off('player_added', handleRefresh);
       socket.off('player_deleted', handleRefresh);
       socket.off('request_created', handleRefresh);
@@ -243,14 +251,44 @@ const TableDetail = () => {
   // Derived user status at this table
   const isClosed = table?.status === 'CLOSED' || table?.isActive === false;
 
-  const myPlayer = players.find(
-    (p) =>
-      (p.user_id === user?.id ||
-        p.userId === user?.id ||
-        p.name?.toLowerCase() === user?.username?.toLowerCase() ||
-        p.username?.toLowerCase() === user?.username?.toLowerCase()) &&
-      p.status === 'ACTIVE'
-  );
+  const myPlayerRecord = useMemo(() => {
+    const norm = (val) => (typeof val === 'string' ? val.trim().toLowerCase() : '');
+    const userId = user?.id != null ? String(user.id) : null;
+    const userNames = new Set(
+      [norm(user?.username), norm(user?.display_name), norm(user?.displayName)].filter(Boolean)
+    );
+    const statsPlayerId = table?.myStats?.playerId != null ? String(table.myStats.playerId) : null;
+
+    const matches = players.filter((p) => {
+      if (!p) return false;
+      if (statsPlayerId && String(p.id) === statsPlayerId) return true;
+      const pUserId = p.user_id ?? p.userId;
+      if (userId && pUserId != null && String(pUserId) === userId) return true;
+      if (userNames.size > 0) {
+        const candidates = [norm(p.name), norm(p.username), norm(p.displayName), norm(p.display_name)];
+        if (candidates.some((c) => c && userNames.has(c))) return true;
+      }
+      return false;
+    });
+
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+
+    // Prefer exact userId match, then ACTIVE status, then highest recorded volume
+    return [...matches].sort((a, b) => {
+      const aUid = userId && String(a.user_id ?? a.userId ?? '') === userId ? 1 : 0;
+      const bUid = userId && String(b.user_id ?? b.userId ?? '') === userId ? 1 : 0;
+      if (aUid !== bUid) return bUid - aUid;
+      const aActive = a.status === 'ACTIVE' ? 1 : 0;
+      const bActive = b.status === 'ACTIVE' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aVol = (Number(a.totalBuyIns ?? a.total_buy_ins) || 0) + (Number(a.totalExits ?? a.total_exits) || 0);
+      const bVol = (Number(b.totalBuyIns ?? b.total_buy_ins) || 0) + (Number(b.totalExits ?? b.total_exits) || 0);
+      return bVol - aVol;
+    })[0];
+  }, [players, user, table?.myStats?.playerId]);
+
+  const myPlayer = myPlayerRecord?.status === 'ACTIVE' ? myPlayerRecord : null;
 
   const isPlayerSeated = !!myPlayer;
 
@@ -334,23 +372,48 @@ const TableDetail = () => {
     return exit - buy;
   };
 
-  const myTableNetBalance = myPlayer ? getPlayerBalance(myPlayer) : 0;
+  const myTableNetBalance = myPlayerRecord ? getPlayerBalance(myPlayerRecord) : 0;
 
-  const myTotalBuyIns = table?.myStats?.totalBuyIns != null
-    ? Number(table.myStats.totalBuyIns)
-    : myPlayer
-    ? getPlayerBuyIns(myPlayer.id)
-    : 0;
+  const fallbackBuyIns = useMemo(() => {
+    if (!myPlayerRecord) return 0;
+    const fromActivity = (activity.buyIns || [])
+      .filter((b) => String(b.player_id ?? b.playerId ?? '') === String(myPlayerRecord.id))
+      .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+    if (fromActivity > 0) return fromActivity;
+    return Number(myPlayerRecord.totalBuyIns ?? myPlayerRecord.total_buy_ins ?? 0) || 0;
+  }, [myPlayerRecord, activity.buyIns]);
 
-  const myTotalExits = table?.myStats?.totalExits != null
-    ? Number(table.myStats.totalExits)
-    : myPlayer
-    ? getPlayerExits(myPlayer.id)
-    : 0;
+  const fallbackExits = useMemo(() => {
+    if (!myPlayerRecord) return 0;
+    const fromActivity = (activity.exits || [])
+      .filter((e) => String(e.player_id ?? e.playerId ?? '') === String(myPlayerRecord.id))
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    if (fromActivity > 0) return fromActivity;
+    return Number(myPlayerRecord.totalExits ?? myPlayerRecord.total_exits ?? 0) || 0;
+  }, [myPlayerRecord, activity.exits]);
 
-  const myNetBalance = table?.myStats?.netBalance != null
-    ? Number(table.myStats.netBalance)
-    : (myTotalExits - myTotalBuyIns);
+  const serverBuyInsRaw = table?.myStats?.totalBuyIns ?? table?.myStats?.total_buy_ins;
+  const serverExitsRaw = table?.myStats?.totalExits ?? table?.myStats?.total_exits;
+  const serverHasNonZero = (Number(serverBuyInsRaw) || 0) > 0 || (Number(serverExitsRaw) || 0) > 0;
+  const fallbackHasNonZero = fallbackBuyIns > 0 || fallbackExits > 0;
+
+  const myTotalBuyIns = serverHasNonZero
+    ? Number(serverBuyInsRaw)
+    : fallbackHasNonZero
+    ? fallbackBuyIns
+    : serverBuyInsRaw != null
+    ? Number(serverBuyInsRaw)
+    : fallbackBuyIns;
+
+  const myTotalExits = serverHasNonZero
+    ? Number(serverExitsRaw)
+    : fallbackHasNonZero
+    ? fallbackExits
+    : serverExitsRaw != null
+    ? Number(serverExitsRaw)
+    : fallbackExits;
+
+  const myNetBalance = myTotalExits - myTotalBuyIns;
 
   // Deduplicated & ranked players
   const sortedPlayersWithRank = useMemo(() => {
@@ -689,8 +752,8 @@ const TableDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-28">
-      <div className="w-full max-w-4xl space-y-5">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-felt-dark text-cream-text flex flex-col items-center py-6 px-4 sm:px-6 pb-28">
+      <div className="w-full max-w-4xl min-w-0 space-y-5">
         {/* Top Bar (Matches Android TopAppBar: Back arrow, Table Name + LIVE badge, Actions) */}
         <div className="flex items-center justify-between gap-2 pb-1">
           <div className="flex items-center gap-3 min-w-0">
@@ -779,44 +842,44 @@ const TableDetail = () => {
             {/* My Profile Header */}
             <div className="flex items-center justify-center gap-3 mb-5 pb-4 border-b border-gold-accent/20">
               <PokerAvatar
-                avatarId={table?.myStats?.avatarId || myPlayer?.avatar_id || myPlayer?.avatarId || user?.avatar_id || user?.avatarId || 'avatar_1'}
-                name={table?.myStats?.name || myPlayer?.name || user?.display_name || user?.username || 'Player'}
+                avatarId={table?.myStats?.avatarId || myPlayerRecord?.avatar_id || myPlayerRecord?.avatarId || user?.avatar_id || user?.avatarId || 'avatar_1'}
+                name={table?.myStats?.name || myPlayerRecord?.name || user?.display_name || user?.username || 'Player'}
                 size={44}
               />
-              <div className="text-left">
-                <div className="text-sm sm:text-base font-bold text-cream-text">
-                  {table?.myStats?.name || myPlayer?.name || user?.display_name || user?.username || 'Player'}
+              <div className="text-left min-w-0">
+                <div className="text-sm sm:text-base font-bold text-cream-text truncate">
+                  {table?.myStats?.name || myPlayerRecord?.name || user?.display_name || user?.username || 'Player'}
                 </div>
                 <div className="text-[11px] text-gold-accent font-semibold tracking-wide uppercase">
-                  {myPlayer ? 'Seated Player' : 'Viewer'}
+                  {myPlayer ? 'Seated Player' : myPlayerRecord ? 'Exited Player' : 'Viewer'}
                 </div>
               </div>
             </div>
 
             {/* Personal Stats Grid */}
             <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   BUY-INS
                 </div>
-                <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
+                <div className="text-base sm:text-2xl font-bold font-mono text-win-green truncate">
                   ${myTotalBuyIns.toLocaleString()}
                 </div>
               </div>
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   EXITS
                 </div>
-                <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
+                <div className="text-base sm:text-2xl font-bold font-mono text-amber-400 truncate">
                   ${myTotalExits.toLocaleString()}
                 </div>
               </div>
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   NET BALANCE
                 </div>
                 <div
-                  className={`text-lg sm:text-2xl font-bold font-mono ${
+                  className={`text-base sm:text-2xl font-bold font-mono truncate ${
                     myNetBalance > 0
                       ? 'text-win-green'
                       : myNetBalance < 0
@@ -834,7 +897,7 @@ const TableDetail = () => {
             </div>
 
             {/* Table Code / Details */}
-            <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-4 pt-4 border-t border-gold-accent/20">
               {table?.code ? (
                 <GroupCodeChip code={table.code} label="Table Code" />
               ) : null}
@@ -861,28 +924,28 @@ const TableDetail = () => {
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center divide-x divide-gold-accent/20">
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   BUY-INS
                 </div>
-                <div className="text-lg sm:text-2xl font-bold font-mono text-win-green">
+                <div className="text-base sm:text-2xl font-bold font-mono text-win-green truncate">
                   ${totalBuyIns.toLocaleString()}
                 </div>
               </div>
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   EXITS
                 </div>
-                <div className="text-lg sm:text-2xl font-bold font-mono text-amber-400">
+                <div className="text-base sm:text-2xl font-bold font-mono text-amber-400 truncate">
                   ${totalExits.toLocaleString()}
                 </div>
               </div>
-              <div className="px-2">
+              <div className="px-1 sm:px-2 min-w-0">
                 <div className="text-[10px] font-bold text-cream-text/60 tracking-wider uppercase mb-1">
                   REMAINING
                 </div>
                 <div
-                  className={`text-lg sm:text-2xl font-bold font-mono ${
+                  className={`text-base sm:text-2xl font-bold font-mono truncate ${
                     remainingBalance < 0
                       ? 'text-lose-red'
                       : remainingBalance === 0
@@ -896,7 +959,7 @@ const TableDetail = () => {
             </div>
 
             {/* Table Code / Publish Bar */}
-            <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-gold-accent/20">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-4 pt-4 border-t border-gold-accent/20">
               {table?.code ? (
                 <GroupCodeChip code={table.code} label="Table Code" />
               ) : !isClosed ? (
@@ -925,11 +988,11 @@ const TableDetail = () => {
         )}
 
         {/* Tab Navigation (Matching Android HorizontalPagerTabs: PLAYERS | HISTORY | STATS) */}
-        <div className="grid grid-cols-3 gap-2 p-1.5 bg-felt-card/80 border border-gold-accent/30 rounded-2xl shadow-md">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 p-1.5 bg-felt-card/80 border border-gold-accent/30 rounded-2xl shadow-md">
           <button
             type="button"
             onClick={() => setActiveTab('players')}
-            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
+            className={`py-2.5 px-1 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer min-w-0 truncate ${
               activeTab === 'players'
                 ? 'bg-gold-accent text-black shadow'
                 : 'text-cream-text/70 hover:text-cream-text'
@@ -940,7 +1003,7 @@ const TableDetail = () => {
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
+            className={`py-2.5 px-1 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer min-w-0 truncate ${
               activeTab === 'history'
                 ? 'bg-gold-accent text-black shadow'
                 : 'text-cream-text/70 hover:text-cream-text'
@@ -951,7 +1014,7 @@ const TableDetail = () => {
           <button
             type="button"
             onClick={() => setActiveTab('stats')}
-            className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${
+            className={`py-2.5 px-1 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer min-w-0 truncate ${
               activeTab === 'stats'
                 ? 'bg-gold-accent text-black shadow'
                 : 'text-cream-text/70 hover:text-cream-text'

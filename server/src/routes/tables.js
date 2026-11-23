@@ -1096,14 +1096,25 @@ router.get('/:id', authenticateToken, async (req, res) => {
         let myPlayer = null;
         if (userId) {
             myPlayer = await get(
-                `SELECT p.id, p.name, p.user_id, u.username, u.display_name, u.avatar_id,
+                `SELECT p.id, p.name, p.user_id, p.entry_fee_paid, u.username, u.display_name, u.avatar_id,
                     COALESCE((SELECT SUM(amount) FROM buy_ins WHERE player_id = p.id AND is_deleted = 0), 0) as total_buy_ins,
                     COALESCE((SELECT SUM(amount) FROM exit_records WHERE player_id = p.id AND is_deleted = 0), 0) as total_exits
                  FROM players p
                  LEFT JOIN users u ON p.user_id = u.id
-                 WHERE p.table_id = ? AND (p.user_id = ? OR p.name = (SELECT username FROM users WHERE id = ?)) AND p.is_deleted = 0
+                 LEFT JOIN users me ON me.id = ?
+                 WHERE p.table_id = ?
+                   AND p.is_deleted = 0
+                   AND (
+                     p.user_id = ?
+                     OR (me.username IS NOT NULL AND LOWER(TRIM(p.name)) = LOWER(TRIM(me.username)))
+                     OR (me.display_name IS NOT NULL AND LOWER(TRIM(p.name)) = LOWER(TRIM(me.display_name)))
+                   )
+                 ORDER BY
+                   CASE WHEN p.user_id = ? THEN 0 ELSE 1 END,
+                   (COALESCE((SELECT SUM(amount) FROM buy_ins WHERE player_id = p.id AND is_deleted = 0), 0) +
+                    COALESCE((SELECT SUM(amount) FROM exit_records WHERE player_id = p.id AND is_deleted = 0), 0)) DESC
                  LIMIT 1`,
-                [table.id, userId, userId]
+                [userId, table.id, userId, userId]
             );
             if (myPlayer) {
                 const totalBuyIns = Number(myPlayer.total_buy_ins) || 0;
