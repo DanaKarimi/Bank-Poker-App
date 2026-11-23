@@ -1,9 +1,17 @@
 package com.bankpoker.app.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "poker_tables")
+@Entity(
+    tableName = "poker_tables",
+    indices = [
+        Index(value = ["groupId"], name = "index_poker_tables_groupId"),
+        Index(value = ["status"], name = "index_poker_tables_status"),
+        Index(value = ["groupId", "status"], name = "index_poker_tables_groupId_status")
+    ]
+)
 data class PokerTable(
     @PrimaryKey
     val id: String,

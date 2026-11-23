@@ -67,7 +67,13 @@ const exec = (sql) => {
 // Initialize database schema
 const initDb = async () => {
     try {
+        // SQLite performance & integrity PRAGMAs
+        await run('PRAGMA journal_mode = WAL;');
+        await run('PRAGMA synchronous = NORMAL;');
+        await run('PRAGMA cache_size = -16000;');
+        await run('PRAGMA temp_store = MEMORY;');
         await run('PRAGMA foreign_keys = ON;');
+
         const schemaPath = path.join(__dirname, 'schema.sql');
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
         await exec(schemaSql);
@@ -107,6 +113,27 @@ const initDb = async () => {
         const playerColNames = playersColumns.map(c => c.name);
         if (!playerColNames.includes('user_linked_at')) {
             await run("ALTER TABLE players ADD COLUMN user_linked_at INTEGER");
+        }
+
+        // Ensure additive performance indexes exist on existing databases
+        const perfIndexes = [
+            'CREATE INDEX IF NOT EXISTS idx_players_table_deleted ON players(table_id, is_deleted)',
+            'CREATE INDEX IF NOT EXISTS idx_players_user ON players(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_buy_ins_table_deleted ON buy_ins(table_id, is_deleted)',
+            'CREATE INDEX IF NOT EXISTS idx_buy_ins_player ON buy_ins(player_id)',
+            'CREATE INDEX IF NOT EXISTS idx_exit_records_table_deleted ON exit_records(table_id, is_deleted)',
+            'CREATE INDEX IF NOT EXISTS idx_exit_records_player ON exit_records(player_id)',
+            'CREATE INDEX IF NOT EXISTS idx_tables_group_deleted_status ON tables(group_id, is_deleted, status)',
+            'CREATE INDEX IF NOT EXISTS idx_payments_group_deleted ON payments(group_id, is_deleted)',
+            'CREATE INDEX IF NOT EXISTS idx_entry_fee_records_group_deleted ON entry_fee_records(group_id, is_deleted)',
+            'CREATE INDEX IF NOT EXISTS idx_entry_fee_records_table_player ON entry_fee_records(table_id, player_name)',
+            'CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, read, created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_password_resets_user_status ON password_reset_requests(user_id, status)',
+            'CREATE INDEX IF NOT EXISTS idx_password_resets_code ON password_reset_requests(reset_code)',
+            'CREATE INDEX IF NOT EXISTS idx_password_resets_created ON password_reset_requests(created_at)'
+        ];
+        for (const indexSql of perfIndexes) {
+            await run(indexSql);
         }
 
         // Auto-generate VAPID keys into system_settings if not already present

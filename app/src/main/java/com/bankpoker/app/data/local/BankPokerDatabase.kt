@@ -29,7 +29,7 @@ import com.bankpoker.app.data.local.entity.OutboxRecord
 
 @Database(
     entities = [PokerTable::class, Player::class, BuyIn::class, ExitRecord::class, PlayerGroup::class, GroupBalance::class, Payment::class, SettlementRecord::class, EntryFeeRecord::class, OutboxRecord::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class BankPokerDatabase : RoomDatabase() {
@@ -128,6 +128,28 @@ abstract class BankPokerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_poker_tables_groupId` ON `poker_tables` (`groupId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_poker_tables_status` ON `poker_tables` (`status`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_poker_tables_groupId_status` ON `poker_tables` (`groupId`, `status`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_players_tableId` ON `players` (`tableId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_players_userId` ON `players` (`userId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_players_tableId_status` ON `players` (`tableId`, `status`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_buy_ins_tableId` ON `buy_ins` (`tableId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_buy_ins_playerId` ON `buy_ins` (`playerId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exit_records_tableId` ON `exit_records` (`tableId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_exit_records_playerId` ON `exit_records` (`playerId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_payments_groupId` ON `payments` (`groupId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_entry_fee_records_groupId` ON `entry_fee_records` (`groupId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_entry_fee_records_tableId` ON `entry_fee_records` (`tableId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_group_balances_groupId` ON `group_balances` (`groupId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_settlements_groupId` ON `settlements` (`groupId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_settlements_tableId` ON `settlements` (`tableId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_outbox_operations_status` ON `outbox_operations` (`status`)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: BankPokerDatabase? = null
 
@@ -137,7 +159,7 @@ abstract class BankPokerDatabase : RoomDatabase() {
                     context.applicationContext,
                     BankPokerDatabase::class.java,
                     "bank_poker_database"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
                 INSTANCE = instance
                 instance
             }

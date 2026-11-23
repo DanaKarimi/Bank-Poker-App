@@ -88,10 +88,13 @@ const TableDetail = () => {
   const [isClosingTable, setIsClosingTable] = useState(false);
 
   const previousStatusRef = useRef(null);
+  const isFetchingRef = useRef(false);
 
   // Fetch all table data
   const fetchTableData = async (isBackground = false) => {
     if (!tableId) return;
+    if (isBackground && isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (!isBackground) setLoading(true);
 
     try {
@@ -184,6 +187,7 @@ const TableDetail = () => {
       console.error('Failed to fetch table details:', err);
       if (!isBackground) setError('Failed to load table details.');
     } finally {
+      isFetchingRef.current = false;
       if (!isBackground) setLoading(false);
     }
   };
@@ -222,13 +226,36 @@ const TableDetail = () => {
     socket.on('request_resolved', handleRefresh);
     socket.on('entry_fee_updated', handleRefresh);
 
-    // 2. High-frequency API polling fallback (3.5 seconds) ensuring realtime parity
-    const interval = setInterval(() => {
-      fetchTableData(true);
-    }, 3500);
+    // 2. Smart visibility-aware & socket-aware safety-net polling
+    let pollTimer = null;
+    const schedulePoll = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      const intervalMs = socket.connected ? 25000 : 8000;
+      pollTimer = setInterval(() => {
+        if (!document.hidden) {
+          fetchTableData(true);
+        }
+      }, intervalMs);
+    };
+
+    const handleSocketConnect = () => schedulePoll();
+    const handleSocketDisconnect = () => schedulePoll();
+    socket.on('connect', handleSocketConnect);
+    socket.on('disconnect', handleSocketDisconnect);
+    schedulePoll();
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchTableData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      clearInterval(interval);
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      socket.off('connect', handleSocketConnect);
+      socket.off('disconnect', handleSocketDisconnect);
       leaveTable(tableId);
       if (groupId) {
         leaveGroup(groupId);
@@ -317,21 +344,23 @@ const TableDetail = () => {
     tableExitRequests.filter((r) => r.status === 'PENDING' || r.status === 'APPROVED').length;
 
   // Combine, strictly deduplicate by ID, and sort all activity transactions
-  const txMap = new Map();
-  (activity.buyIns || []).forEach((b) => {
-    const key = b.id ? `buyin-${b.id}` : `buyin-${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
-    txMap.set(key, { ...b, txType: 'buy-in' });
-  });
-  (activity.exits || []).forEach((e) => {
-    const key = e.id ? `exit-${e.id}` : `exit-${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
-    txMap.set(key, { ...e, txType: 'exit' });
-  });
+  const allTransactions = useMemo(() => {
+    const txMap = new Map();
+    (activity.buyIns || []).forEach((b) => {
+      const key = b.id ? `buyin-${b.id}` : `buyin-${b.player_id || b.playerId}-${b.amount}-${b.created_at || b.timestamp}`;
+      txMap.set(key, { ...b, txType: 'buy-in' });
+    });
+    (activity.exits || []).forEach((e) => {
+      const key = e.id ? `exit-${e.id}` : `exit-${e.player_id || e.playerId}-${e.amount}-${e.created_at || e.timestamp}`;
+      txMap.set(key, { ...e, txType: 'exit' });
+    });
 
-  const allTransactions = Array.from(txMap.values()).sort((a, b) => {
-    const timeA = a.timestamp || a.created_at || a.createdAt || 0;
-    const timeB = b.timestamp || b.created_at || b.createdAt || 0;
-    return timeB - timeA;
-  });
+    return Array.from(txMap.values()).sort((a, b) => {
+      const timeA = a.timestamp || a.created_at || a.createdAt || 0;
+      const timeB = b.timestamp || b.created_at || b.createdAt || 0;
+      return timeB - timeA;
+    });
+  }, [activity.buyIns, activity.exits]);
 
   // Table totals (matches Android TableSummaryBar calculation)
   const totalBuyIns = useMemo(() => {

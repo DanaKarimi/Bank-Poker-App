@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS tables (
 CREATE INDEX IF NOT EXISTS idx_tables_group ON tables(group_id);
 CREATE INDEX IF NOT EXISTS idx_tables_code ON tables(code);
 CREATE INDEX IF NOT EXISTS idx_tables_creator ON tables(creator_user_id);
+CREATE INDEX IF NOT EXISTS idx_tables_group_deleted_status ON tables(group_id, is_deleted, status);
 
 -- 5. Players Table (One row per table session per player identity)
 CREATE TABLE IF NOT EXISTS players (
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS players (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_players_table ON players(table_id);
+CREATE INDEX IF NOT EXISTS idx_players_table_deleted ON players(table_id, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_players_user ON players(user_id);
 CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
 
@@ -110,6 +112,7 @@ CREATE TABLE IF NOT EXISTS buy_ins (
     FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_buy_ins_table ON buy_ins(table_id);
+CREATE INDEX IF NOT EXISTS idx_buy_ins_table_deleted ON buy_ins(table_id, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_buy_ins_player ON buy_ins(player_id);
 
 -- 7. Exit Records Table
@@ -130,6 +133,7 @@ CREATE TABLE IF NOT EXISTS exit_records (
     FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_exit_records_table ON exit_records(table_id);
+CREATE INDEX IF NOT EXISTS idx_exit_records_table_deleted ON exit_records(table_id, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_exit_records_player ON exit_records(player_id);
 
 -- 8. Payments Table
@@ -149,6 +153,7 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_payments_group ON payments(group_id);
+CREATE INDEX IF NOT EXISTS idx_payments_group_deleted ON payments(group_id, is_deleted);
 
 -- 9. Settlement Records Table
 CREATE TABLE IF NOT EXISTS settlement_records (
@@ -187,6 +192,8 @@ CREATE TABLE IF NOT EXISTS entry_fee_records (
     FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_entry_fee_records_group ON entry_fee_records(group_id);
+CREATE INDEX IF NOT EXISTS idx_entry_fee_records_group_deleted ON entry_fee_records(group_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_entry_fee_records_table_player ON entry_fee_records(table_id, player_name);
 
 -- 11. Unified Requests Table (Buy-In & Exit requests)
 CREATE TABLE IF NOT EXISTS requests (
@@ -220,6 +227,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, read, created_at);
 
 -- 13. User Settings Table
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -267,3 +275,21 @@ CREATE TABLE IF NOT EXISTS synced_balances (
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_synced_balances_group ON synced_balances(group_id);
+
+-- 18. Password Reset Requests Table
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    reset_code TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPROVED', 'COMPLETED', 'EXPIRED')),
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    resolved_by TEXT,
+    resolved_at INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(resolved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user_status ON password_reset_requests(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_password_resets_code ON password_reset_requests(reset_code);
+CREATE INDEX IF NOT EXISTS idx_password_resets_created ON password_reset_requests(created_at);

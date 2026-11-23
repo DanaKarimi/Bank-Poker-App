@@ -1,9 +1,16 @@
 package com.bankpoker.app.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "settlements")
+@Entity(
+    tableName = "settlements",
+    indices = [
+        Index(value = ["groupId"], name = "index_settlements_groupId"),
+        Index(value = ["tableId"], name = "index_settlements_tableId")
+    ]
+)
 data class SettlementRecord(
     @PrimaryKey
     val id: String,

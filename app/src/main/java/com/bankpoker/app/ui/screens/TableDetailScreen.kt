@@ -1182,7 +1182,7 @@ fun PlayersTab(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredPlayers) { (player, rank) ->
+                    items(filteredPlayers, key = { it.first.id }) { (player, rank) ->
                         val balance = balanceOf(player.id)
 
                         PlayerCard(
@@ -1689,7 +1689,7 @@ fun HistoryTab(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(allTransactions) { transaction ->
+            items(allTransactions, key = { "${it.type}_${it.id}" }) { transaction ->
                 TransactionCard(
                     transaction = transaction,
                     onEdit = { selectedTransactionForEdit = transaction },
@@ -1916,7 +1916,7 @@ fun ResultsTab(
         }
         
         // Player results
-        items(playerResults) { result ->
+        items(playerResults, key = { it.player.id }) { result ->
             PlayerResultCard(result = result, tableHasEntryFee = tableHasEntryFee)
         }
         

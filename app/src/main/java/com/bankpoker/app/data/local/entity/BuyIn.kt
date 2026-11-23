@@ -1,9 +1,16 @@
 package com.bankpoker.app.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "buy_ins")
+@Entity(
+    tableName = "buy_ins",
+    indices = [
+        Index(value = ["tableId"], name = "index_buy_ins_tableId"),
+        Index(value = ["playerId"], name = "index_buy_ins_playerId")
+    ]
+)
 data class BuyIn(
     @PrimaryKey
     val id: String,
