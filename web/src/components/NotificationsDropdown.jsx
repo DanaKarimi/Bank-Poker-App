@@ -200,7 +200,7 @@ export const NotificationsDropdown = () => {
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2.5 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-felt-dark border border-gold-accent/50 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-x-3 top-16 w-auto max-w-md mx-auto z-50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 max-h-[75dvh] flex flex-col bg-felt-dark border border-gold-accent/50 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="px-4 py-3 bg-felt-card border-b border-gold-accent/30 flex items-center justify-between">
             <div className="flex items-center gap-2">

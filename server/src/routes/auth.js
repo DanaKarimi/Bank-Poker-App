@@ -415,7 +415,7 @@ router.post('/forgot-password', async (req, res) => {
 
         const trimmedUsername = String(rawUsername).trim();
         const genericResponse = {
-            message: 'If an account matches that username, a password reset request has been sent to your group admins.'
+            message: 'If an account matches that username, a password reset request has been sent to the Super Admin.'
         };
 
         const user = await get(
@@ -445,39 +445,22 @@ router.post('/forgot-password', async (req, res) => {
                 [requestId, user.id, user.username, expiresAt, now]
             );
 
-            // Notify Group Admins of user's groups + all Super Admins
+            // Notify Super Admins only (password reset management is restricted to SUPER_ADMIN)
             try {
-                const adminIds = new Set();
-                const groupAdmins = await all(
-                    `SELECT DISTINCT admin_uid FROM (
-                        SELECT g.owner_user_id AS admin_uid
-                        FROM groups g
-                        JOIN group_members gm ON gm.group_id = g.id
-                        WHERE gm.user_id = ? AND g.is_deleted = 0 AND g.owner_user_id IS NOT NULL
-                        UNION
-                        SELECT gm2.user_id AS admin_uid
-                        FROM group_members gm1
-                        JOIN group_members gm2 ON gm1.group_id = gm2.group_id
-                        WHERE gm1.user_id = ? AND gm2.role IN ('ADMIN', 'SUPER_ADMIN')
-                        UNION
-                        SELECT id AS admin_uid FROM users WHERE role = 'SUPER_ADMIN'
-                    )`,
-                    [user.id, user.id]
+                const superAdmins = await all(
+                    `SELECT id AS admin_uid FROM users WHERE role = 'SUPER_ADMIN'`
                 );
-                for (const row of groupAdmins) {
+                for (const row of superAdmins) {
                     if (row.admin_uid && row.admin_uid !== user.id) {
-                        adminIds.add(row.admin_uid);
+                        await sendNotification(row.admin_uid, {
+                            type: 'password_reset_request',
+                            title: 'Password Reset Request',
+                            message: `${user.display_name || user.username} (@${user.username}) requested a password reset.`,
+                            targetId: requestId,
+                            targetType: 'password_reset',
+                            data: { userId: user.id, username: user.username }
+                        });
                     }
-                }
-                for (const adminId of adminIds) {
-                    await sendNotification(adminId, {
-                        type: 'password_reset_request',
-                        title: 'Password Reset Request',
-                        message: `${user.display_name || user.username} (@${user.username}) requested a password reset.`,
-                        targetId: requestId,
-                        targetType: 'password_reset',
-                        data: { userId: user.id, username: user.username }
-                    });
                 }
             } catch (notifErr) {
                 console.warn('Non-fatal notification error on forgot-password:', notifErr.message);

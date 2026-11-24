@@ -45,9 +45,10 @@ $versionObj = [ordered]@{
     apkUrl      = "/releases/$versionedFileName"
     forceUpdate = $ForceUpdate
     whatsNew    = @(
-        "Eliminated duplicate network request bursts for instant response",
-        "Fixed offline sync queue retry loop & improved tunnel stability",
-        "Added Nginx keepalive & SQLite busy-timeout hardening"
+        "Unified Edit Buy-In & Exit sheets to match Buy-In / Exit design",
+        "Cleaner Group screen without unnecessary Pending Requests",
+        "Restricted Password Reset management exclusively to Super Admin",
+        "Fixed mobile Web Notification panel alignment"
     )
     sizeBytes   = $sizeBytes
     sizeMB      = $sizeMB

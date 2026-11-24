@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { run, get, all } = require('../database/db');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 const { generateInviteCode } = require('../utils/helpers');
 const { emitToGroup, emitToTable } = require('../socket');
 const { sendNotification } = require('../services/notifications');
@@ -2981,18 +2981,13 @@ async function isGroupAdminOrSuperAdmin(user, group) {
 
 /**
  * GET /api/groups/:groupId/password-resets
- * List pending & active approved password reset requests for members of this group (Group Admin / Super Admin)
+ * List pending & active approved password reset requests for members of this group (SUPER_ADMIN only)
  */
-router.get('/:groupId/password-resets', authenticateToken, async (req, res) => {
+router.get('/:groupId/password-resets', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const groupId = req.params.groupId;
         const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) return res.status(404).json({ error: 'Group not found' });
-
-        const allowed = await isGroupAdminOrSuperAdmin(req.user, group);
-        if (!allowed) {
-            return res.status(403).json({ error: 'Permission denied: group admin privileges required' });
-        }
 
         const now = Date.now();
         // Auto-expire stale requests
@@ -3043,20 +3038,15 @@ router.get('/:groupId/password-resets', authenticateToken, async (req, res) => {
 
 /**
  * POST /api/groups/:groupId/members/:userId/reset-password
- * Group Admin / Super Admin generates a 6-char reset code (24h) OR directly sets a temporary password
+ * SUPER_ADMIN only: generates a 6-char reset code (24h) OR directly sets a temporary password
  */
-router.post('/:groupId/members/:userId/reset-password', authenticateToken, async (req, res) => {
+router.post('/:groupId/members/:userId/reset-password', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const { groupId, userId: targetUserId } = req.params;
         const { newPassword, generateCode } = req.body || {};
 
         const group = await get('SELECT * FROM groups WHERE (id = ? OR server_id = ?) AND is_deleted = 0', [groupId, groupId]);
         if (!group) return res.status(404).json({ error: 'Group not found' });
-
-        const allowed = await isGroupAdminOrSuperAdmin(req.user, group);
-        if (!allowed) {
-            return res.status(403).json({ error: 'Permission denied: group admin privileges required' });
-        }
 
         const targetUser = await get('SELECT id, username, display_name, role FROM users WHERE id = ?', [targetUserId]);
         if (!targetUser) {

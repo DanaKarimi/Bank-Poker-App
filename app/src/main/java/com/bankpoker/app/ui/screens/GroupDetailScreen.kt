@@ -195,20 +195,6 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
-                    if (onNavigateToRequests != null && group?.mode == "ONLINE") {
-                        IconButton(onClick = {
-                            group?.let { g ->
-                                onNavigateToRequests(g.id, g.name)
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "Pending Requests",
-                                tint = Color(0xFFFFB300)
-                            )
-                        }
-                    }
-
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.List,
@@ -251,22 +237,6 @@ fun GroupDetailScreen(
                         onDismissRequest = { showMenu = false },
                         modifier = Modifier.background(FeltCard)
                     ) {
-                        if (onNavigateToRequests != null) {
-                            DropdownMenuItem(
-                                text = { Text("Pending Requests", color = Cream) },
-                                onClick = {
-                                    showMenu = false
-                                    group?.let { g -> onNavigateToRequests(g.id, g.name) }
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Notifications,
-                                        contentDescription = null,
-                                        tint = Color(0xFFFFB300)
-                                    )
-                                }
-                            )
-                        }
                         if (isGroupAdmin) {
                             DropdownMenuItem(
                                 text = { Text("Group Admin Panel", color = Gold, fontWeight = FontWeight.Bold) },
@@ -284,24 +254,6 @@ fun GroupDetailScreen(
                                 }
                             )
                         }
-                        DropdownMenuItem(
-                            text = {
-                                val countSuffix = if (passwordResetRequests.isNotEmpty()) " (${passwordResetRequests.size})" else ""
-                                Text("Password Resets$countSuffix", color = Cream)
-                            },
-                            onClick = {
-                                showMenu = false
-                                viewModel.fetchPasswordResets()
-                                showPasswordResetsDialog = true
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = Gold
-                                )
-                            }
-                        )
                         DropdownMenuItem(
                             text = { Text("Edit Name", color = Cream) },
                             onClick = {

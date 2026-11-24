@@ -7,7 +7,7 @@ const AndroidDownloadButton = ({ compact = false, className = '' }) => {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/releases/version.json', { cache: 'no-store' })
+    fetch(`/releases/version.json?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled && data && (data.versionName || data.sizeMB || data.sizeBytes)) {

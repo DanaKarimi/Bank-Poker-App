@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
@@ -3368,44 +3369,46 @@ fun EditTransactionBottomSheet(
     viewModel: TableDetailViewModel,
     onDismiss: () -> Unit
 ) {
-    var amount by remember { mutableStateOf(transaction.amount.toString()) }
-    var note by remember { mutableStateOf(transaction.note ?: "") }
+    val isBuyIn = transaction.type.equals("Buy-in", ignoreCase = true)
+    var amount by remember(transaction.id) { mutableStateOf(transaction.amount.toString()) }
+    var note by remember(transaction.id) { mutableStateOf(transaction.note ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val amountLong = amount.toLongOrNull() ?: 0L
-    val isValid = amountLong > 0L
+    val isValid = if (isBuyIn) amountLong > 0L else amount.isNotBlank() && amountLong >= 0L
+    val formattedAmount = remember(amount) {
+        val parsed = amount.toLongOrNull()
+        if (parsed != null) java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(parsed) else "0"
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = FeltCard,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .width(40.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(Gold.copy(alpha = 0.6f))
-            )
-        }
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             SectionHeader(
-                title = "EDIT ${transaction.type.uppercase()}",
-                suit = if (transaction.type == "Buy-in") "♠" else "♦"
+                title = if (isBuyIn) "EDIT BUY-IN" else "EDIT EXIT",
+                suit = if (isBuyIn) "♠" else "♦"
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = FeltBackground.copy(alpha = 0.6f))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Gold.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = FeltBackground)
             ) {
                 Row(
                     modifier = Modifier
@@ -3416,25 +3419,77 @@ fun EditTransactionBottomSheet(
                 ) {
                     Column {
                         Text(
-                            text = "Player",
+                            text = "PLAYER",
                             color = Cream.copy(alpha = 0.6f),
                             style = MaterialTheme.typography.labelSmall
                         )
                         Text(
                             text = transaction.playerName,
                             color = Cream,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Text(
-                        text = transaction.type,
-                        color = if (transaction.type == "Buy-in") Green80 else Amber80,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Surface(
+                        color = (if (isBuyIn) Green80 else Amber80).copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            (if (isBuyIn) Green80 else Amber80).copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Text(
+                            text = if (isBuyIn) "BUY-IN" else "EXIT",
+                            color = if (isBuyIn) Green80 else Amber80,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = if (isBuyIn) "TOTAL BUY-IN" else "TOTAL EXIT",
+                style = MaterialTheme.typography.labelSmall,
+                color = Gold.copy(alpha = 0.75f),
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "$formattedAmount CHIPS",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Gold,
+                fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "TAP CHIPS TO ADD",
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.6f),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ChipSelector(
+                onAddAmount = { add ->
+                    val current = amount.toLongOrNull() ?: 0L
+                    amount = (current + add).toString()
+                    if (error != null) error = null
+                },
+                onRemoveLast = {
+                    val current = amount.toLongOrNull() ?: 0L
+                    val updated = maxOf(0L, current - 100L)
+                    amount = if (updated == 0L) "" else updated.toString()
+                },
+                onClear = {
+                    amount = ""
+                }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -3444,18 +3499,19 @@ fun EditTransactionBottomSheet(
                     amount = input.filter { it.isDigit() }
                     error = null
                 },
-                label = { Text("Chip Amount", color = Gold) },
+                label = { Text("Custom Amount", color = Cream.copy(alpha = 0.7f)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 isError = error != null,
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Cream,
                     unfocusedTextColor = Cream,
                     focusedBorderColor = Gold,
-                    unfocusedBorderColor = Gold.copy(alpha = 0.5f),
-                    focusedLabelColor = Gold,
-                    unfocusedLabelColor = Cream.copy(alpha = 0.7f),
-                    cursorColor = Gold
+                    unfocusedBorderColor = Gold.copy(alpha = 0.4f),
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -3464,113 +3520,79 @@ fun EditTransactionBottomSheet(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
+                    color = LoseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.Start)
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(20L, 50L, 100L, 200L, 500L).forEach { value ->
-                    SuggestionChip(
-                        onClick = { amount = value.toString() },
-                        label = { Text("+$value", color = Gold, fontWeight = FontWeight.Bold) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = FeltBackground.copy(alpha = 0.8f)
-                        ),
-                        border = SuggestionChipDefaults.suggestionChipBorder(
-                            enabled = true,
-                            borderColor = Gold.copy(alpha = 0.4f)
-                        )
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("Note (optional)", color = Gold.copy(alpha = 0.8f)) },
+                label = { Text("Note (optional)", color = Cream.copy(alpha = 0.7f)) },
                 singleLine = true,
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Cream,
                     unfocusedTextColor = Cream,
                     focusedBorderColor = Gold,
                     unfocusedBorderColor = Gold.copy(alpha = 0.4f),
-                    focusedLabelColor = Gold,
-                    unfocusedLabelColor = Cream.copy(alpha = 0.6f),
-                    cursorColor = Gold
+                    cursorColor = Gold,
+                    focusedContainerColor = FeltBackground,
+                    unfocusedContainerColor = FeltBackground
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            GoldGradientButton(
+                text = "SAVE CHANGES",
+                onClick = {
+                    if (!isValid) {
+                        error = if (isBuyIn) "Amount must be greater than zero" else "Amount must be zero or greater"
+                        return@GoldGradientButton
+                    }
+
+                    if (isBuyIn) {
+                        viewModel.updateBuyIn(
+                            BuyIn(
+                                id = transaction.id,
+                                tableId = transaction.tableId,
+                                playerId = transaction.playerId,
+                                amount = amountLong,
+                                note = note.ifBlank { null },
+                                createdAt = transaction.timestamp
+                            )
+                        )
+                    } else {
+                        viewModel.updateExitRecord(
+                            ExitRecord(
+                                id = transaction.id,
+                                tableId = transaction.tableId,
+                                playerId = transaction.playerId,
+                                amount = amountLong,
+                                note = note.ifBlank { null },
+                                createdAt = transaction.timestamp
+                            )
+                        )
+                    }
+                    onDismiss()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.45f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Cream),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.6f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Cream
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Cancel", fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = {
-                        if (!isValid) {
-                            error = "Amount must be greater than zero"
-                            return@Button
-                        }
-
-                        if (transaction.type == "Buy-in") {
-                            viewModel.updateBuyIn(
-                                BuyIn(
-                                    id = transaction.id,
-                                    tableId = transaction.tableId,
-                                    playerId = transaction.playerId,
-                                    amount = amountLong,
-                                    note = note.ifBlank { null },
-                                    createdAt = transaction.timestamp
-                                )
-                            )
-                        } else {
-                            viewModel.updateExitRecord(
-                                ExitRecord(
-                                    id = transaction.id,
-                                    tableId = transaction.tableId,
-                                    playerId = transaction.playerId,
-                                    amount = amountLong,
-                                    note = note.ifBlank { null },
-                                    createdAt = transaction.timestamp
-                                )
-                            )
-                        }
-                        onDismiss()
-                    },
-                    enabled = isValid,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Gold,
-                        contentColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Save Changes", fontWeight = FontWeight.Bold)
-                }
+                Text("Cancel", fontWeight = FontWeight.Bold)
             }
         }
     }

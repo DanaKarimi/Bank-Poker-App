@@ -121,7 +121,6 @@ const GroupStats = () => {
         balancesRes,
         settlementRes,
         groupStatsRes,
-        passwordResetsRes,
         leaderboardRes,
       ] = await Promise.allSettled([
         getGroupStats(groupId),
@@ -130,7 +129,6 @@ const GroupStats = () => {
         getGroupBalances(groupId),
         getGroupSettlementPlan(groupId),
         getGroupStatsDetails(groupId),
-        getGroupPasswordResets(groupId),
         getGroupLeaderboard(groupId),
       ]);
 
@@ -202,10 +200,6 @@ const GroupStats = () => {
 
       if (groupStatsRes.status === 'fulfilled') {
         setGroupStatsDetails(groupStatsRes.value.data?.stats || groupStatsRes.value.data || null);
-      }
-
-      if (passwordResetsRes.status === 'fulfilled') {
-        setPasswordResets(passwordResetsRes.value.data?.requests || []);
       }
 
       if (leaderboardRes.status === 'fulfilled') {
@@ -608,71 +602,6 @@ const GroupStats = () => {
             </div>
           </div>
         </div>
-
-        {/* Pending Password Reset Requests (Group Admin / Super Admin) */}
-        {isGroupAdmin && passwordResets.length > 0 && (
-          <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 space-y-2.5 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-amber-300 text-xs font-extrabold uppercase tracking-wider">
-                <KeyRound className="w-4 h-4 shrink-0" />
-                <span>Password Reset Requests ({passwordResets.length})</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {passwordResets.map((reqItem) => (
-                <div
-                  key={reqItem.id}
-                  className="p-3 bg-felt-dark/70 border border-gold-accent/25 rounded-xl flex flex-wrap items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-cream-text truncate">
-                      {reqItem.displayName} <span className="text-cream-text/50 font-normal">@{reqItem.username}</span>
-                    </div>
-                    <div className="text-[11px] text-cream-text/60">
-                      {reqItem.status === 'APPROVED' && reqItem.resetCode ? (
-                        <span>
-                          Active Code:{' '}
-                          <span className="font-mono font-black text-gold-accent tracking-widest">
-                            {reqItem.resetCode}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-amber-300">Awaiting admin reset code</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {reqItem.resetCode && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopyResetCode(reqItem.resetCode)}
-                        className="px-2.5 py-1.5 bg-felt-card border border-gold-accent/40 hover:border-gold-accent text-gold-accent rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResetModalTarget({
-                          userId: reqItem.userId,
-                          username: reqItem.username,
-                          displayName: reqItem.displayName
-                        });
-                        setResetTempPassword('');
-                        setResetResult(reqItem.resetCode ? { mode: 'code', resetCode: reqItem.resetCode } : null);
-                      }}
-                      className="px-3 py-1.5 bg-gold-accent text-black hover:bg-gold-light rounded-lg text-[11px] font-bold cursor-pointer"
-                    >
-                      Reset Password
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Navigation Tabs (Like Android App) */}
         <div className="flex items-center gap-2 border-b border-gold-accent/20 pb-3 overflow-x-auto max-w-full">

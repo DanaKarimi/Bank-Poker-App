@@ -278,7 +278,6 @@ class GroupDetailViewModel(
             fetchServerBalances()
             fetchServerSettlement()
             fetchServerTables()
-            fetchPasswordResets()
             fetchLeaderboard()
             fetchAdminOverview()
         }

@@ -253,7 +253,7 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                 Group Admin • {groupName || overview?.groupName || 'Club'}
               </h2>
               <p className="text-[11px] text-cream-text/60 truncate">
-                Manage members, correct closed tables, and resolve resets
+                Manage members and correct closed tables
               </p>
             </div>
           </div>
@@ -276,13 +276,12 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
           </div>
         </div>
 
-        {/* Pinned Full-Width 3-Column Segmented Tab Bar */}
+        {/* Pinned Full-Width 2-Column Segmented Tab Bar */}
         <div className="px-3 sm:px-4 py-2.5 bg-felt-dark/60 border-b border-gold-accent/20 shrink-0">
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-felt-dark/90 rounded-2xl border border-gold-accent/25">
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-felt-dark/90 rounded-2xl border border-gold-accent/25">
             {[
               { id: 'members', label: `Members (${overview?.members?.length || 0})`, icon: Users },
               { id: 'tables', label: `Tables (${overview?.tables?.length || 0})`, icon: Layers },
-              { id: 'payments', label: `Resets (${overview?.passwordResets?.length || 0})`, icon: CreditCard },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -386,20 +385,6 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                         {m.role === 'ADMIN' ? 'Admin' : 'Member'}
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResetTarget(m);
-                          setTempPass('');
-                          setResetResult(null);
-                          setCopiedCode(false);
-                        }}
-                        className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-felt-card text-gold-accent border border-gold-accent/40 hover:border-gold-accent flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
-                        <span>Reset PW</span>
-                      </button>
-
                       {!m.isOwner && (
                         <button
                           type="button"
@@ -419,76 +404,8 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                   </div>
                 );
               })}
-
-              {/* Inline Reset Password Box */}
-              {resetTarget && (
-                <div className="p-4 rounded-2xl bg-felt-dark border-2 border-gold-accent/70 space-y-3 mt-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-gold-accent uppercase">
-                      Reset Password: {resetTarget.displayName} (@{resetTarget.username})
-                    </div>
-                    <button type="button" onClick={() => setResetTarget(null)} className="text-cream-text/60 cursor-pointer">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {resetResult?.error && (
-                    <div className="text-xs text-red-300 bg-red-950/60 p-2 rounded-lg">{resetResult.error}</div>
-                  )}
-                  {resetResult?.resetCode && (
-                    <div className="p-3 bg-emerald-950/60 border border-emerald-500/50 rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] text-emerald-300 uppercase font-bold">6-Char Reset Code (24h)</div>
-                        <div className="text-lg font-mono font-black tracking-[0.25em] text-gold-accent">
-                          {resetResult.resetCode}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(resetResult.resetCode);
-                          setCopiedCode(true);
-                          setTimeout(() => setCopiedCode(false), 2000);
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-felt-card border border-gold-accent/50 text-gold-accent text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>{copiedCode ? 'Copied' : 'Copy'}</span>
-                      </button>
-                    </div>
-                  )}
-                  {resetResult?.mode === 'direct' && (
-                    <div className="text-xs text-emerald-300 bg-emerald-950/60 p-2 rounded-lg">{resetResult.message}</div>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleResetPassword('code')}
-                      className="px-3.5 py-2 rounded-xl bg-gold-accent text-black text-xs font-extrabold cursor-pointer"
-                    >
-                      Generate 6-Char Code
-                    </button>
-                    <div className="flex flex-1 min-w-[200px] gap-1.5">
-                      <input
-                        type="text"
-                        value={tempPass}
-                        onChange={(e) => setTempPass(e.target.value)}
-                        placeholder="Or set temp password (6+ chars)"
-                        className="flex-1 min-w-0 px-3 py-1.5 bg-felt-card border border-gold-accent/40 rounded-xl text-xs text-cream-text"
-                      />
-                      <button
-                        type="button"
-                        disabled={tempPass.length < 6}
-                        onClick={() => handleResetPassword('direct')}
-                        className="px-3 py-1.5 rounded-xl border border-gold-accent text-gold-accent text-xs font-bold disabled:opacity-40 cursor-pointer"
-                      >
-                        Set
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
-          ) : tab === 'tables' ? (
+          ) : (
             editingTableId ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-2">
@@ -737,83 +654,6 @@ const GroupAdminModal = ({ groupId, groupName, onClose, onDataChanged }) => {
                 ))}
               </div>
             )
-          ) : (
-            <div className="space-y-4">
-              {/* Pending Resets */}
-              <div className="space-y-2">
-                <div className="text-xs font-extrabold uppercase text-gold-accent">
-                  Pending Password Resets ({overview?.passwordResets?.length || 0})
-                </div>
-                {(overview?.passwordResets || []).length === 0 ? (
-                  <div className="text-xs text-cream-text/50">No active password reset requests.</div>
-                ) : (
-                  overview.passwordResets.map((r) => (
-                    <div
-                      key={r.id}
-                      className="p-3 rounded-xl bg-felt-dark/70 border border-amber-500/35 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div>
-                        <div className="font-bold text-cream-text">{r.displayName} (@{r.username})</div>
-                        <div className="text-[11px] text-gold-accent font-mono">
-                          {r.resetCode ? `Code: ${r.resetCode}` : 'Pending code'}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const res = await resetGroupMemberPassword(groupId, r.userId, { generateCode: true });
-                          showMsg('success', `Reset code for ${r.username}: ${res.data.resetCode}`);
-                          notifyChanged();
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-gold-accent text-black font-bold text-xs cursor-pointer"
-                      >
-                        Generate Code
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Recent Payments */}
-              <div className="space-y-2">
-                <div className="text-xs font-extrabold uppercase text-gold-accent">
-                  Recent Payments ({overview?.payments?.length || 0})
-                </div>
-                {(overview?.payments || []).length === 0 ? (
-                  <div className="text-xs text-cream-text/50">No payments recorded.</div>
-                ) : (
-                  overview.payments.map((pm) => (
-                    <div
-                      key={pm.id}
-                      className="p-3 rounded-xl bg-felt-dark/70 border border-gold-accent/20 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div>
-                        <span className="font-bold text-cream-text">{pm.fromPlayer}</span>
-                        <span className="text-gold-accent mx-1.5">→</span>
-                        <span className="font-bold text-cream-text">{pm.toPlayer}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-gold-accent">
-                          ${Number(pm.amount).toLocaleString('en-US')}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!window.confirm('Delete this payment?')) return;
-                            await deleteGroupPayment(groupId, pm.id);
-                            showMsg('success', 'Payment deleted');
-                            notifyChanged();
-                          }}
-                          className="p-1 text-red-400 hover:text-red-200 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           )}
         </div>
       </div>

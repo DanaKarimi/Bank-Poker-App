@@ -118,14 +118,14 @@ fun GroupAdminDialog(
                     }
                 }
 
-                // 3 Tabs
+                // 2 Tabs
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("Members", "Tables", "Resets").forEachIndexed { idx, title ->
+                    listOf("Members", "Tables").forEachIndexed { idx, title ->
                         val active = selectedTab == idx
                         Surface(
                             onClick = {
@@ -237,17 +237,6 @@ fun GroupAdminDialog(
                                                     ) {
                                                         Text(if (m.role == "ADMIN") "Make Member" else "Make Admin", color = Gold, fontSize = 11.sp)
                                                     }
-                                                }
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        memberToReset = m
-                                                        tempPassword = ""
-                                                        generatedCode = null
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                                    modifier = Modifier.height(32.dp)
-                                                ) {
-                                                    Text("Reset PW", color = Gold, fontSize = 11.sp)
                                                 }
                                                 if (!m.isOwner) {
                                                     OutlinedButton(
@@ -367,64 +356,6 @@ fun GroupAdminDialog(
                                                     )
                                                 }
                                                 Text("Edit →", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        2 -> {
-                            val resets = overview?.passwordResets ?: emptyList()
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                if (resets.isEmpty()) {
-                                    item {
-                                        Text(
-                                            text = "No pending password reset requests.",
-                                            color = Cream.copy(alpha = 0.6f),
-                                            fontSize = 13.sp,
-                                            modifier = Modifier.padding(16.dp)
-                                        )
-                                    }
-                                } else {
-                                    items(resets, key = { it.id }) { r ->
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = FeltBackground.copy(alpha = 0.7f),
-                                            border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(r.displayName ?: r.username, color = Cream, fontWeight = FontWeight.Bold)
-                                                    Text(
-                                                        text = if (!r.resetCode.isNullOrBlank()) "Code: ${r.resetCode}" else "@${r.username} • Pending",
-                                                        color = Gold,
-                                                        fontSize = 12.sp
-                                                    )
-                                                }
-                                                Button(
-                                                    onClick = {
-                                                        viewModel.resetMemberPassword(r.userId, generateCode = true) { res ->
-                                                            if (res.isSuccess) {
-                                                                statusBanner = false to "Code for ${r.username}: ${res.getOrNull()?.resetCode}"
-                                                                viewModel.fetchAdminOverview()
-                                                            }
-                                                        }
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black)
-                                                ) {
-                                                    Text("Code", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                }
                                             }
                                         }
                                     }
