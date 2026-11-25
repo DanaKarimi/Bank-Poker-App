@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bankpoker-v3';
+const CACHE_NAME = 'bankpoker-v4';
 const APP_SHELL = [
   '/',
   '/favicon.svg',
@@ -40,8 +40,31 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Always bypass API calls and WebSocket connections
-  if (url.pathname.startsWith('/api') || event.request.method !== 'GET') {
+  // Always bypass API calls, Socket.IO, and non-GET requests
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/api' ||
+    url.pathname.startsWith('/socket.io/') ||
+    event.request.method !== 'GET'
+  ) {
+    return;
+  }
+
+  // Strictly Cache-First for immutable hashed /assets/* (even on browser reload)
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request.url);
+        if (cached) {
+          return cached;
+        }
+        const networkResponse = await fetch(event.request);
+        if (networkResponse && networkResponse.status === 200) {
+          cache.put(event.request.url, networkResponse.clone());
+        }
+        return networkResponse;
+      })
+    );
     return;
   }
 
@@ -55,7 +78,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets
+  // Cache-first for other static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {

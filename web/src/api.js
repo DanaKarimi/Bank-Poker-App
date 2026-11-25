@@ -5,6 +5,7 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 12000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,10 +25,31 @@ api.interceptors.request.use(
   }
 );
 
-// Interceptor to handle global response errors
+// Auto-retry transient network/timeout/502-504 errors on idempotent GET requests
+const RETRY_DELAYS_MS = [400, 900];
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const config = error?.config;
+    const method = (config?.method || '').toLowerCase();
+    const status = error?.response?.status;
+    const isRetryable =
+      method === 'get' &&
+      (!error.response ||
+        error.code === 'ECONNABORTED' ||
+        error.code === 'ERR_NETWORK' ||
+        status === 502 ||
+        status === 503 ||
+        status === 504);
+
+    if (config && isRetryable) {
+      const attempt = config.__retryCount || 0;
+      if (attempt < RETRY_DELAYS_MS.length) {
+        config.__retryCount = attempt + 1;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        return api(config);
+      }
+    }
     return Promise.reject(error);
   }
 );

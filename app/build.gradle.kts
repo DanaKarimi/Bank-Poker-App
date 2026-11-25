@@ -13,8 +13,8 @@ android {
         applicationId = "com.bankpoker.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 8
+        versionName = "1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ENABLE_FCM", "true")

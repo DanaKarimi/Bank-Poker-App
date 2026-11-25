@@ -81,15 +81,17 @@ class GroupDetailViewModel(
 
     /**
      * Coalesce rapid Socket.IO / UI refresh triggers into at most 1 network refresh per 500ms.
+     * Wave 1 fetches core tables + balances immediately; Wave 2 defers settlement by 400ms.
      */
     fun scheduleGroupRefresh(includeLeaderboard: Boolean = false, delayMs: Long = 500L) {
         if (remoteRepository == null) return
         debouncedRefreshJob?.cancel()
         debouncedRefreshJob = viewModelScope.launch {
             if (delayMs > 0L) delay(delayMs)
-            fetchServerBalances()
-            fetchServerSettlement()
             fetchServerTables()
+            fetchServerBalances()
+            delay(400L)
+            fetchServerSettlement()
             if (includeLeaderboard) {
                 fetchLeaderboard()
             }
@@ -275,9 +277,10 @@ class GroupDetailViewModel(
             _group.value = g
             val sId = g?.serverId ?: g?.id ?: groupId
             socketManager?.joinGroup(sId)
-            fetchServerBalances()
-            fetchServerSettlement()
             fetchServerTables()
+            fetchServerBalances()
+            delay(400L)
+            fetchServerSettlement()
             fetchLeaderboard()
             fetchAdminOverview()
         }
@@ -355,7 +358,11 @@ class GroupDetailViewModel(
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
-                val result = remoteRepository.getGroupTables(serverGroupId)
+                var result = remoteRepository.getGroupTables(serverGroupId)
+                if (result.isFailure) {
+                    delay(500L)
+                    result = remoteRepository.getGroupTables(serverGroupId)
+                }
                 if (result.isSuccess) {
                     val serverList = result.getOrNull() ?: emptyList()
                     val mapped = serverList.map { it.toGroupTableItem() }
@@ -380,7 +387,11 @@ class GroupDetailViewModel(
             try {
                 val currentGroup = _group.value ?: repository.getGroupById(groupId)
                 val serverGroupId = currentGroup?.serverId ?: currentGroup?.id ?: groupId
-                val result = remoteRepository.getGroupBalances(serverGroupId)
+                var result = remoteRepository.getGroupBalances(serverGroupId)
+                if (result.isFailure) {
+                    delay(500L)
+                    result = remoteRepository.getGroupBalances(serverGroupId)
+                }
                 if (result.isSuccess) {
                     val serverList = result.getOrNull() ?: emptyList()
                     val mapped = serverList.map { dto ->

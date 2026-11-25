@@ -104,7 +104,7 @@ const GroupStats = () => {
     }
   };
 
-  // 2. Fetch stats, tables & requests
+  // 2. Two-wave staggered fetch: Wave 1 (core lightweight), Wave 2 (+400ms heavy)
   const fetchData = async (isBackground = false) => {
     if (isBackground && isFetchingRef.current) return;
     isFetchingRef.current = true;
@@ -114,25 +114,23 @@ const GroupStats = () => {
     }
 
     try {
+      // Wave 1: Immediate core lightweight endpoints
       const [
         statsRes,
         tablesData,
-        requestsRes,
         balancesRes,
-        settlementRes,
         groupStatsRes,
-        leaderboardRes,
       ] = await Promise.allSettled([
         getGroupStats(groupId),
         getGroupTables(groupId),
-        getMyRequests(groupId),
         getGroupBalances(groupId),
-        getGroupSettlementPlan(groupId),
         getGroupStatsDetails(groupId),
-        getGroupLeaderboard(groupId),
       ]);
 
+      let wave1SuccessCount = 0;
+
       if (statsRes.status === 'fulfilled') {
+        wave1SuccessCount++;
         const rawStats = statsRes.value.data?.stats || statsRes.value.data || null;
         if (rawStats && Array.isArray(rawStats.recentTransactions)) {
           const txMap = new Map();
@@ -149,6 +147,7 @@ const GroupStats = () => {
       }
 
       if (tablesData.status === 'fulfilled') {
+        wave1SuccessCount++;
         const rawTables = tablesData.value || [];
         const tMap = new Map();
         rawTables.forEach((t) => {
@@ -157,11 +156,8 @@ const GroupStats = () => {
         setTables(Array.from(tMap.values()));
       }
 
-      if (requestsRes.status === 'fulfilled') {
-        setRequests(requestsRes.value.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
-      }
-
       if (balancesRes.status === 'fulfilled') {
+        wave1SuccessCount++;
         const rawBalances = balancesRes.value.data?.balances || [];
         const idMap = new Map();
         const nameMap = new Map();
@@ -194,22 +190,47 @@ const GroupStats = () => {
         setBalances(deduplicated);
       }
 
-      if (settlementRes.status === 'fulfilled') {
-        setSettlementPlan(settlementRes.value.data?.settlement || []);
-      }
-
       if (groupStatsRes.status === 'fulfilled') {
+        wave1SuccessCount++;
         setGroupStatsDetails(groupStatsRes.value.data?.stats || groupStatsRes.value.data || null);
       }
+
+      if (wave1SuccessCount === 0) {
+        setError('Connection stalled while loading group data. Tap Retry to reload.');
+      } else {
+        setError('');
+      }
+
+      if (!isBackground) {
+        setLoading(false);
+      }
+
+      // Wave 2: Deferred heavy payloads (+400ms after Wave 1) so large JSON never starves core UI
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const [
+        leaderboardRes,
+        settlementRes,
+        requestsRes,
+      ] = await Promise.allSettled([
+        getGroupLeaderboard(groupId),
+        getGroupSettlementPlan(groupId),
+        getMyRequests(groupId),
+      ]);
 
       if (leaderboardRes.status === 'fulfilled') {
         setLeaderboardData(leaderboardRes.value.data || { snapshots: [], leaderboard: [] });
       }
+
+      if (settlementRes.status === 'fulfilled') {
+        setSettlementPlan(settlementRes.value.data?.settlement || []);
+      }
+
+      if (requestsRes.status === 'fulfilled') {
+        setRequests(requestsRes.value.data || { joinRequests: [], buyInRequests: [], exitRequests: [] });
+      }
     } catch (err) {
       console.error('Failed to load group details:', err);
-      if (!isBackground) {
-        setError('Failed to load group data. Please try again.');
-      }
+      setError('Failed to load group data. Tap Retry to try again.');
     } finally {
       isFetchingRef.current = false;
       if (!isBackground) {
@@ -528,6 +549,20 @@ const GroupStats = () => {
             </button>
           </div>
         </div>
+
+        {/* Visible Retry Banner when Wave 1 fails */}
+        {error && (
+          <div className="p-3.5 bg-red-950/70 border border-red-500/60 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
+            <div className="text-xs font-semibold text-red-200">{error}</div>
+            <button
+              type="button"
+              onClick={() => fetchData(false)}
+              className="px-3.5 py-1.5 rounded-xl bg-gold-accent text-black text-xs font-extrabold hover:bg-gold-light transition cursor-pointer shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Group Hero Card */}
         <div className="bg-felt-card border-2 border-gold-accent rounded-2xl p-6 shadow-2xl relative overflow-hidden">

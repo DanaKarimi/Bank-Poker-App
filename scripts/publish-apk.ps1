@@ -45,9 +45,8 @@ $versionObj = [ordered]@{
     apkUrl      = "/releases/$versionedFileName"
     forceUpdate = $ForceUpdate
     whatsNew    = @(
-        "IPv4-first network routing for instant connection on mobile data",
-        "Instant dark splash screen & 75% faster Web App loading with Gzip",
-        "Removed render-blocking external font requests on cellular networks"
+        "Instant 0ms Refresh & Group navigation via immutable asset caching",
+        "Two-wave staggered loading & auto-retry for cellular data and VPN"
     )
     sizeBytes   = $sizeBytes
     sizeMB      = $sizeMB

@@ -4,9 +4,9 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import GroupStats from './pages/GroupStats';
+import TableDetail from './pages/TableDetail';
 
-const GroupStats = lazy(() => import('./pages/GroupStats'));
-const TableDetail = lazy(() => import('./pages/TableDetail'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 const PageLoader = () => (
