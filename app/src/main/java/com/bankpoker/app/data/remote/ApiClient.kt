@@ -1,11 +1,14 @@
 package com.bankpoker.app.data.remote
 
 import android.content.Context
+import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.net.InetAddress
+import java.net.Inet6Address
 import java.util.concurrent.TimeUnit
 
 /**
@@ -35,6 +38,24 @@ object ApiClient {
         rebuild(context, savedUrl)
     }
 
+    /**
+     * IPv4-first DNS resolver: prevents broken mobile carrier IPv6 routes from stalling connections.
+     */
+    internal val ipv4FirstDns: Dns = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            return Dns.SYSTEM.lookup(hostname).sortedBy { it is Inet6Address }
+        }
+    }
+
+    internal fun buildSocketOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .dns(ipv4FirstDns)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
+            .build()
+    }
+
     private fun createOkHttpClient(tokenManager: TokenManager?): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
@@ -55,10 +76,12 @@ object ApiClient {
         }
 
         return OkHttpClient.Builder()
+            .dns(ipv4FirstDns)
             .addInterceptor(loggingInterceptor)
             .addInterceptor(authInterceptor)
-            .connectTimeout(ApiConfig.CONNECT_TIMEOUT, TimeUnit.SECONDS)
-            .readTimeout(ApiConfig.READ_TIMEOUT, TimeUnit.SECONDS)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
             .build()
     }
 

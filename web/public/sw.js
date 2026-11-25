@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bankpoker-v2';
+const CACHE_NAME = 'bankpoker-v3';
 const APP_SHELL = [
   '/',
   '/favicon.svg',

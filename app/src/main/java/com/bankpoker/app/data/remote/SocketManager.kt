@@ -53,13 +53,16 @@ class SocketManager private constructor(private val context: Context) {
         }
 
         try {
+            val socketOkHttp = ApiClient.buildSocketOkHttpClient()
             val options = IO.Options().apply {
+                callFactory = socketOkHttp
+                webSocketFactory = socketOkHttp
                 transports = arrayOf("websocket", "polling")
                 reconnection = true
                 reconnectionAttempts = Int.MAX_VALUE
                 reconnectionDelay = 1000L
                 reconnectionDelayMax = 5000L
-                timeout = 20000L
+                timeout = 12000L
                 auth = Collections.singletonMap("token", token)
                 query = "token=$token"
             }
